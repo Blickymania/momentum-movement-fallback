@@ -108,6 +108,21 @@ test("registers a dynamic client and retrieves its exact redirect allowlist", as
   db.close();
 });
 
+test("login state invalidation on an OAuth denial is single use", async () => {
+  const { db, store } = makeStore();
+  await store.ensureSchema();
+  await store.registerClient({
+    clientId: baseLogin.clientId,
+    clientName: "Client",
+    redirectUris: [baseLogin.redirectUri],
+  });
+  await store.createLoginRequest(baseLogin);
+  assert.equal(await store.consumeLoginRequestFailure(baseLogin.stateHash), true);
+  assert.equal(await store.consumeLoginRequestFailure(baseLogin.stateHash), false);
+  assert.equal(await store.findLoginRequest(baseLogin.stateHash), null);
+  db.close();
+});
+
 test("consumes a login state and creates one authorization code in one D1 batch", async () => {
   const { db, store } = makeStore();
   await store.ensureSchema();
