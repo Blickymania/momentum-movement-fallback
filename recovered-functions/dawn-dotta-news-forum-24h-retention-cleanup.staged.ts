@@ -1,0 +1,1 @@
+console.log("News Forum Retention Cleanup disabled: target forum retired");
