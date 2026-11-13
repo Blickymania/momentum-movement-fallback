@@ -452,8 +452,15 @@ async function connect(withContent=true){
   console.warn(JSON.stringify({event:'creator-widget-gateway-disconnected',code:e.code}));
  });
  activeClient.on(Events.ShardResume,()=>{
-  if(client===activeClient&&lease?.isHeld)gatewayReady=true;
-  else gatewayReady=false;
+  try{
+   if(client!==activeClient)return;
+   lease.assertValid();
+   gatewayReady=true;
+  }catch{
+   gatewayReady=false;
+   void activeClient.destroy();
+   if(client===activeClient)client=null;
+  }
  });
  activeClient.on(Events.Error,()=>console.error('creator-widget-gateway-error'));
  activeClient.once(Events.ClientReady,async()=>{
