@@ -70,19 +70,27 @@ export function createOAuthRoutes({store,env,fetchImpl=fetch,cryptoImpl=globalTh
   const authorize=async url=>{
     try {
       const clientId=url.searchParams.get("client_id")||"",redirectUri=url.searchParams.get("redirect_uri")||"",challenge=url.searchParams.get("code_challenge")||"";
-      const client=await store.getClient(clientId);if(!client)return error("invalid_client");
+      let client;
+      try { client=await store.getClient(clientId); }
+      catch { return error("server_error",503); }
+      if(!client)return error("invalid_client");
       if(url.searchParams.get("response_type")!=="code"||!JSON.parse(client.redirect_uris).includes(redirectUri)||!validRedirect(redirectUri))return error("invalid_request");
       if(url.searchParams.get("code_challenge_method")!=="S256"||challenge.length<43||challenge.length>128||!/^[A-Za-z0-9_-]+$/.test(challenge))return error("invalid_request");
       const target=url.searchParams.get("resource")||"";if(target!==resourceFor(env))return error("invalid_target");
       const scope=parseScopes(url.searchParams.get("scope"));if(!env.DISCORD_OAUTH_CLIENT_ID||!env.DISCORD_OAUTH_CLIENT_SECRET)return error("oauth_provider_not_configured",503);
       const discordRedirect=discordRedirectFor(env),state=random(32);
-      await store.createLoginRequest({stateHash:await hash(state),clientId,redirectUri,clientState:url.searchParams.get("state"),codeChallenge:challenge,scope,resource:target});
+      try {
+        await store.createLoginRequest({stateHash:await hash(state),clientId,redirectUri,clientState:url.searchParams.get("state"),codeChallenge:challenge,scope,resource:target});
+      } catch { return error("server_error",503); }
       const dest=new URL("https://discord.com/oauth2/authorize");dest.searchParams.set("client_id",env.DISCORD_OAUTH_CLIENT_ID);dest.searchParams.set("redirect_uri",discordRedirect);dest.searchParams.set("response_type","code");dest.searchParams.set("scope","identify guilds");dest.searchParams.set("state",state);dest.searchParams.set("prompt","consent");
       return new Response(null,{status:302,headers:{location:dest.toString(),"cache-control":"no-store"}});
     } catch(e) {const c=String(e?.message||"");return error(c.startsWith("invalid_")?c:"invalid_request");}
   };
   const callback=async url=>{
-    const state=url.searchParams.get("state")||"",stateHash=await hash(state),pending=await store.findLoginRequest(stateHash);
+    const state=url.searchParams.get("state")||"",stateHash=await hash(state);
+    let pending;
+    try { pending=await store.findLoginRequest(stateHash); }
+    catch { return error("server_error",503); }
     if(!pending)return error("invalid_state");
     if(url.searchParams.has("error"))return deny(pending,stateHash,"Discord authorization was not completed");
     const code=url.searchParams.get("code")||"";
