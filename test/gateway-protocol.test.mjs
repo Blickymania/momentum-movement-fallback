@@ -67,7 +67,7 @@ test("Hello selects Resume when a session and sequence are available", () => {
   assert.deepEqual(decideGatewayFrame({
     op: GatewayOpcode.HELLO,
     d: { heartbeat_interval: 41000 },
-  }, { sessionId: "session-a", sequence: 11 }), {
+  }, { sessionId: "session-a", sequence: 11, resumeGatewayUrl: "wss://gateway.example" }), {
     action: "resume", heartbeatInterval: 41000,
   });
 });
@@ -141,7 +141,10 @@ test("fatal Gateway close codes never enter a retry loop", () => {
   }
 });
 
-test("invalid session close codes clear persisted resume state", () => {
+test("not-authenticated and invalid-session close codes clear persisted resume state", () => {
+  assert.deepEqual(decideGatewayClose(4003), {
+    action: "retry", clearSession: true, reason: "not_authenticated",
+  });
   for (const code of [4006, 4007, 4009]) {
     assert.deepEqual(decideGatewayClose(code), {
       action: "retry", clearSession: true, reason: "session_not_resumable",
@@ -159,7 +162,8 @@ test("reconnect delay grows exponentially and is capped", () => {
   assert.equal(boundedReconnectDelay(0, 1), 1000);
   assert.equal(boundedReconnectDelay(2, 0.5), 2000);
   assert.equal(boundedReconnectDelay(20, 1), 60000);
-  assert.equal(boundedReconnectDelay(1, 0), 0);
+  assert.equal(boundedReconnectDelay(1, 0), 1000);
+  assert.equal(boundedReconnectDelay(1, 1), 2000);
   assert.throws(() => boundedReconnectDelay(-1), /attempt/);
 });
 
@@ -169,4 +173,6 @@ test("event key prefers Discord object ID for duplicate-safe processing", () => 
   assert.equal(gatewayEventKey("guild", 20, "PRESENCE_UPDATE", {}),
     "guild:PRESENCE_UPDATE:20");
   assert.throws(() => gatewayEventKey("guild", null, "UNKNOWN", {}), /stable event ID/);
+  assert.throws(() => gatewayEventKey("", 1, "MESSAGE_CREATE", {}), /guild ID/);
+  assert.throws(() => gatewayEventKey("guild", 1, "", {}), /event type/);
 });
