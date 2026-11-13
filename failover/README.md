@@ -11,6 +11,12 @@ This folder contains an isolated, Dawn Dotta-only failover foundation. It does n
 - The listener client maintains a conservative local safety deadline and refuses Discord API calls after lease expiry or coordinator rejection.
 - The listener must acquire before opening a Discord Gateway connection. A standby instance must not connect until it acquires the lease.
 
+## Isolated listener integration
+
+`failover/listener/index.tsx` is a separate build based on the recovered LIVE & Events Listener. It leaves the root recovery snapshot unchanged. When `LISTENER_RUNTIME_ACTIVE=true`, it requires `LISTENER_LEASE_URL` and `LISTENER_LEASE_TOKEN`, attempts to acquire the lease before connecting to Discord Gateway, remains disconnected while another instance owns the lease, and stops the client when lease ownership is lost. Discord REST calls are gated by the local lease deadline; in-flight calls are aborted when the lease is lost.
+
+The isolated listener still requires a live coordinator URL and secret before it can start. Keep the current Railway listener unchanged until a primary and standby have both been configured and takeover has been verified.
+
 ## Free-plan fit (verify before deployment)
 
 Cloudflare's current Free plan documents included daily request, compute-duration, SQL read/write, and storage allowances for SQLite-backed Durable Objects. At a 20-second heartbeat, one listener uses about 4,320 renewals per day. This is below the published 100,000 requests/day and 100,000 SQL rows written/day allowances. Monitor actual usage and keep heartbeat and retry behavior within account limits.
