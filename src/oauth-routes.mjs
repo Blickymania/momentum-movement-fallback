@@ -1,473 +1,160 @@
-/**
- * HTTP OAuth 2.1 / PKCE routes for the Momentum Movement MCP manager.
- *
- * This module is transport-only: D1 storage is injected through OAuthD1Store,
- * Discord token and API calls use fetch, and all secrets are supplied through
- * the Worker environment. No credentials are persisted or logged.
- */
 import { OAuthStoreError } from "./oauth-d1-store.mjs";
 
-const JSON_HEADERS = {
-  "content-type": "application/json; charset=utf-8",
-  "cache-control": "no-store",
-  pragma: "no-cache",
+const JSON_HEADERS = {"content-type":"application/json; charset=utf-8","cache-control":"no-store","pragma":"no-cache"};
+const json = (value, status=200) => new Response(JSON.stringify(value), {status, headers:JSON_HEADERS});
+const error = (code, status=400) => json({error:code}, status);
+const b64url = bytes => { let s=""; for (const b of bytes) s+=String.fromCharCode(b); return btoa(s).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_"); };
+const validRedirect = value => {
+  try { const u=new URL(value); if(u.username||u.password||u.hash)return false; return u.protocol==="https:" || (u.protocol==="http:"&&["localhost","127.0.0.1","[::1]"].includes(u.hostname)); }
+  catch { return false; }
+};
+const parseScopes = value => {
+  const requested=String(value||"mcp:read mcp:write").trim().split(/\s+/).filter(Boolean);
+  const expanded=requested.includes("mcp")?["mcp:read","mcp:write",...requested.filter(x=>x!=="mcp")]:requested;
+  const unique=[...new Set(expanded)];
+  if(!unique.includes("mcp:read")||unique.some(x=>!["mcp:read","mcp:write"].includes(x)))throw Error("invalid_scope");
+  return unique.sort().join(" ");
+};
+const issuerFor = env => {
+  const u=new URL(env.OAUTH_ISSUER_URL||env.DISCORD_OAUTH_REDIRECT_URI||"https://invalid.invalid");
+  if(u.protocol!=="https:"||u.username||u.password)throw Error("invalid_issuer"); return u.origin;
+};
+const resourceFor = env => {
+  const issuer=issuerFor(env),u=new URL(env.OAUTH_RESOURCE_URL||issuer+"/mcp");
+  if(u.protocol!=="https:"||u.search||u.hash||u.username||u.password)throw Error("invalid_resource");
+  return u.origin+(u.pathname==="/" ? "/mcp" : u.pathname.replace(/\/+$/,""));
+};
+const discordRedirectFor = env => {
+  const u=new URL(env.DISCORD_OAUTH_REDIRECT_URI||issuerFor(env)+"/oauth/callback");
+  if(u.protocol!=="https:"||u.username||u.password||u.hash)throw Error("invalid_discord_redirect"); return u.toString();
 };
 
-function jsonResponse(value, status = 200) {
-  return new Response(JSON.stringify(value), { status, headers: JSON_HEADERS });
-}
-
-function oauthError(error, status = 400) {
-  return jsonResponse({ error }, status);
-}
-
-function base64Url(bytes) {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-}
-
-function safeRedirect(value) {
-  try {
-    const url = new URL(value);
-    if (url.username || url.password || url.hash) return false;
-    if (url.protocol === "https:") return true;
-    return url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  } catch {
-    return false;
-  }
-}
-
-function scopes(value) {
-  const requested = String(value || "mcp:read mcp:write").trim().split(/\s+/).filter(Boolean);
-  const expanded = requested.includes("mcp")
-    ? ["mcp:read", "mcp:write", ...requested.filter((scope) => scope !== "mcp")]
-    : requested;
-  const unique = [...new Set(expanded)];
-  if (!unique.includes("mcp:read") ||
-      unique.some((scope) => !["mcp:read", "mcp:write"].includes(scope))) {
-    throw new Error("invalid_scope");
-  }
-  return unique.sort().join(" ");
-}
-
-function buildIssuer(env) {
-  const value = env.OAUTH_ISSUER_URL || env.DISCORD_OAUTH_REDIRECT_URI || "https://invalid.invalid";
-  const url = new URL(value);
-  if (url.protocol !== "https:" || url.username || url.password) {
-    throw new Error("invalid_issuer");
-  }
-  return url.origin;
-}
-
-function buildResource(env) {
-  const issuer = buildIssuer(env);
-  const url = new URL(env.OAUTH_RESOURCE_URL || (issuer + "/mcp"));
-  if (url.protocol !== "https:" || url.search || url.hash || url.username || url.password) {
-    throw new Error("invalid_resource");
-  }
-  return url.origin + (url.pathname === "/" ? "/mcp" : url.pathname.replace(/\/+$/, ""));
-}
-
-function buildDiscordRedirect(env) {
-  const issuer = buildIssuer(env);
-  const url = new URL(env.DISCORD_OAUTH_REDIRECT_URI || (issuer + "/oauth/callback"));
-  if (url.protocol !== "https:" || url.username || url.password || url.hash) {
-    throw new Error("invalid_discord_redirect");
-  }
-  return url.toString();
-}
-
-function expiresIn(expiry, now) {
-  return Math.max(0, Math.floor((expiry - now) / 1000));
-}
-
-export function createOAuthRoutes({
-  store,
-  env,
-  fetchImpl = fetch,
-  cryptoImpl = globalThis.crypto,
-  now = () => Date.now(),
-  randomBytes = (length) => {
-    const bytes = new Uint8Array(length);
-    cryptoImpl.getRandomValues(bytes);
-    return bytes;
-  },
-} = {}) {
-  if (!store || typeof store.findLoginRequest !== "function" ||
-      typeof store.consumeLoginRequestAndCreateCode !== "function" ||
-      typeof store.exchangeAuthorizationCode !== "function" ||
-      typeof store.rotateRefreshToken !== "function" ||
-      typeof store.authenticateAccessToken !== "function" ||
-      typeof store.revokeToken !== "function") {
+export function createOAuthRoutes({store,env,fetchImpl=fetch,cryptoImpl=globalThis.crypto,now=()=>Date.now(),randomBytes}={}) {
+  if(!store||typeof store.findLoginRequest!=="function"||typeof store.consumeLoginRequestFailure!=="function"||
+     typeof store.consumeLoginRequestAndCreateCode!=="function"||typeof store.exchangeAuthorizationCode!=="function"||
+     typeof store.rotateRefreshToken!=="function"||typeof store.authenticateAccessToken!=="function"||typeof store.revokeToken!=="function")
     throw new TypeError("A compatible OAuthD1Store instance is required");
-  }
-  if (!env || typeof env !== "object") throw new TypeError("Worker environment is required");
-  if (!cryptoImpl?.subtle || typeof fetchImpl !== "function" || typeof now !== "function") {
-    throw new TypeError("Web Crypto, fetch and a clock are required");
-  }
-
-  const random = (length = 32) => base64Url(randomBytes(length));
-  const hash = async (value) => {
-    const digest = await cryptoImpl.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(String(value)),
-    );
-    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  if(!env||typeof env!=="object"||!cryptoImpl?.subtle||typeof fetchImpl!=="function"||typeof now!=="function")
+    throw new TypeError("Worker environment, Web Crypto, fetch and clock are required");
+  const bytes = randomBytes || (n=>{const out=new Uint8Array(n);cryptoImpl.getRandomValues(out);return out;});
+  const random = (n=32)=>b64url(bytes(n));
+  const hash = async value => {
+    const digest=await cryptoImpl.subtle.digest("SHA-256",new TextEncoder().encode(String(value)));
+    return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
   };
-  const pkce = async (verifier) => base64Url(new Uint8Array(await cryptoImpl.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(verifier),
-  )));
-  const enabled = () => env.MCP_OAUTH_ENABLED === "true";
-  const issuer = () => buildIssuer(env);
-  const resource = () => buildResource(env);
-  const discordRedirect = () => buildDiscordRedirect(env);
-  const isAdmin = (member) => {
-    if (!member) return false;
-    if (member.owner === true) return true;
-    try {
-      const permissions = BigInt(member.permissions ?? "0");
-      return (permissions & 8n) === 8n;
-    } catch {
-      return false;
-    }
-  };
-
-  async function denyLogin(pending, stateHash, reason) {
+  const pkce = async verifier=>b64url(new Uint8Array(await cryptoImpl.subtle.digest("SHA-256",new TextEncoder().encode(verifier))));
+  const enabled=()=>env.MCP_OAUTH_ENABLED==="true";
+  const deny=async(pending,stateHash,reason)=>{
     await store.consumeLoginRequestFailure(stateHash);
-    const url = new URL(pending.redirect_uri);
-    url.searchParams.set("error", "access_denied");
-    url.searchParams.set("error_description", reason);
-    if (pending.client_state !== null && pending.client_state !== undefined) {
-      url.searchParams.set("state", String(pending.client_state));
-    }
-    return new Response(null, {
-      status: 302,
-      headers: { location: url.toString(), "cache-control": "no-store" },
-    });
-  }
-
-  async function register(request) {
+    const target=new URL(pending.redirect_uri);target.searchParams.set("error","access_denied");target.searchParams.set("error_description",reason);
+    if(pending.client_state!=null)target.searchParams.set("state",String(pending.client_state));
+    return new Response(null,{status:302,headers:{location:target.toString(),"cache-control":"no-store"}});
+  };
+  const register=async request=>{
     try {
-      const body = await request.json();
-      const redirects = body?.redirect_uris;
-      if (!Array.isArray(redirects) || redirects.length < 1 || redirects.length > 10 ||
-          redirects.some((url) => typeof url !== "string" || !safeRedirect(url))) {
-        return oauthError("invalid_redirect_uri");
-      }
-      const clientId = "mcp_" + random(24);
-      const clientName = typeof body.client_name === "string" && body.client_name.trim()
-        ? body.client_name.trim().slice(0, 100)
-        : "MCP client";
-      const unique = [...new Set(redirects)];
-      await store.registerClient({ clientId, clientName, redirectUris: unique });
-      return jsonResponse({
-        client_id: clientId,
-        client_id_issued_at: Math.floor(now() / 1000),
-        client_name: clientName,
-        redirect_uris: unique,
-        grant_types: ["authorization_code", "refresh_token"],
-        response_types: ["code"],
-        token_endpoint_auth_method: "none",
-      }, 201);
-    } catch {
-      return oauthError("invalid_client_metadata");
-    }
-  }
-
-  async function authorize(url) {
+      const body=await request.json(),uris=body?.redirect_uris;
+      if(!Array.isArray(uris)||uris.length<1||uris.length>10||uris.some(x=>typeof x!=="string"||!validRedirect(x)))return error("invalid_redirect_uri");
+      const clientId="mcp_"+random(24),clientName=typeof body.client_name==="string"&&body.client_name.trim()?body.client_name.trim().slice(0,100):"MCP client";
+      const redirectUris=[...new Set(uris)];await store.registerClient({clientId,clientName,redirectUris});
+      return json({client_id:clientId,client_id_issued_at:Math.floor(now()/1000),client_name:clientName,redirect_uris:redirectUris,grant_types:["authorization_code","refresh_token"],response_types:["code"],token_endpoint_auth_method:"none"},201);
+    } catch {return error("invalid_client_metadata");}
+  };
+  const authorize=async url=>{
     try {
-      const clientId = url.searchParams.get("client_id") || "";
-      const redirectUri = url.searchParams.get("redirect_uri") || "";
-      const challenge = url.searchParams.get("code_challenge") || "";
-      const client = await store.getClient(clientId);
-      if (!client) return oauthError("invalid_client");
-      const registeredRedirects = JSON.parse(client.redirect_uris);
-      if (url.searchParams.get("response_type") !== "code" ||
-          !registeredRedirects.includes(redirectUri) || !safeRedirect(redirectUri)) {
-        return oauthError("invalid_request");
-      }
-      if (url.searchParams.get("code_challenge_method") !== "S256" ||
-          challenge.length < 43 || challenge.length > 128 ||
-          !/^[A-Za-z0-9_-]+$/.test(challenge)) {
-        return oauthError("invalid_request");
-      }
-
-      const target = url.searchParams.get("resource") || "";
-      if (target !== resource()) return oauthError("invalid_target");
-      const scope = scopes(url.searchParams.get("scope"));
-      const discordClientId = env.DISCORD_OAUTH_CLIENT_ID;
-      const discordClientSecret = env.DISCORD_OAUTH_CLIENT_SECRET;
-      if (!discordClientId || !discordClientSecret) {
-        return oauthError("oauth_provider_not_configured", 503);
-      }
-
-      const state = random(32);
-      await store.createLoginRequest({
-        stateHash: await hash(state),
-        clientId,
-        redirectUri,
-        clientState: url.searchParams.get("state"),
-        codeChallenge: challenge,
-        scope,
-        resource: target,
-      });
-
-      const authUrl = new URL("https://discord.com/oauth2/authorize");
-      authUrl.searchParams.set("client_id", discordClientId);
-      authUrl.searchParams.set("redirect_uri", discordRedirect());
-      authUrl.searchParams.set("response_type", "code");
-      authUrl.searchParams.set("scope", "identify guilds");
-      authUrl.searchParams.set("state", state);
-      authUrl.searchParams.set("prompt", "consent");
-      return new Response(null, {
-        status: 302,
-        headers: { location: authUrl.toString(), "cache-control": "no-store" },
-      });
-    } catch (error) {
-      const code = String(error?.message || "");
-      return oauthError(code.startsWith("invalid_") ? code : "invalid_request");
-    }
-  }
-
-  async function callback(url) {
-    const state = url.searchParams.get("state") || "";
-    const stateHash = await hash(state);
-    const pending = await store.findLoginRequest(stateHash);
-    if (!pending) return oauthError("invalid_state");
-
-    if (url.searchParams.has("error")) {
-      return denyLogin(pending, stateHash, "Discord authorization was not completed");
-    }
-    const code = url.searchParams.get("code") || "";
-    const discordClientId = env.DISCORD_OAUTH_CLIENT_ID;
-    const discordClientSecret = env.DISCORD_OAUTH_CLIENT_SECRET;
-    if (!code || !discordClientId || !discordClientSecret) {
-      return denyLogin(pending, stateHash, "Discord OAuth provider is not configured");
-    }
-
+      const clientId=url.searchParams.get("client_id")||"",redirectUri=url.searchParams.get("redirect_uri")||"",challenge=url.searchParams.get("code_challenge")||"";
+      const client=await store.getClient(clientId);if(!client)return error("invalid_client");
+      if(url.searchParams.get("response_type")!=="code"||!JSON.parse(client.redirect_uris).includes(redirectUri)||!validRedirect(redirectUri))return error("invalid_request");
+      if(url.searchParams.get("code_challenge_method")!=="S256"||challenge.length<43||challenge.length>128||!/^[A-Za-z0-9_-]+$/.test(challenge))return error("invalid_request");
+      const target=url.searchParams.get("resource")||"";if(target!==resourceFor(env))return error("invalid_target");
+      const scope=parseScopes(url.searchParams.get("scope"));if(!env.DISCORD_OAUTH_CLIENT_ID||!env.DISCORD_OAUTH_CLIENT_SECRET)return error("oauth_provider_not_configured",503);
+      const discordRedirect=discordRedirectFor(env),state=random(32);
+      await store.createLoginRequest({stateHash:await hash(state),clientId,redirectUri,clientState:url.searchParams.get("state"),codeChallenge:challenge,scope,resource:target});
+      const dest=new URL("https://discord.com/oauth2/authorize");dest.searchParams.set("client_id",env.DISCORD_OAUTH_CLIENT_ID);dest.searchParams.set("redirect_uri",discordRedirect);dest.searchParams.set("response_type","code");dest.searchParams.set("scope","identify guilds");dest.searchParams.set("state",state);dest.searchParams.set("prompt","consent");
+      return new Response(null,{status:302,headers:{location:dest.toString(),"cache-control":"no-store"}});
+    } catch(e) {const c=String(e?.message||"");return error(c.startsWith("invalid_")?c:"invalid_request");}
+  };
+  const callback=async url=>{
+    const state=url.searchParams.get("state")||"",stateHash=await hash(state),pending=await store.findLoginRequest(stateHash);
+    if(!pending)return error("invalid_state");
+    if(url.searchParams.has("error"))return deny(pending,stateHash,"Discord authorization was not completed");
+    const code=url.searchParams.get("code")||"";
+    if(!code||!env.DISCORD_OAUTH_CLIENT_ID||!env.DISCORD_OAUTH_CLIENT_SECRET)return deny(pending,stateHash,"Discord OAuth provider is not configured");
     try {
-      const tokenForm = new URLSearchParams({
-        client_id: discordClientId,
-        client_secret: discordClientSecret,
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: discordRedirect(),
-      });
-      const tokenResponse = await fetchImpl("https://discord.com/api/v10/oauth2/token", {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: tokenForm,
-      });
-      const discordToken = await tokenResponse.json().catch(() => ({}));
-      if (!tokenResponse.ok || !discordToken.access_token) {
-        return denyLogin(pending, stateHash, "Discord token exchange failed");
-      }
-
-      const headers = {
-        authorization: "Bearer " + discordToken.access_token,
-        "user-agent": "MomentumMovementOAuth/1.0",
-      };
-      const [userResponse, guildResponse] = await Promise.all([
-        fetchImpl("https://discord.com/api/v10/users/@me", { headers }),
-        fetchImpl("https://discord.com/api/v10/users/@me/guilds", { headers }),
+      const form=new URLSearchParams({client_id:env.DISCORD_OAUTH_CLIENT_ID,client_secret:env.DISCORD_OAUTH_CLIENT_SECRET,grant_type:"authorization_code",code,redirect_uri:discordRedirectFor(env)});
+      const tokenResponse=await fetchImpl("https://discord.com/api/v10/oauth2/token",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:form});
+      const discordToken=await tokenResponse.json().catch(()=>({}));
+      if(!tokenResponse.ok||!discordToken.access_token)return deny(pending,stateHash,"Discord token exchange failed");
+      const authHeaders={authorization:"Bearer "+discordToken.access_token,"user-agent":"MomentumMovementOAuth/1.0"};
+      const [userResponse,guildResponse]=await Promise.all([
+        fetchImpl("https://discord.com/api/v10/users/@me",{headers:authHeaders}),
+        fetchImpl("https://discord.com/api/v10/users/@me/guilds",{headers:authHeaders}),
       ]);
-      if (!userResponse.ok || !guildResponse.ok) {
-        return denyLogin(pending, stateHash, "Discord identity verification failed");
-      }
-
-      const user = await userResponse.json();
-      const guilds = await guildResponse.json();
-      const guildId = env.AUTHORIZED_GUILD_ID || "";
-      const membership = Array.isArray(guilds)
-        ? guilds.find((guild) => String(guild.id) === String(guildId))
-        : null;
-      if (!user?.id || !/^\d{15,22}$/.test(guildId) || !isAdmin(membership)) {
-        return denyLogin(pending, stateHash, "Discord account must be an owner or administrator of this server");
-      }
-
-      const authorizationCode = random(32);
-      await store.consumeLoginRequestAndCreateCode({
-        stateHash,
-        authorizationCodeHash: await hash(authorizationCode),
-        userId: String(user.id),
-        guildId: String(guildId),
-      });
-
-      const redirect = new URL(pending.redirect_uri);
-      redirect.searchParams.set("code", authorizationCode);
-      if (pending.client_state !== null && pending.client_state !== undefined) {
-        redirect.searchParams.set("state", String(pending.client_state));
-      }
-      return new Response(null, {
-        status: 302,
-        headers: { location: redirect.toString(), "cache-control": "no-store" },
-      });
-    } catch (error) {
-      if (error instanceof OAuthStoreError && error.code === "invalid_state") {
-        return oauthError("invalid_state");
-      }
-      return denyLogin(pending, stateHash, "OAuth callback failed");
+      if(!userResponse.ok||!guildResponse.ok)return deny(pending,stateHash,"Discord identity verification failed");
+      const user=await userResponse.json(),guilds=await guildResponse.json(),guildId=env.AUTHORIZED_GUILD_ID||"";
+      const member=Array.isArray(guilds)?guilds.find(x=>String(x.id)===String(guildId)):null;
+      let admin=member?.owner===true;try{admin||=(BigInt(member?.permissions??"0")&8n)===8n;}catch{}
+      if(!user?.id||! /^\d{15,22}$/.test(guildId)||!admin)return deny(pending,stateHash,"Discord account must be an owner or administrator of this server");
+      const authorizationCode=random(32);
+      await store.consumeLoginRequestAndCreateCode({stateHash,authorizationCodeHash:await hash(authorizationCode),userId:String(user.id),guildId:String(guildId)});
+      const dest=new URL(pending.redirect_uri);dest.searchParams.set("code",authorizationCode);if(pending.client_state!=null)dest.searchParams.set("state",String(pending.client_state));
+      return new Response(null,{status:302,headers:{location:dest.toString(),"cache-control":"no-store"}});
+    } catch(e) {
+      if(e instanceof OAuthStoreError&&e.code==="invalid_state")return error("invalid_state");
+      return deny(pending,stateHash,"OAuth callback failed");
     }
-  }
-
-  async function token(request) {
+  };
+  const token=async request=>{
     try {
-      const form = new URLSearchParams(await request.text());
-      const grantType = form.get("grant_type") || "";
-      const clientId = form.get("client_id") || "";
-      if (grantType === "authorization_code") {
-        const code = form.get("code") || "";
-        const redirectUri = form.get("redirect_uri") || "";
-        const verifier = form.get("code_verifier") || "";
-        if (!code || !clientId || !redirectUri ||
-            verifier.length < 43 || verifier.length > 128) {
-          return oauthError("invalid_grant");
-        }
-        const accessToken = random(32);
-        const refreshToken = random(48);
-        const context = await store.exchangeAuthorizationCode({
-          codeHash: await hash(code),
-          clientId,
-          redirectUri,
-          codeChallenge: await pkce(verifier),
-          resource: form.get("resource") || "",
-          accessTokenHash: await hash(accessToken),
-          refreshTokenHash: await hash(refreshToken),
-        });
-        return jsonResponse({
-          access_token: accessToken,
-          token_type: "Bearer",
-          expires_in: expiresIn(context.accessExpiresAt, now()),
-          refresh_token: refreshToken,
-          scope: context.scope,
-          resource: context.resource,
-        });
+      const form=new URLSearchParams(await request.text()),grant=form.get("grant_type")||"",clientId=form.get("client_id")||"";
+      if(grant==="authorization_code") {
+        const code=form.get("code")||"",redirectUri=form.get("redirect_uri")||"",verifier=form.get("code_verifier")||"";
+        if(!code||!clientId||!redirectUri||verifier.length<43||verifier.length>128)return error("invalid_grant");
+        const accessToken=random(32),refreshToken=random(48);
+        const context=await store.exchangeAuthorizationCode({codeHash:await hash(code),clientId,redirectUri,codeChallenge:await pkce(verifier),resource:form.get("resource")||"",accessTokenHash:await hash(accessToken),refreshTokenHash:await hash(refreshToken)});
+        return json({access_token:accessToken,token_type:"Bearer",expires_in:Math.max(0,Math.floor((context.accessExpiresAt-now())/1000)),refresh_token:refreshToken,scope:context.scope,resource:context.resource});
       }
-
-      if (grantType === "refresh_token") {
-        const oldRefresh = form.get("refresh_token") || "";
-        if (!oldRefresh || !clientId) return oauthError("invalid_grant");
-        const accessToken = random(32);
-        const refreshToken = random(48);
-        const context = await store.rotateRefreshToken({
-          oldRefreshTokenHash: await hash(oldRefresh),
-          clientId,
-          resource: form.get("resource") || "",
-          accessTokenHash: await hash(accessToken),
-          newRefreshTokenHash: await hash(refreshToken),
-        });
-        return jsonResponse({
-          access_token: accessToken,
-          token_type: "Bearer",
-          expires_in: expiresIn(context.accessExpiresAt, now()),
-          refresh_token: refreshToken,
-          scope: context.scope,
-          resource: context.resource,
-        });
+      if(grant==="refresh_token") {
+        const oldRefresh=form.get("refresh_token")||"";if(!oldRefresh||!clientId)return error("invalid_grant");
+        const accessToken=random(32),refreshToken=random(48);
+        const context=await store.rotateRefreshToken({oldRefreshTokenHash:await hash(oldRefresh),clientId,resource:form.get("resource")||"",accessTokenHash:await hash(accessToken),newRefreshTokenHash:await hash(refreshToken)});
+        return json({access_token:accessToken,token_type:"Bearer",expires_in:Math.max(0,Math.floor((context.accessExpiresAt-now())/1000)),refresh_token:refreshToken,scope:context.scope,resource:context.resource});
       }
-      return oauthError("unsupported_grant_type");
-    } catch (error) {
-      if (error instanceof OAuthStoreError &&
-          ["invalid_grant", "invalid_target"].includes(error.code)) {
-        return oauthError(error.code);
-      }
-      return oauthError("invalid_grant");
+      return error("unsupported_grant_type");
+    } catch(e) {
+      if(e instanceof OAuthStoreError&&["invalid_grant","invalid_target"].includes(e.code))return error(e.code);
+      return error("invalid_grant");
     }
-  }
-
-  async function revoke(request) {
-    try {
-      const form = new URLSearchParams(await request.text());
-      const tokenValue = form.get("token") || "";
-      const clientId = form.get("client_id") || "";
-      if (tokenValue) await store.revokeToken(await hash(tokenValue), clientId);
-      return new Response(null, { status: 200, headers: { "cache-control": "no-store" } });
-    } catch {
-      return oauthError("server_error", 503);
+  };
+  const revoke=async request=>{
+    try {const form=new URLSearchParams(await request.text()),value=form.get("token")||"";if(value)await store.revokeToken(await hash(value),form.get("client_id")||"");return new Response(null,{status:200,headers:{"cache-control":"no-store"}});}
+    catch{return error("server_error",503);}
+  };
+  const dispatch=async request=>{
+    const url=new URL(request.url),path=url.pathname;
+    if(!(path.startsWith("/.well-known/")||path==="/register"||path.startsWith("/oauth/")))return null;
+    if(!enabled())return error("oauth_not_enabled",404);
+    if(path==="/oauth/health"&&request.method==="GET") {
+      try {const health=await store.health(),ready=health.ready===true;return json({status:ready?"ready":"degraded",storage:"d1",tablesReady:ready,tables:health.tables,discordProviderConfigured:!!env.DISCORD_OAUTH_CLIENT_ID&&!!env.DISCORD_OAUTH_CLIENT_SECRET,discordRedirectConfigured:!!env.DISCORD_OAUTH_REDIRECT_URI,authorizedGuildConfigured:/^\d{15,22}$/.test(env.AUTHORIZED_GUILD_ID||""),resource:resourceFor(env)},ready?200:503);}
+      catch{return json({status:"degraded",storage:"d1",tablesReady:false,reason:"storage_unavailable"},503);}
     }
-  }
-
-  async function dispatch(request) {
-    const url = new URL(request.url);
-    const path = url.pathname;
-    const known = path.startsWith("/.well-known/") || path === "/register" || path.startsWith("/oauth/");
-    if (!known) return null;
-    if (!enabled()) return oauthError("oauth_not_enabled", 404);
-
-    if (path === "/oauth/health" && request.method === "GET") {
-      try {
-        if (typeof store.health !== "function") throw new Error("health_unavailable");
-        const health = await store.health();
-        const ready = health.ready === true;
-        return jsonResponse({
-          status: ready ? "ready" : "degraded",
-          storage: "d1",
-          tablesReady: ready,
-          tables: health.tables,
-          discordProviderConfigured: !!env.DISCORD_OAUTH_CLIENT_ID && !!env.DISCORD_OAUTH_CLIENT_SECRET,
-          discordRedirectConfigured: !!env.DISCORD_OAUTH_REDIRECT_URI,
-          authorizedGuildConfigured: /^\d{15,22}$/.test(env.AUTHORIZED_GUILD_ID || ""),
-          resource: resource(),
-        }, ready ? 200 : 503);
-      } catch {
-        return jsonResponse({ status: "degraded", storage: "d1", tablesReady: false, reason: "storage_unavailable" }, 503);
-      }
+    if(path==="/.well-known/oauth-protected-resource"&&request.method==="GET") {
+      try{return json({resource:resourceFor(env),authorization_servers:[issuerFor(env)],bearer_methods_supported:["header"],scopes_supported:["mcp:read","mcp:write"]});}
+      catch{return error("oauth_configuration_error",503);}
     }
-
-    if (path === "/.well-known/oauth-protected-resource" && request.method === "GET") {
-      try {
-        return jsonResponse({
-          resource: resource(),
-          authorization_servers: [issuer()],
-          bearer_methods_supported: ["header"],
-          scopes_supported: ["mcp:read", "mcp:write"],
-        });
-      } catch {
-        return oauthError("oauth_configuration_error", 503);
-      }
+    if(path==="/.well-known/oauth-authorization-server"&&request.method==="GET") {
+      try {const issuer=issuerFor(env);return json({issuer,authorization_endpoint:issuer+"/oauth/authorize",token_endpoint:issuer+"/oauth/token",registration_endpoint:issuer+"/register",revocation_endpoint:issuer+"/oauth/revoke",response_types_supported:["code"],response_modes_supported:["query"],grant_types_supported:["authorization_code","refresh_token"],token_endpoint_auth_methods_supported:["none"],code_challenge_methods_supported:["S256"],scopes_supported:["mcp:read","mcp:write"],resource_parameter_supported:true,client_id_metadata_document_supported:false});}
+      catch{return error("oauth_configuration_error",503);}
     }
-
-    if (path === "/.well-known/oauth-authorization-server" && request.method === "GET") {
-      try {
-        const authority = issuer();
-        return jsonResponse({
-          issuer: authority,
-          authorization_endpoint: authority + "/oauth/authorize",
-          token_endpoint: authority + "/oauth/token",
-          registration_endpoint: authority + "/register",
-          revocation_endpoint: authority + "/oauth/revoke",
-          response_types_supported: ["code"],
-          response_modes_supported: ["query"],
-          grant_types_supported: ["authorization_code", "refresh_token"],
-          token_endpoint_auth_methods_supported: ["none"],
-          code_challenge_methods_supported: ["S256"],
-          scopes_supported: ["mcp:read", "mcp:write"],
-          resource_parameter_supported: true,
-          client_id_metadata_document_supported: false,
-        });
-      } catch {
-        return oauthError("oauth_configuration_error", 503);
-      }
-    }
-
-    if (path === "/register" && request.method === "POST") return register(request);
-    if (path === "/oauth/authorize" && request.method === "GET") return authorize(url);
-    if (path === "/oauth/callback" && request.method === "GET") return callback(url);
-    if (path === "/oauth/token" && request.method === "POST") return token(request);
-    if (path === "/oauth/revoke" && request.method === "POST") return revoke(request);
-    return oauthError("not_found", 404);
-  }
-
-  async function authenticate(tokenValue) {
-    if (!enabled() || !tokenValue) return null;
-    return store.authenticateAccessToken(
-      await hash(tokenValue),
-      resource(),
-      env.AUTHORIZED_GUILD_ID || "",
-    );
-  }
-
-  return { dispatch, authenticate };
+    if(path==="/register"&&request.method==="POST")return register(request);
+    if(path==="/oauth/authorize"&&request.method==="GET")return authorize(url);
+    if(path==="/oauth/callback"&&request.method==="GET")return callback(url);
+    if(path==="/oauth/token"&&request.method==="POST")return token(request);
+    if(path==="/oauth/revoke"&&request.method==="POST")return revoke(request);
+    return error("not_found",404);
+  };
+  const authenticate=async value=>{
+    if(!enabled()||!value)return null;
+    return store.authenticateAccessToken(await hash(value),resourceFor(env),env.AUTHORIZED_GUILD_ID||"");
+  };
+  return {dispatch,authenticate};
 }
