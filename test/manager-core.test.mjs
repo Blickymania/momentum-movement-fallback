@@ -1,0 +1,38 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createManagerCore } from "../src/manager-core.mjs";
+
+const GUILD="1565048205970767992";
+const APP="1565304619838742598";
+const envBase={DISCORD_BOT_TOKEN:"test-bot-token",AUTHORIZED_GUILD_ID:GUILD,APPLICATION_ID:APP,WRITES_ENABLED:"false"};
+const ok=(value,status=200,headers={})=>new Response(JSON.stringify(value),{status,headers:{"content-type":"application/json",...headers}});
+const text=result=>result.content?.[0]?.text?JSON.parse(result.content[0].text):result;
+function harness({env={},fetchImpl}={}){
+ const calls=[],channelReads=new Map();
+ const impl=fetchImpl||(async(url,options={})=>{
+  const parsed=new URL(url);calls.push({url:parsed.toString(),method:options.method||"GET",body:options.body,headers:options.headers});
+  if(parsed.pathname==="/api/v10/users/@me")return ok({id:APP,bot:true,username:"MomentumBot"});
+  if(parsed.pathname==="/api/v10/guilds/"+GUILD)return ok({id:GUILD,name:"Momentum Movement"});
+  if(parsed.pathname==="/api/v10/channels/123456789012345678"){const count=(channelReads.get(parsed.pathname)||0)+1;channelReads.set(parsed.pathname,count);return ok(count===1?{id:"123456789012345678",guild_id:GUILD}:{id:"123456789012345678",status:"ok"});}
+  if(parsed.pathname==="/api/v10/channels/223456789012345678")return ok({id:"223456789012345678",guild_id:"223456789012345600"});
+  if(parsed.pathname==="/api/v10/channels/323456789012345678")return new Response("denied",{status:403});
+  return ok({id:"ok",status:"ok"});
+ });
+ return {manager:createManagerCore({env:{...envBase,...env},fetchImpl:impl}),calls};
+}
+test("exposes only the three existing manager tools",()=>{const {manager}=harness();assert.deepEqual(manager.tools.map(x=>x.name),["discord_manager_status","discord_guild_request","discord_manager_audit"]);});
+test("checks live bot and guild identity without changing Discord",async()=>{const {manager,calls}=harness();const r=text(await manager.invoke("discord_manager_status",{}));assert.equal(r.state,"connected");assert.equal(r.botIdentityMatches,true);assert.equal(r.guildIdentityMatches,true);assert.equal(r.writesEnabled,false);assert.deepEqual(calls.map(x=>x.method),["GET","GET"]);});
+test("stops on a mismatched bot application identity",async()=>{const {manager}=harness({fetchImpl:async url=>String(url).endsWith("/users/@me")?ok({id:"999999999999999999",bot:true}):ok({id:GUILD})});assert.equal(text(await manager.invoke("discord_manager_status",{})).state,"bot_identity_mismatch");});
+test("rejects manager configuration scoped to another guild or application",async()=>{const {manager,calls}=harness({env:{AUTHORIZED_GUILD_ID:"999999999999999999"}});assert.match(text(await manager.invoke("discord_manager_status",{})).error,/identity configuration mismatch/);assert.equal(calls.length,0);});
+test("rejects unsafe route paths before any Discord request",async()=>{const {manager,calls}=harness();assert.match(text(await manager.invoke("discord_guild_request",{method:"GET",route:"/guilds/../users/@me"})).error,/Invalid Discord API route/);assert.equal(calls.length,0);});
+test("rejects routes outside the authorized guild",async()=>{const {manager,calls}=harness();assert.match(text(await manager.invoke("discord_guild_request",{method:"GET",route:"/guilds/999999999999999999/channels"})).error,/outside this manager's authorized guild/);assert.equal(calls.length,0);});
+test("verifies channel ownership before reading a channel resource",async()=>{const {manager,calls}=harness();assert.equal(text(await manager.invoke("discord_guild_request",{method:"GET",route:"/channels/123456789012345678"})).status,"ok");assert.deepEqual(calls.map(x=>new URL(x.url).pathname),["/api/v10/channels/123456789012345678","/api/v10/channels/123456789012345678"]);});
+test("blocks cross-guild channel IDs after ownership lookup",async()=>{const {manager}=harness();assert.match(text(await manager.invoke("discord_guild_request",{method:"GET",route:"/channels/223456789012345678"})).error,/outside this manager's authorized guild/);});
+test("fails closed when channel ownership cannot be verified",async()=>{const {manager}=harness();assert.match(text(await manager.invoke("discord_guild_request",{method:"GET",route:"/channels/323456789012345678"})).error,/ownership could not be verified/);});
+test("blocks channel, category and role deletion under owner-preservation policy",async()=>{const {manager,calls}=harness({env:{WRITES_ENABLED:"true"}});assert.match(text(await manager.invoke("discord_guild_request",{method:"DELETE",route:"/guilds/"+GUILD+"/channels/123456789012345678"})).error,/deletions are blocked by the owner-preservation policy/);assert.equal(calls.length,0);});
+test("requires write enablement before any non-GET Discord mutation",async()=>{const {manager,calls}=harness();assert.match(text(await manager.invoke("discord_guild_request",{method:"POST",route:"/guilds/"+GUILD+"/channels",body:{name:"blocked"}})).error,/Writes are disabled/);assert.equal(calls.length,0);});
+test("applies default quiet mentions and ephemeral flags to manager-created messages",async()=>{const {manager,calls}=harness({env:{WRITES_ENABLED:"true"}});await manager.invoke("discord_guild_request",{method:"POST",route:"/channels/123456789012345678/messages",body:{content:"quiet post"}});const write=calls.at(-1),payload=JSON.parse(write.body);assert.equal(write.method,"POST");assert.equal(payload.flags&4096,4096);assert.deepEqual(payload.allowed_mentions,{parse:[]});assert.equal(payload.tts,false);});
+test("preserves explicitly authorized normal notification mode",async()=>{const {manager,calls}=harness({env:{WRITES_ENABLED:"true"}});await manager.invoke("discord_guild_request",{method:"POST",route:"/channels/123456789012345678/messages",body:{content:"authorized SOS"},notification_mode:"normal"});const payload=JSON.parse(calls.at(-1).body);assert.equal(payload.content,"authorized SOS");assert.equal(payload.flags,undefined);assert.equal(payload.allowed_mentions,undefined);});
+test("prevents conflicting message notification overrides",async()=>{const {manager,calls}=harness({env:{WRITES_ENABLED:"true"}});assert.match(text(await manager.invoke("discord_guild_request",{method:"POST",route:"/channels/123456789012345678/messages",body:{content:"test",_notification_mode:"normal"},notification_mode:"silent"})).error,/Conflicting notification modes/);assert.equal(calls.filter(x=>x.method==="POST").length,0);});
+test("refuses notification-mode overrides on non-message endpoints",async()=>{const {manager,calls}=harness({env:{WRITES_ENABLED:"true"}});assert.match(text(await manager.invoke("discord_guild_request",{method:"POST",route:"/guilds/"+GUILD+"/channels",body:{name:"category",_notification_mode:"normal"}})).error,/Notification override is only valid for new messages/);assert.equal(calls.filter(x=>x.method==="POST").length,0);});
+test("returns an unknown-tool error rather than forwarding arbitrary requests",async()=>{const {manager,calls}=harness();assert.equal(text(await manager.invoke("run_shell",{})).error,"Unknown tool.");assert.equal(calls.length,0);});
