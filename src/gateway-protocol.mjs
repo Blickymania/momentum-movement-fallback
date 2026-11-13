@@ -115,6 +115,8 @@ export function decideGatewayFrame(frame, session = {}) {
       }
       const resumable = typeof session.sessionId === "string" &&
         session.sessionId.length > 0 &&
+        typeof session.resumeGatewayUrl === "string" &&
+        session.resumeGatewayUrl.startsWith("wss://") &&
         Number.isSafeInteger(session.sequence) &&
         session.sequence >= 0;
       return {
@@ -174,6 +176,9 @@ export function decideGatewayClose(code) {
       code === 4012 || code === 4013 || code === 4014) {
     return { action: "fatal", clearSession: false, reason: "gateway_configuration_or_auth" };
   }
+  if (code === 4003) {
+    return { action: "retry", clearSession: true, reason: "not_authenticated" };
+  }
   if (code === 4006 || code === 4007 || code === 4009) {
     return { action: "retry", clearSession: true, reason: "session_not_resumable" };
   }
@@ -195,12 +200,19 @@ export function boundedReconnectDelay(attempt, randomFraction = 0.5, baseMs = 10
     throw new RangeError("Reconnect backoff bounds are invalid");
   }
   const ceiling = Math.min(maxMs, baseMs * (2 ** Math.min(attempt, 30)));
-  return Math.floor(ceiling * randomFraction);
+  // Equal jitter avoids zero-delay reconnect loops under deterministic/tested random values.
+  return Math.floor(ceiling * (0.5 + randomFraction * 0.5));
 }
 
 /** A dispatch key for durable deduplication; prefer Discord object IDs. */
 export function gatewayEventKey(guildId, sequence, eventType, data) {
-  const objectId = data && typeof data.id === "string" ? data.id : null;
+  if (typeof guildId !== "string" || guildId.length === 0) {
+    throw new TypeError("A guild ID is required for an event key");
+  }
+  if (typeof eventType !== "string" || eventType.length === 0) {
+    throw new TypeError("A Gateway event type is required for an event key");
+  }
+  const objectId = data && typeof data.id === "string" && data.id.length > 0 ? data.id : null;
   const key = objectId ?? (Number.isSafeInteger(sequence) ? String(sequence) : null);
   if (!key) throw new TypeError("A stable event ID or Gateway sequence is required");
   return [String(guildId), String(eventType), key].join(":");
