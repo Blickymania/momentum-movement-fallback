@@ -1,0 +1,16 @@
+{
+  "name": "momentum-movement-cloudflare-migration",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:oauth": "node --test test/oauth-d1-store.test.mjs test/oauth-routes.test.mjs",
+    "test:gateway": "node --test test/gateway-protocol.test.mjs test/durable-gateway-inbox.test.mjs",
+    "test:worker": "node --test test/worker.test.mjs",
+    "check": "node --check src/gateway-protocol.mjs && node --check src/durable-gateway-inbox.mjs && node --check src/oauth-d1-store.mjs && node --check src/oauth-routes.mjs && node --check src/manager-core.mjs && node --check src/worker.mjs"
+  }
+}
