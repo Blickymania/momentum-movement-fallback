@@ -157,3 +157,58 @@ test("OAuth routes remain unavailable when the OAuth feature flag is off",async(
   assert.equal(result.status,404);assert.equal((await result.json()).error,"oauth_not_enabled");
   h.db.close();
 });
+
+test("requires the complete OAuth store interface before accepting routes", () => {
+  assert.throws(() => createOAuthRoutes({ store: {}, env, cryptoImpl: webcrypto }), /OAuthD1Store/);
+});
+
+test("returns 503 when login state lookup is unavailable", async () => {
+  const h=createHarness();await h.store.ensureSchema();
+  const clientId=await registerClient(h.routes);
+  const {state}=await beginAuthorization(h.routes,clientId);
+  h.store.findLoginRequest=async()=>{throw new Error("D1 unavailable");};
+  const response=await h.routes.dispatch(new Request("https://momentum.example/oauth/callback?state="+encodeURIComponent(state)+"&code=discord-code"));
+  assert.equal(response.status,503);
+  assert.equal((await response.json()).error,"server_error");
+  h.db.close();
+});
+
+test("returns 503 instead of redirecting if login-state invalidation fails", async () => {
+  const h=createHarness();await h.store.ensureSchema();
+  const clientId=await registerClient(h.routes);
+  const {state}=await beginAuthorization(h.routes,clientId);
+  h.store.consumeLoginRequestFailure=async()=>{throw new Error("D1 unavailable");};
+  const response=await h.routes.dispatch(new Request("https://momentum.example/oauth/callback?state="+encodeURIComponent(state)+"&error=access_denied"));
+  assert.equal(response.status,503);
+  assert.equal((await response.json()).error,"server_error");
+  h.db.close();
+});
+
+test("returns 503 for D1 failures in registration, authorization, exchange and health", async () => {
+  const h=createHarness();await h.store.ensureSchema();
+  h.store.registerClient=async()=>{throw new Error("D1 unavailable");};
+  const registration=await h.routes.dispatch(new Request("https://momentum.example/register",{
+    method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({client_name:"Test",redirect_uris:[redirectUri]}),
+  }));
+  assert.equal(registration.status,503);
+
+  h.store.registerClient=OAuthD1Store.prototype.registerClient.bind(h.store);
+  const clientId=await registerClient(h.routes);
+  h.store.createLoginRequest=async()=>{throw new Error("D1 unavailable");};
+  const pkce=await challenge("v".repeat(64));
+  const params=new URLSearchParams({client_id:clientId,redirect_uri:redirectUri,response_type:"code",code_challenge_method:"S256",code_challenge:pkce,resource,scope:"mcp:read"});
+  const authorization=await h.routes.dispatch(new Request("https://momentum.example/oauth/authorize?"+params));
+  assert.equal(authorization.status,503);
+
+  h.store.exchangeAuthorizationCode=async()=>{throw new Error("D1 unavailable");};
+  const token=await h.routes.dispatch(new Request("https://momentum.example/oauth/token",{
+    method:"POST",body:new URLSearchParams({grant_type:"authorization_code",client_id:clientId,code:"code",redirect_uri:redirectUri,code_verifier:"v".repeat(64),resource}),
+  }));
+  assert.equal(token.status,503);
+
+  h.store.health=async()=>{throw new Error("D1 unavailable");};
+  const health=await h.routes.dispatch(new Request("https://momentum.example/oauth/health"));
+  assert.equal(health.status,503);
+  h.db.close();
+});
