@@ -525,11 +525,15 @@ async function leadershipLoop(){
 if(runtimeActive)void leadershipLoop();
 else console.log(JSON.stringify({event:'momentum-movement-listener-standby',active:false,noDiscordWrites:true}));
 
+let shuttingDown=false;
 const shutdown=async()=>{
+ if(shuttingDown)return;
+ shuttingDown=true;
  gatewayReady=false;
  const old=client;client=null;
  if(old)try{await old.destroy()}catch{}
  if(lease)try{await lease.release()}catch{}
+ process.exit(0);
 };
 process.once('SIGTERM',()=>void shutdown());
 process.once('SIGINT',()=>void shutdown());
