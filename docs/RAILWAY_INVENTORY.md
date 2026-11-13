@@ -72,3 +72,33 @@
 - This is a point-in-time inventory, not proof that every service's application source or database contents have been backed up.
 - Before cutover, separately export each database, enumerate media objects and checksums, capture service source, and verify all backups.
 - No Railway resource or Discord resource was modified during this inventory.
+
+
+## Additional read-only evidence collected after the inventory snapshot
+
+### PostgreSQL service disk metrics
+
+Seven-day Railway service metrics (673 samples per measurement; 15-minute sample interval) reported:
+
+| Service | Current service disk usage | Notes |
+|---|---:|---|
+| Postgres | 0.15433728 GB (about 158 MiB) | Service-level disk metric, not SQL `pg_database_size()` or database-only size |
+| OAuth PostgreSQL | 0.068870144 GB (about 70.5 MiB) | Service-level disk metric, not SQL `pg_database_size()` or database-only size |
+
+These metrics provide rough capacity-planning evidence only. Row counts, schemas, extensions, actual database dump sizes and isolated restore checks still require database-level access.
+
+### Original Media Vault Backup — latest successful runtime evidence
+
+The deployed `Dawn Dotta Original Media Vault Backup` service remains live and retains its existing `17,47 * * * *` schedule. Read-only runtime logs for its latest successful run show:
+
+- Run window: Nov 13, 2026, approximately 23:49:53–23:50:05 UTC.
+- All 3 configured forums and all 13 configured direct sources passed the source-scope validation.
+- The run enumerated 26 source objects and visited all 26.
+- 29 media attachments were checked. All 29 had `ORIGINAL_MEDIA_READBACK_VERIFIED` records, totaling 1,770,831 bytes, with SHA-256 readback, `sourcePreserved=true`, and `metadataMismatch=false`.
+- Completion: `attempted=29`, `saved=0`, `reused=29`, `held=0`, `pendingRetries=0`, `discordWrites=0`, and `deleteCount=0`.
+- All 29 processed attachments were classified as images and counted as `lowResolutionExistingCopies` (metadata longest dimension no greater than 400 px). This is a small processed sample, not a full catalogue of all bucket objects or proof that every historical source has a high-resolution original.
+- The implementation stores content-addressed objects and readback-verifies their SHA-256 before writing a receipt. The scan cursor and bounded retry queue are persisted in the bucket state object.
+
+**Large-media coverage limitation:** the source supports an opt-in streaming/multipart path for attachments above 30 MiB, with remote SHA-256 verification, but that path throws `large_media_streaming_not_enabled` unless `UMM_LARGE_MEDIA_ENABLED=true`. The service's observed variable-name inventory did not include `UMM_LARGE_MEDIA_ENABLED` or `UMM_MAX_SOURCE_MB`; their active values are therefore not verified and the large-media path must be treated as disabled. Oversized originals are queued for retry rather than deleted or rewritten. Do not enable the path until storage headroom and a full restore drill have passed.
+
+This evidence verifies the most recent 29-attachment batch only. It does not give the bucket's total object count/bytes, prove that the source cursor has reached the full historical archive, or demonstrate a complete restore. Do not delete, expire, relocate or lifecycle-expire originals during migration.
