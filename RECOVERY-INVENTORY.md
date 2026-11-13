@@ -64,6 +64,17 @@ The 31 deployed sources plus the extra staged cleanup snapshot are:
 - One S3-compatible object bucket: `dawn-dotta-photo-originals`.
 - Database contents, volumes, bucket objects and provider secrets have NOT been exported or migrated.
 
+## Backup verification detail
+
+On 2026-11-13, the existing `Postgres Daily Backup` job's logs reported a successful dump upload:
+- timestamp: `20261113T090920Z`
+- dump size: `31806` bytes
+- SHA-256 was calculated and recorded
+- remote object size was checked against the local dump size
+- `pg_restore --list` returned a non-empty archive listing before upload
+
+The job uses one `PGHOST` / `PGDATABASE` target. Its target value was not inspected, so this proves one configured PostgreSQL target was backed up, not that both PostgreSQL services were backed up. The separate OAuth PostgreSQL backup remains unverified. The daily job itself remains in Railway and was not modified.
+
 ## Known issue
 
 `Dawn Dotta News Forum 24h Retention Cleanup` fails with Discord API 404 `Unknown Channel`. The configured forum is retired. Railway currently has a staged patch that removes its five-minute schedule and changes its source to a disabled notice. That patch was inspected but not committed during this recovery.
