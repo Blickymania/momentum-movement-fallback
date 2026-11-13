@@ -21,6 +21,14 @@ The isolated listener still requires a live coordinator URL and secret before it
 
 Cloudflare's current Free plan documents included daily request, compute-duration, SQL read/write, and storage allowances for SQLite-backed Durable Objects. At a 20-second heartbeat, one listener uses about 4,320 renewals per day. This is below the published 100,000 requests/day and 100,000 SQL rows written/day allowances. Monitor actual usage and keep heartbeat and retry behavior within account limits.
 
+## Recommended no-card runtime layout
+
+- **Primary candidate — Botkeep:** one free workload slot, 512 MB RAM, 0.5 vCPU, 1 GB storage, Bun runtime, 24/7 operation, no manual renewals, and no credit card. Use this for the primary LIVE & Events Listener.
+- **Standby candidate — Silly Development:** one free server per account, 256 MB RAM, 25% CPU, 512 MB disk, Bun runtime, 24/7 operation, no expiry or renewal, and no credit card. Use this as the standby listener. Its free service has no uptime guarantee, so treat it as a secondary recovery target, not a guaranteed SLA.
+- **Coordinator — Cloudflare Workers Free + SQLite Durable Object:** no card is required for the Workers Free offer; SQLite-backed Durable Objects are available on Free. The published allowance is 100,000 Durable Object requests/day and 100,000 SQL rows written/day. A 20-second heartbeat is about 4,320 renewals/day for one listener.
+
+These are candidates, not active deployments. Verify account eligibility, free-slot availability, terms, and dashboard limits before provisioning. Do not create extra accounts to stack a provider's free allocation.
+
 ## Deploying the coordinator
 
 1. Create a Cloudflare account using its Free plan; do not select a paid Workers plan.
@@ -30,7 +38,7 @@ Cloudflare's current Free plan documents included daily request, compute-duratio
 5. Confirm `GET /health` returns the expected service name.
 6. Store the resulting HTTPS Worker URL and the same secret only in the primary/standby listener secret managers as `LISTENER_LEASE_URL` and `LISTENER_LEASE_TOKEN`.
 
-## Safety gate before listener integration
+## Safety gate before deployment and cutover
 
 - Do not enable the new listener client on the existing Railway listener.
 - Do not start a second Discord Gateway client until both primary and standby use this coordinator and every Discord API request is gated on a valid lease.
