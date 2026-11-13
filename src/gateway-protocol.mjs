@@ -204,16 +204,19 @@ export function boundedReconnectDelay(attempt, randomFraction = 0.5, baseMs = 10
   return Math.floor(ceiling * (0.5 + randomFraction * 0.5));
 }
 
-/** A dispatch key for durable deduplication; prefer Discord object IDs. */
-export function gatewayEventKey(guildId, sequence, eventType, data) {
+/** Gateway sequence is the correct idempotency key: object IDs can repeat on edits. */
+export function gatewayEventKey(guildId, sessionId, sequence, eventType) {
   if (typeof guildId !== "string" || guildId.length === 0) {
     throw new TypeError("A guild ID is required for an event key");
+  }
+  if (typeof sessionId !== "string" || sessionId.length === 0) {
+    throw new TypeError("A Gateway session ID is required for an event key");
+  }
+  if (!Number.isSafeInteger(sequence) || sequence < 0) {
+    throw new TypeError("A valid Gateway sequence is required for an event key");
   }
   if (typeof eventType !== "string" || eventType.length === 0) {
     throw new TypeError("A Gateway event type is required for an event key");
   }
-  const objectId = data && typeof data.id === "string" && data.id.length > 0 ? data.id : null;
-  const key = objectId ?? (Number.isSafeInteger(sequence) ? String(sequence) : null);
-  if (!key) throw new TypeError("A stable event ID or Gateway sequence is required");
-  return [String(guildId), String(eventType), key].join(":");
+  return [guildId, sessionId, String(sequence), eventType].join(":");
 }
