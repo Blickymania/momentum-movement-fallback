@@ -58,6 +58,18 @@ test("local safety deadline blocks operations and notifies loss once", async () 
   assert.equal(h.client.isHeld, false);
 });
 
+test("lease loss aborts the shared signal used by Discord REST requests", async () => {
+  const h = harness([
+    { status: 200, body: { acquired: true, fencingToken: "4" } },
+    { status: 409, body: { valid: false } },
+  ]);
+  assert.equal(await h.client.tryAcquire(), true);
+  const signal = h.client.signal;
+  assert.equal(signal.aborted, false);
+  assert.equal(await h.client.renew(), false);
+  assert.equal(signal.aborted, true);
+});
+
 test("coordinator rejection immediately drops local ownership", async () => {
   let lost = 0;
   const h = harness([
