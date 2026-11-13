@@ -543,6 +543,6 @@ void (async function listenerReadOnlyStartupCheck(){
   await Bun.sleep(350);
   const response=await fetch('http://127.0.0.1:'+String(Bun.env.PORT||8080)+'/preflight',{signal:AbortSignal.timeout(12000)});
   const result=await response.json();
-  console.log(JSON.stringify({event:'TEAM_MOMENTUM_LISTENER_PREFLIGHT',ready:response.status===200&&result.ready===true,botMatches:result.botMatches,channels:result.channels,active:result.active,writes:false}));
+  console.log(JSON.stringify({event:'MOMENTUM_MOVEMENT_LISTENER_PREFLIGHT',ready:response.status===200&&result.ready===true,botMatches:result.botMatches,channels:result.channels,active:result.active,leaseHeld:result.leaseHeld===true,writes:false}));
  }catch(e){console.error(JSON.stringify({event:'TEAM_MOMENTUM_LISTENER_PREFLIGHT',ready:false,errorType:e?.name||'unknown',writes:false}));}
 })();
