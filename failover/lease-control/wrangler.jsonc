@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "momentum-movement-lease-control",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-13",
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [
+      { "name": "LEASE_COORDINATOR", "class_name": "MomentumMovementLease" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["MomentumMovementLease"] }
+  ]
+}
