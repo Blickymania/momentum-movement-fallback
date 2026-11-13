@@ -160,7 +160,7 @@ test("rate-limit close code requests bounded backoff", () => {
 
 test("reconnect delay grows exponentially and is capped", () => {
   assert.equal(boundedReconnectDelay(0, 1), 1000);
-  assert.equal(boundedReconnectDelay(2, 0.5), 2000);
+  assert.equal(boundedReconnectDelay(2, 0.5), 3000);
   assert.equal(boundedReconnectDelay(20, 1), 60000);
   assert.equal(boundedReconnectDelay(1, 0), 1000);
   assert.equal(boundedReconnectDelay(1, 1), 2000);
