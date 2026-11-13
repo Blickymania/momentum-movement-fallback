@@ -25,13 +25,15 @@ export class MomentumMovementLease extends DurableObject {
     super(ctx, env);
     this.ctx = ctx;
     this.sql = ctx.storage.sql;
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS listener_lease (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      owner_id TEXT NOT NULL,
-      fencing_token INTEGER NOT NULL,
-      expires_at_ms INTEGER NOT NULL,
-      updated_at_ms INTEGER NOT NULL
-    )`);
+    this.ctx.blockConcurrencyWhile(() => {
+      this.sql.exec(`CREATE TABLE IF NOT EXISTS listener_lease (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        owner_id TEXT NOT NULL,
+        fencing_token INTEGER NOT NULL,
+        expires_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      )`);
+    });
   }
 
   #read() {
