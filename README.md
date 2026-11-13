@@ -1,4 +1,16 @@
-# Momentum Movement — recovered LIVE & Events listener source
+# Momentum Movement — Dawn Dotta backend recovery
+
+This repository branch now includes an inventory and source-only backup of the Dawn Dotta Railway project.
+
+- [Recovery inventory](RECOVERY-INVENTORY.md)
+- Original LIVE & Events Listener snapshot: `index.tsx`
+- Recovered individual function sources: `recovered-functions/`
+
+The recovered source files are safety copies only. They are not yet a tested, deployable failover environment.
+
+---
+
+# Original LIVE & Events listener recovery snapshot
 
 This repository is a **source-recovery snapshot**, not yet a production deployment or tested failover runtime.
 
