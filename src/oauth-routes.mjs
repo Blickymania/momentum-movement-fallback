@@ -30,7 +30,9 @@ const discordRedirectFor = env => {
 };
 
 export function createOAuthRoutes({store,env,fetchImpl=fetch,cryptoImpl=globalThis.crypto,now=()=>Date.now(),randomBytes}={}) {
-  if(!store||typeof store.findLoginRequest!=="function"||typeof store.consumeLoginRequestFailure!=="function"||
+  if(!store||typeof store.health!=="function"||typeof store.registerClient!=="function"||
+     typeof store.getClient!=="function"||typeof store.createLoginRequest!=="function"||
+     typeof store.findLoginRequest!=="function"||typeof store.consumeLoginRequestFailure!=="function"||
      typeof store.consumeLoginRequestAndCreateCode!=="function"||typeof store.exchangeAuthorizationCode!=="function"||
      typeof store.rotateRefreshToken!=="function"||typeof store.authenticateAccessToken!=="function"||typeof store.revokeToken!=="function")
     throw new TypeError("A compatible OAuthD1Store instance is required");
@@ -45,19 +47,25 @@ export function createOAuthRoutes({store,env,fetchImpl=fetch,cryptoImpl=globalTh
   const pkce = async verifier=>b64url(new Uint8Array(await cryptoImpl.subtle.digest("SHA-256",new TextEncoder().encode(verifier))));
   const enabled=()=>env.MCP_OAUTH_ENABLED==="true";
   const deny=async(pending,stateHash,reason)=>{
-    await store.consumeLoginRequestFailure(stateHash);
+    let consumed;
+    try { consumed=await store.consumeLoginRequestFailure(stateHash); }
+    catch { return error("server_error",503); }
+    if(!consumed)return error("invalid_state");
     const target=new URL(pending.redirect_uri);target.searchParams.set("error","access_denied");target.searchParams.set("error_description",reason);
     if(pending.client_state!=null)target.searchParams.set("state",String(pending.client_state));
     return new Response(null,{status:302,headers:{location:target.toString(),"cache-control":"no-store"}});
   };
   const register=async request=>{
-    try {
-      const body=await request.json(),uris=body?.redirect_uris;
-      if(!Array.isArray(uris)||uris.length<1||uris.length>10||uris.some(x=>typeof x!=="string"||!validRedirect(x)))return error("invalid_redirect_uri");
-      const clientId="mcp_"+random(24),clientName=typeof body.client_name==="string"&&body.client_name.trim()?body.client_name.trim().slice(0,100):"MCP client";
-      const redirectUris=[...new Set(uris)];await store.registerClient({clientId,clientName,redirectUris});
-      return json({client_id:clientId,client_id_issued_at:Math.floor(now()/1000),client_name:clientName,redirect_uris:redirectUris,grant_types:["authorization_code","refresh_token"],response_types:["code"],token_endpoint_auth_method:"none"},201);
-    } catch {return error("invalid_client_metadata");}
+    let body;
+    try { body=await request.json(); }
+    catch { return error("invalid_client_metadata"); }
+    const uris=body?.redirect_uris;
+    if(!Array.isArray(uris)||uris.length<1||uris.length>10||uris.some(x=>typeof x!=="string"||!validRedirect(x)))return error("invalid_redirect_uri");
+    const clientId="mcp_"+random(24),clientName=typeof body.client_name==="string"&&body.client_name.trim()?body.client_name.trim().slice(0,100):"MCP client";
+    const redirectUris=[...new Set(uris)];
+    try { await store.registerClient({clientId,clientName,redirectUris}); }
+    catch { return error("server_error",503); }
+    return json({client_id:clientId,client_id_issued_at:Math.floor(now()/1000),client_name:clientName,redirect_uris:redirectUris,grant_types:["authorization_code","refresh_token"],response_types:["code"],token_endpoint_auth_method:"none"},201);
   };
   const authorize=async url=>{
     try {
@@ -122,7 +130,7 @@ export function createOAuthRoutes({store,env,fetchImpl=fetch,cryptoImpl=globalTh
       return error("unsupported_grant_type");
     } catch(e) {
       if(e instanceof OAuthStoreError&&["invalid_grant","invalid_target"].includes(e.code))return error(e.code);
-      return error("invalid_grant");
+      return error("server_error",503);
     }
   };
   const revoke=async request=>{
