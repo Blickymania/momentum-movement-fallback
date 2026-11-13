@@ -27,7 +27,7 @@ Cloudflare's current Free plan documents included daily request, compute-duratio
 - **Standby candidate — Silly Development:** one free server per account, 256 MB RAM, 25% CPU, 512 MB disk, Bun runtime, 24/7 operation, no expiry or renewal, and no credit card. Use this as the standby listener. Its free service has no uptime guarantee, so treat it as a secondary recovery target, not a guaranteed SLA.
 - **Coordinator — Cloudflare Workers Free + SQLite Durable Object:** no card is required for the Workers Free offer; SQLite-backed Durable Objects are available on Free. The published allowance is 100,000 Durable Object requests/day and 100,000 SQL rows written/day. A 20-second heartbeat is about 4,320 renewals/day for one listener.
 
-These are candidates, not active deployments. Verify account eligibility, free-slot availability, terms, and dashboard limits before provisioning. Do not create extra accounts to stack a provider's free allocation.
+These are candidates, not active deployments. Verify account eligibility, free-slot availability, terms, and dashboard limits before provisioning. Do not create extra accounts to stack a provider's free allocation. Provider references: [Botkeep](https://botkeep.cloud/), [Silly Development](https://sillydev.co.uk/), and [Cloudflare Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
 
 ## Deploying the coordinator
 
@@ -43,7 +43,7 @@ These are candidates, not active deployments. Verify account eligibility, free-s
 - Do not enable the new listener client on the existing Railway listener.
 - Do not start a second Discord Gateway client until both primary and standby use this coordinator and every Discord API request is gated on a valid lease.
 - The production listener remains unchanged until an isolated failover build passes integration tests and rollback is ready.
-- This foundation is not a completed failover deployment. It still requires Cloudflare deployment, secret configuration, integration into the isolated listener build, and two-instance takeover tests.
+- This foundation is not a completed failover deployment. It still requires Cloudflare deployment, secret configuration, primary/standby provisioning, and two-instance takeover tests.
 
 ## Local tests
 
