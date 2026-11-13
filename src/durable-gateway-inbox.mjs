@@ -75,7 +75,7 @@ export class DurableGatewayInbox {
     await this.storage.transaction(async (txn) => {
       const meta = await txn.get(META_KEY);
       if (meta === undefined) {
-        await txn.put(META_KEY, { pendingEvents: 0, pendingBytes: 0, updatedAt: Date.now() });
+        await txn.put(META_KEY, { pendingEvents: 0, pendingBytes: 0, nextOrder: 0, updatedAt: Date.now() });
       }
       const state = await txn.get(STATE_KEY);
       if (state === undefined) {
@@ -151,6 +151,10 @@ export class DurableGatewayInbox {
         throw new InboxFullError();
       }
 
+      const nextOrder = (Number.isSafeInteger(meta.nextOrder) ? meta.nextOrder : 0) + 1;
+      if (!Number.isSafeInteger(nextOrder)) {
+        throw new InboxFullError("Gateway inbox ordering counter is exhausted");
+      }
       const record = {
         eventKey: event.key,
         guildId: event.guildId,
@@ -159,6 +163,7 @@ export class DurableGatewayInbox {
         eventType: event.eventType,
         payload: event.payload,
         payloadBytes: bytes,
+        queueOrder: nextOrder,
         receivedAt: Date.now(),
       };
 
@@ -171,6 +176,7 @@ export class DurableGatewayInbox {
       await txn.put(META_KEY, {
         pendingEvents: meta.pendingEvents + 1,
         pendingBytes: meta.pendingBytes + bytes,
+        nextOrder,
         updatedAt: Date.now(),
       });
       return { accepted: true, duplicate: false, eventKey: event.key, pendingEvents: meta.pendingEvents + 1 };
@@ -181,10 +187,30 @@ export class DurableGatewayInbox {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
       throw new RangeError("Pending event limit must be between 1 and 500");
     }
-    const values = await this.storage.list({ prefix: EVENT_PREFIX, limit });
-    return [...values.values()].sort((a, b) =>
+    // Durable Object Storage returns keys in key order, not value/arrival order.
+    // Read the full bounded inbox (in pages of at most 1,000), then sort by a
+    // transactionally assigned order counter before returning the requested page.
+    const pending = [];
+    let startAfter;
+    while (pending.length < this.maxPendingEvents) {
+      const pageLimit = Math.min(1000, this.maxPendingEvents - pending.length);
+      const options = { prefix: EVENT_PREFIX, limit: pageLimit };
+      if (startAfter !== undefined) options.startAfter = startAfter;
+      const page = await this.storage.list(options);
+      const entries = [...page.entries()];
+      if (entries.length === 0) break;
+      pending.push(...entries.map(([, value]) => value));
+      if (entries.length < pageLimit) break;
+      const nextCursor = entries[entries.length - 1][0];
+      if (nextCursor === startAfter) {
+        throw new InboxIntegrityError("Gateway inbox pagination did not advance");
+      }
+      startAfter = nextCursor;
+    }
+    return pending.sort((a, b) =>
+      (a.queueOrder ?? Number.MAX_SAFE_INTEGER) - (b.queueOrder ?? Number.MAX_SAFE_INTEGER) ||
       a.receivedAt - b.receivedAt || a.sequence - b.sequence
-    );
+    ).slice(0, limit);
   }
 
   async acknowledge(eventKeys) {
