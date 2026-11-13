@@ -203,7 +203,7 @@ export class OAuthD1Store {
          WHERE code_hash = ? AND client_id = ? AND redirect_uri = ?
            AND code_challenge = ? AND (? = '' OR resource = ?)
            AND expires_at > ? AND consumed_at IS NULL
-         RETURNING code_hash`,
+         RETURNING client_id, user_id, guild_id, scope, resource`,
       ).bind(now, nonce, codeHash, clientId, redirectUri, codeChallenge, resource ?? "", resource ?? "", now),
       this.db.prepare(
         `INSERT INTO mcp_oauth_access_tokens
@@ -226,7 +226,8 @@ export class OAuthD1Store {
     if (!claimed || !accessInserted || !refreshInserted) {
       throw new OAuthStoreError("invalid_grant", "invalid_grant");
     }
-    return { issuedAt: now, accessExpiresAt: now + accessTtlMs, refreshExpiresAt: now + refreshTtlMs };
+    const context = rows(batch?.[0])[0];
+    return { ...context, issuedAt: now, accessExpiresAt: now + accessTtlMs, refreshExpiresAt: now + refreshTtlMs };
   }
 
   async rotateRefreshToken({
@@ -246,7 +247,7 @@ export class OAuthD1Store {
          SET revoked_at = ?, replaced_by = ?, consume_nonce = ?
          WHERE token_hash = ? AND client_id = ? AND revoked_at IS NULL
            AND expires_at > ? AND (? = '' OR resource = ?)
-         RETURNING token_hash`,
+         RETURNING client_id, user_id, guild_id, scope, resource`,
       ).bind(now, newRefreshTokenHash, nonce, oldRefreshTokenHash, clientId, now, resource ?? "", resource ?? ""),
       this.db.prepare(
         `INSERT INTO mcp_oauth_access_tokens
@@ -269,7 +270,8 @@ export class OAuthD1Store {
     if (!claimed || !accessInserted || !refreshInserted) {
       throw new OAuthStoreError("invalid_grant", "invalid_grant");
     }
-    return { issuedAt: now, accessExpiresAt: now + accessTtlMs, refreshExpiresAt: now + refreshTtlMs };
+    const context = rows(batch?.[0])[0];
+    return { ...context, issuedAt: now, accessExpiresAt: now + accessTtlMs, refreshExpiresAt: now + refreshTtlMs };
   }
 
   async authenticateAccessToken(tokenHash, expectedResource, expectedGuildId) {
