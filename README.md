@@ -1,42 +1,58 @@
-# Momentum Movement — recovered LIVE & Events listener source
+# Momentum Movement — Cloudflare migration workspace
 
-This repository is a **source-recovery snapshot**, not yet a production deployment or tested failover runtime.
+**Owner project:** Dawn Dotta / Momentum Movement  
+**Migration branch:** `infra/cloudflare-free-migration`  
+**Current phase:** source recovery, isolated implementation and local regression testing  
+**Production cutover:** not started
 
-## Source provenance
+This branch contains the recovered Railway sources and the isolated code being prepared for a no-card Cloudflare Free migration. It is not a live Cloudflare deployment. No Cloudflare account, D1 database, Worker, Durable Object namespace, or billing method has been provisioned.
 
-- Community: Momentum Movement (Dawn Dotta)
-- Railway project: a1d6b0e4-3169-4c5d-add3-84a70f7dc525
-- Railway service: 75ec092b-7f53-465d-b46a-9f01a2b155a2
-- Recovered from: deployed Railway Function source (not a staged edit)
-- Runtime reported by Railway: Bun 1.4.4
-- Railway deployment observed: d7601fae-1cae-4da1-a7d7-688e8fb8340e (SUCCESS)
-- Source file: index.tsx
-- Source length: 42405 characters / 425 lines
+## Verified implementation in this branch
 
-The source was copied without changing application logic. A credential-pattern scan found no embedded Discord bot token, GitHub token, AWS access key, PEM private key, static Bearer token, or credential assignment. Secret values were not read or exported.
+- `src/worker.mjs` — Worker entry point for the Discord manager's HTTP/MCP surface.
+- `src/manager-core.mjs` — isolated manager logic using Discord REST and strict Momentum Movement guild/application checks.
+- `src/oauth-routes.mjs` — OAuth 2.1 authorization-code routes with S256 PKCE, Discord owner/admin verification, single-use state, refresh rotation, scoped authentication and revocation.
+- `src/oauth-d1-store.mjs` — D1 persistence adapter. Authorization code consumption and refresh-token rotation use conditional updates and nonce-bound inserts inside atomic D1 batches.
+- `src/gateway-protocol.mjs` — Discord Gateway v10 frame, heartbeat, resume, close-code and deduplication helpers.
+- `src/durable-gateway-inbox.mjs` — bounded durable event inbox with persistent ordering, sequence replay protection, transactional enqueue/ack and paginated reads.
+- `migrations/0001_oauth_schema.sql` — initial SQLite/D1 OAuth schema.
+- `wrangler.toml.example` — no-secret example binding and deployment configuration. It intentionally contains an unfilled D1 ID and no Cron Triggers.
+- `recovered/railway/` — recovered production source snapshots and backup scripts for migration analysis.
 
-## Runtime configuration
+## Test and development requirements
 
-The source reads these environment variables:
+Node.js 22 or later is required for the local SQLite test harness.
 
-- DISCORD_BOT_TOKEN
-- LISTENER_RUNTIME_ACTIVE
-- LIVE_V2_CUTOVER
-- PORT
+```bash
+npm test
+npm run check
+npm run test:oauth
+npm run test:gateway
+npm run test:worker
+```
 
-DISCORD_BOT_TOKEN must be supplied through the destination provider's secret manager. Never commit it to this repository.
+Latest combined regression result: **62 tests passed, 0 failed** across the OAuth D1 store, OAuth HTTP routes, Worker/MCP boundary, Gateway protocol and durable inbox suites. The D1 adapter is exercised against local SQLite using D1-compatible prepared-statement and batch wrappers. This is local/runtime-independent verification, not an actual Cloudflare D1 account deployment.
 
-The deployed code contains the Momentum guild/application identifiers and provides a /preflight endpoint. It only connects to Discord when LISTENER_RUNTIME_ACTIVE=true; otherwise it logs standby mode. This repository snapshot does not change that flag or the existing Railway service.
+## No-card and production safety gates
 
-## Portability notes
+- The Cloudflare dashboard browser session was verified signed out; no account or plan could be verified. The owner must sign in at https://dash.cloudflare.com/login and confirm that Free products are available without adding a payment method.
+- Provision no resource until Workers Free, SQLite Durable Objects and D1 are confirmed available under that no-card account.
+- Never enable a paid plan, payment method, paid add-on, or metered overage. At quota exhaustion, queue or stop safely until reset.
+- OAuth remains disabled by default in `wrangler.toml.example`. Secrets are not committed.
+- The Discord Gateway supervisor is not yet implemented or deployed. The six recovered Gateway-based Railway components must be reconciled by bot identity, intents and side effects before any consolidation.
+- Cloudflare outbound WebSockets do not use hibernation and only prevent eviction for up to 15 minutes per active outbound connection. A persistent Discord Gateway requires a separate 24-hour runtime, reconnect/resume and object-lifecycle acceptance test before cutover.
+- The existing Railway manager, gateways, databases, volumes and media bucket remain the production rollback. They were not changed during this migration work.
+- The previously staged three-change Railway patch for the retired News Forum cleanup remains untouched.
+- No new scheduler, Cron Trigger, recurring repair, keepalive, or health-ping loop was created. The example Wrangler file has no `[triggers]` block.
 
-- Source imports discord.js@14.27.0.
-- It uses Bun-specific APIs, including Bun.serve, Bun.env, and Bun.sleep.
-- Do not deploy it unchanged into Node.js or a non-Bun runtime.
-- No Dockerfile, Railway deployment manifest, external database binding, or provider lease integration is declared yet.
-- Before failover use, add provider-independent lease acquisition/fencing, durable event acceptance, health/READY checks, and a test-bot integration test.
-- Do not attach this repository to the production Railway service until a reviewed migration PR and rollback plan exist.
+## Exact next objectives
 
-## Recovery boundary
+1. Finish Gateway client identity/intent/handler mapping and implement the Durable Object lease + outbound Gateway transport only after the no-card Cloudflare account is available.
+2. Measure both PostgreSQL domains and the original-media bucket; prove full backup coverage and an isolated restore before migrating any production data.
+3. Deploy the Worker and D1 adapter to isolated Cloudflare Free test resources, then validate OAuth end-to-end with the real Discord test application.
+4. Prove Gateway heartbeat/ACK, sequence persistence, reconnect/resume, object eviction/recreation, event de-duplication and quota-exhaustion recovery for at least 24 hours.
+5. Shadow-run and compare functionality, rehearse rollback, then cut over one component family at a time. No production changes before these gates pass.
 
-Only the deployed function source was recovered. Railway environment-variable values, Discord credentials, runtime state, and other community projects were not copied.
+## Scope and recovery boundary
+
+Only Dawn Dotta / Momentum Movement and its verified Railway project are in scope. No other Discord community is to be inspected or modified. No Discord channels, roles, messages, commands, bot settings, production service configurations, environment variables, databases, volumes or buckets have been modified by this migration branch.
