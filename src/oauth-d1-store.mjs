@@ -96,9 +96,9 @@ export class OAuthD1Store {
       "CREATE INDEX IF NOT EXISTS mcp_oauth_access_expiry_idx ON mcp_oauth_access_tokens (expires_at)",
       "CREATE INDEX IF NOT EXISTS mcp_oauth_refresh_expiry_idx ON mcp_oauth_refresh_tokens (expires_at)",
     ];
-    for (const sql of statements) {
-      await this.db.prepare(sql).run();
-    }
+    // D1 batches are transactional: partial schema creation is rolled back if
+    // any table or index statement fails.
+    await this.db.batch(statements.map((sql) => this.db.prepare(sql)));
     return this.health();
   }
 
