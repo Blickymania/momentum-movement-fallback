@@ -145,8 +145,10 @@ test("repeated updates to the same Discord object remain distinct by sequence", 
   assert.equal((await inbox.enqueueDispatch({ ...base, sequence: 12 })).accepted, true);
   const pending = await inbox.listPending();
   assert.equal(pending.length, 2);
-  assert.equal(pending[0].payload.id, "old-session-message");
-  assert.equal(pending[1].payload.id, "new-session-message");
+  assert.equal(pending[0].payload.id, "same-message-id");
+  assert.equal(pending[1].payload.id, "same-message-id");
+  assert.equal(pending[0].sequence, 11);
+  assert.equal(pending[1].sequence, 12);
   assert.ok(pending[0].queueOrder < pending[1].queueOrder);
 });
 
@@ -201,7 +203,11 @@ test("new READY session resets the dispatch sequence without deleting old pendin
     guildId: "guild", sessionId: "session-b", sequence: 2,
     eventType: "MESSAGE_CREATE", payload: { id: "new-session-message" },
   })).accepted, true);
-  assert.equal((await inbox.listPending()).length, 2);
+  const pending = await inbox.listPending();
+  assert.equal(pending.length, 2);
+  assert.equal(pending[0].payload.id, "old-session-message");
+  assert.equal(pending[1].payload.id, "new-session-message");
+  assert.ok(pending[0].queueOrder < pending[1].queueOrder);
 });
 
 test("rejects invalid payloads, key formats, and acknowledgement batches", async () => {
