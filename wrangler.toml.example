@@ -1,0 +1,24 @@
+# Example only. Do not deploy until a no-card Cloudflare Free account and D1 database exist.
+# Replace the D1 database_id after provisioning. This file contains no secrets.
+name = "momentum-movement-discord-manager"
+main = "src/worker.mjs"
+compatibility_date = "2026-11-13"
+workers_dev = true
+
+[vars]
+AUTHORIZED_GUILD_ID = "1565048205970767992"
+APPLICATION_ID = "1565304619838742598"
+MCP_OAUTH_ENABLED = "false"
+
+[[d1_databases]]
+binding = "OAUTH_DB"
+database_name = "momentum-movement-oauth"
+database_id = "REPLACE_AFTER_NO_CARD_D1_PROVISIONING"
+migrations_dir = "migrations"
+
+# No [triggers] / crons are configured.
+# Add secrets only through wrangler secret put after the owner authorizes the
+# no-card Free account and each required secret has been supplied securely.
+# Required secrets for a production test: DISCORD_BOT_TOKEN,
+# DISCORD_OAUTH_CLIENT_ID, DISCORD_OAUTH_CLIENT_SECRET,
+# MCP_INTERNAL_BEARER_TOKEN. Never commit secret values.
