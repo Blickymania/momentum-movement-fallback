@@ -40,9 +40,11 @@ These are candidates, not active deployments. Verify account eligibility, free-s
 
 ## Safety gate before deployment and cutover
 
-- Do not enable the new listener client on the existing Railway listener.
-- Do not start a second Discord Gateway client until both primary and standby use this coordinator and every Discord API request is gated on a valid lease.
-- The production listener remains unchanged until an isolated failover build passes integration tests and rollback is ready.
+- Keep the existing Railway listener online and unchanged throughout build and isolated testing.
+- The existing Railway listener is not lease-aware. Never activate either new host while that old Railway listener is still connected.
+- At cutover, stop/disable the old Railway listener first, then activate the Botkeep primary and Silly Development standby with the same coordinator. Verify exactly one lease holder and a healthy Gateway before declaring cutover complete.
+- For rollback, stop both new hosts before restarting the old Railway listener. Never run the old unleased listener alongside a new lease-aware owner.
+- If the old Railway listener cannot be stopped safely, do not perform live cutover; keep the new builds in standby.
 - This foundation is not a completed failover deployment. It still requires Cloudflare deployment, secret configuration, primary/standby provisioning, and two-instance takeover tests.
 
 ## Local tests
