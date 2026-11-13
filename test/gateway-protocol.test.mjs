@@ -167,12 +167,19 @@ test("reconnect delay grows exponentially and is capped", () => {
   assert.throws(() => boundedReconnectDelay(-1), /attempt/);
 });
 
-test("event key prefers Discord object ID for duplicate-safe processing", () => {
-  assert.equal(gatewayEventKey("guild", 19, "MESSAGE_CREATE", { id: "msg-1" }),
-    "guild:MESSAGE_CREATE:msg-1");
-  assert.equal(gatewayEventKey("guild", 20, "PRESENCE_UPDATE", {}),
-    "guild:PRESENCE_UPDATE:20");
-  assert.throws(() => gatewayEventKey("guild", null, "UNKNOWN", {}), /stable event ID/);
-  assert.throws(() => gatewayEventKey("", 1, "MESSAGE_CREATE", {}), /guild ID/);
-  assert.throws(() => gatewayEventKey("guild", 1, "", {}), /event type/);
+test("event keys use session + sequence so repeated object updates remain distinct", () => {
+  assert.equal(gatewayEventKey("guild", "session-a", 19, "MESSAGE_UPDATE"),
+    "guild:session-a:19:MESSAGE_UPDATE");
+  assert.notEqual(
+    gatewayEventKey("guild", "session-a", 19, "MESSAGE_UPDATE"),
+    gatewayEventKey("guild", "session-a", 20, "MESSAGE_UPDATE"),
+  );
+  assert.notEqual(
+    gatewayEventKey("guild", "session-a", 19, "MESSAGE_UPDATE"),
+    gatewayEventKey("guild", "session-b", 19, "MESSAGE_UPDATE"),
+  );
+  assert.throws(() => gatewayEventKey("guild", "", 1, "MESSAGE_CREATE"), /session ID/);
+  assert.throws(() => gatewayEventKey("", "session", 1, "MESSAGE_CREATE"), /guild ID/);
+  assert.throws(() => gatewayEventKey("guild", "session", null, "UNKNOWN"), /sequence/);
+  assert.throws(() => gatewayEventKey("guild", "session", 1, ""), /event type/);
 });
