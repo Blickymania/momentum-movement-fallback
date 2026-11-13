@@ -19,9 +19,11 @@ class MemoryStorage {
   async delete(key) {
     return this.values.delete(key);
   }
-  async list({ prefix = "", limit = 1000 } = {}) {
+  async list({ prefix = "", limit = 1000, startAfter } = {}) {
     const output = new Map();
-    const keys = [...this.values.keys()].filter((key) => key.startsWith(prefix)).sort();
+    const keys = [...this.values.keys()]
+      .filter((key) => key.startsWith(prefix) && (startAfter === undefined || key > startAfter))
+      .sort();
     for (const key of keys.slice(0, limit)) {
       output.set(key, structuredClone(this.values.get(key)));
     }
@@ -35,9 +37,11 @@ class MemoryStorage {
       get: async (key) => snapshot.get(key),
       put: async (key, value) => snapshot.set(key, structuredClone(value)),
       delete: async (key) => snapshot.delete(key),
-      list: async ({ prefix = "", limit = 1000 } = {}) => {
+      list: async ({ prefix = "", limit = 1000, startAfter } = {}) => {
         const output = new Map();
-        const keys = [...snapshot.keys()].filter((key) => key.startsWith(prefix)).sort();
+        const keys = [...snapshot.keys()]
+          .filter((key) => key.startsWith(prefix) && (startAfter === undefined || key > startAfter))
+          .sort();
         for (const key of keys.slice(0, limit)) output.set(key, structuredClone(snapshot.get(key)));
         return output;
       },
@@ -139,7 +143,11 @@ test("repeated updates to the same Discord object remain distinct by sequence", 
   };
   assert.equal((await inbox.enqueueDispatch({ ...base, sequence: 11 })).accepted, true);
   assert.equal((await inbox.enqueueDispatch({ ...base, sequence: 12 })).accepted, true);
-  assert.equal((await inbox.listPending()).length, 2);
+  const pending = await inbox.listPending();
+  assert.equal(pending.length, 2);
+  assert.equal(pending[0].payload.id, "old-session-message");
+  assert.equal(pending[1].payload.id, "new-session-message");
+  assert.ok(pending[0].queueOrder < pending[1].queueOrder);
 });
 
 test("queue event and byte limits reject without advancing sequence", async () => {
@@ -207,4 +215,27 @@ test("rejects invalid payloads, key formats, and acknowledgement batches", async
   await assert.rejects(() => inbox.acknowledge([]), /between 1 and 100/);
   await assert.rejects(() => inbox.acknowledge([""]), /between 1 and 100/);
   await assert.rejects(() => inbox.listPending(0), /between 1 and 500/);
+});
+
+test("paginates the bounded inbox before sorting and returns oldest events first", async () => {
+  const inbox = makeInbox({ maxPendingEvents: 1500, maxPendingBytes: 4 * 1024 * 1024 });
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  for (let sequence = 11; sequence < 1211; sequence++) {
+    const result = await inbox.enqueueDispatch({
+      guildId: "guild",
+      sessionId: "session-a",
+      sequence,
+      eventType: "MESSAGE_CREATE",
+      payload: { id: "message-" + sequence },
+    });
+    assert.equal(result.accepted, true);
+  }
+  const firstTen = await inbox.listPending(10);
+  assert.equal(firstTen.length, 10);
+  assert.deepEqual(firstTen.map((item) => item.sequence), [11,12,13,14,15,16,17,18,19,20]);
+  assert.ok(firstTen.every((item, index) => index === 0 || item.queueOrder > firstTen[index - 1].queueOrder));
+  const firstFiveHundred = await inbox.listPending(500);
+  assert.equal(firstFiveHundred.length, 500);
+  assert.equal(firstFiveHundred[499].sequence, 510);
 });
