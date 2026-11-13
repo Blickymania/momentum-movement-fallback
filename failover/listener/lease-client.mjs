@@ -29,9 +29,11 @@ export class LeaseClient {
     this.timer = null;
     this.renewing = false;
     this.lostNotified = false;
+    this.abortController = new AbortController();
   }
 
   get isHeld() { return this.held && this.now() < this.localDeadline; }
+  get signal() { return this.abortController.signal; }
 
   async tryAcquire() {
     if (this.isHeld) return true;
@@ -49,6 +51,7 @@ export class LeaseClient {
     this.localDeadline = this.now() + safeRemaining;
     this.held = true;
     this.lostNotified = false;
+    this.abortController = new AbortController();
     return true;
   }
 
@@ -101,6 +104,7 @@ export class LeaseClient {
     const fencingToken = this.fencingToken;
     this.held = false;
     this.localDeadline = 0;
+    this.abortController.abort(new Error("listener lease released"));
     if (!wasHeld || !fencingToken) return false;
     const { response, data } = await this.#post("release", { instanceId: this.instanceId, fencingToken });
     return response.ok && data?.released === true;
@@ -110,6 +114,7 @@ export class LeaseClient {
     const notify = this.held && !this.lostNotified;
     this.held = false;
     this.localDeadline = 0;
+    this.abortController.abort(new Error(reason));
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     if (notify) {
