@@ -1,0 +1,210 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  DurableGatewayInbox,
+  InboxFullError,
+  InboxIntegrityError,
+} from "../src/durable-gateway-inbox.mjs";
+
+class MemoryStorage {
+  constructor() {
+    this.values = new Map();
+  }
+  async get(key) {
+    return this.values.get(key);
+  }
+  async put(key, value) {
+    this.values.set(key, structuredClone(value));
+  }
+  async delete(key) {
+    return this.values.delete(key);
+  }
+  async list({ prefix = "", limit = 1000 } = {}) {
+    const output = new Map();
+    const keys = [...this.values.keys()].filter((key) => key.startsWith(prefix)).sort();
+    for (const key of keys.slice(0, limit)) {
+      output.set(key, structuredClone(this.values.get(key)));
+    }
+    return output;
+  }
+  async transaction(callback) {
+    const snapshot = new Map(
+      [...this.values.entries()].map(([key, value]) => [key, structuredClone(value)]),
+    );
+    const tx = {
+      get: async (key) => snapshot.get(key),
+      put: async (key, value) => snapshot.set(key, structuredClone(value)),
+      delete: async (key) => snapshot.delete(key),
+      list: async ({ prefix = "", limit = 1000 } = {}) => {
+        const output = new Map();
+        const keys = [...snapshot.keys()].filter((key) => key.startsWith(prefix)).sort();
+        for (const key of keys.slice(0, limit)) output.set(key, structuredClone(snapshot.get(key)));
+        return output;
+      },
+    };
+    const result = await callback(tx);
+    this.values = snapshot;
+    return result;
+  }
+}
+
+function makeInbox(options = {}) {
+  return new DurableGatewayInbox(new MemoryStorage(), options);
+}
+
+const sessionA = {
+  sessionId: "session-a",
+  sequence: 10,
+  resumeGatewayUrl: "wss://gateway.example",
+};
+
+test("initializes durable session and inbox metadata", async () => {
+  const inbox = makeInbox();
+  await inbox.initialize();
+  assert.deepEqual(await inbox.getMetrics(), {
+    pendingEvents: 0,
+    pendingBytes: 0,
+    sessionStored: false,
+    lastSequence: null,
+    updatedAt: (await inbox.storage.get("gateway:inbox:meta")).updatedAt,
+  });
+});
+
+test("refuses dispatches before a READY session has been stored", async () => {
+  const inbox = makeInbox();
+  await inbox.initialize();
+  await assert.rejects(() => inbox.enqueueDispatch({
+    guildId: "guild",
+    sessionId: "session-a",
+    sequence: 11,
+    eventType: "MESSAGE_CREATE",
+    payload: { id: "message-1" },
+  }), InboxIntegrityError);
+});
+
+test("stores READY session before accepting its dispatch stream", async () => {
+  const inbox = makeInbox();
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  assert.deepEqual(await inbox.getState(), {
+    ...sessionA,
+    updatedAt: (await inbox.getState()).updatedAt,
+  });
+  await assert.rejects(() => inbox.saveReadySession({
+    sessionId: "session-b",
+    sequence: 11,
+    resumeGatewayUrl: "http://not-secure",
+  }), /READY session state/);
+});
+
+test("enqueue stores an event and advances the durable sequence atomically", async () => {
+  const inbox = makeInbox();
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  const result = await inbox.enqueueDispatch({
+    guildId: "guild",
+    sessionId: "session-a",
+    sequence: 11,
+    eventType: "MESSAGE_CREATE",
+    payload: { id: "message-1", content: "hello" },
+  });
+  assert.equal(result.accepted, true);
+  assert.equal((await inbox.getState()).sequence, 11);
+  assert.equal((await inbox.listPending()).length, 1);
+});
+
+test("replayed and old sequences are ignored without duplicating inbox entries", async () => {
+  const inbox = makeInbox();
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  const event = {
+    guildId: "guild", sessionId: "session-a", sequence: 11,
+    eventType: "MESSAGE_CREATE", payload: { id: "message-1" },
+  };
+  assert.equal((await inbox.enqueueDispatch(event)).accepted, true);
+  const replay = await inbox.enqueueDispatch(event);
+  assert.equal(replay.duplicate, true);
+  assert.equal((await inbox.enqueueDispatch({ ...event, sequence: 10 })).duplicate, true);
+  assert.equal((await inbox.listPending()).length, 1);
+  assert.equal((await inbox.getMetrics()).pendingEvents, 1);
+});
+
+test("repeated updates to the same Discord object remain distinct by sequence", async () => {
+  const inbox = makeInbox();
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  const base = {
+    guildId: "guild", sessionId: "session-a",
+    eventType: "MESSAGE_UPDATE", payload: { id: "same-message-id" },
+  };
+  assert.equal((await inbox.enqueueDispatch({ ...base, sequence: 11 })).accepted, true);
+  assert.equal((await inbox.enqueueDispatch({ ...base, sequence: 12 })).accepted, true);
+  assert.equal((await inbox.listPending()).length, 2);
+});
+
+test("queue event and byte limits reject without advancing sequence", async () => {
+  const inbox = makeInbox({ maxPendingEvents: 1, maxPendingBytes: 2048, maxEventBytes: 1024 });
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  await inbox.enqueueDispatch({
+    guildId: "guild", sessionId: "session-a", sequence: 11,
+    eventType: "MESSAGE_CREATE", payload: { id: "first" },
+  });
+  await assert.rejects(() => inbox.enqueueDispatch({
+    guildId: "guild", sessionId: "session-a", sequence: 12,
+    eventType: "MESSAGE_CREATE", payload: { id: "second" },
+  }), InboxFullError);
+  assert.equal((await inbox.getState()).sequence, 11);
+  assert.equal((await inbox.getMetrics()).pendingEvents, 1);
+});
+
+test("acknowledgement releases queue capacity and is idempotent", async () => {
+  const inbox = makeInbox({ maxPendingEvents: 1, maxPendingBytes: 2048, maxEventBytes: 1024 });
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  const event = {
+    guildId: "guild", sessionId: "session-a", sequence: 11,
+    eventType: "MESSAGE_CREATE", payload: { id: "first" },
+  };
+  const inserted = await inbox.enqueueDispatch(event);
+  const ack = await inbox.acknowledge([inserted.eventKey]);
+  assert.equal(ack.acknowledged, 1);
+  assert.equal(ack.pendingEvents, 0);
+  assert.equal((await inbox.acknowledge([inserted.eventKey])).acknowledged, 0);
+  assert.equal((await inbox.getMetrics()).pendingBytes, 0);
+  assert.equal((await inbox.enqueueDispatch({ ...event, sequence: 11 })).duplicate, true);
+  assert.equal((await inbox.enqueueDispatch({ ...event, sequence: 12 })).accepted, true);
+});
+
+test("new READY session resets the dispatch sequence without deleting old pending events", async () => {
+  const inbox = makeInbox();
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  await inbox.enqueueDispatch({
+    guildId: "guild", sessionId: "session-a", sequence: 11,
+    eventType: "MESSAGE_CREATE", payload: { id: "old-session-message" },
+  });
+  await inbox.saveReadySession({
+    sessionId: "session-b", sequence: 1, resumeGatewayUrl: "wss://gateway-b.example",
+  });
+  assert.equal((await inbox.getState()).sequence, 1);
+  assert.equal((await inbox.listPending()).length, 1);
+  assert.equal((await inbox.enqueueDispatch({
+    guildId: "guild", sessionId: "session-b", sequence: 2,
+    eventType: "MESSAGE_CREATE", payload: { id: "new-session-message" },
+  })).accepted, true);
+  assert.equal((await inbox.listPending()).length, 2);
+});
+
+test("rejects invalid payloads, key formats, and acknowledgement batches", async () => {
+  const inbox = makeInbox();
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  await assert.rejects(() => inbox.enqueueDispatch({
+    guildId: "guild", sessionId: "session-a", sequence: 11,
+    eventType: "MESSAGE_CREATE", payload: null,
+  }), /payload/);
+  await assert.rejects(() => inbox.acknowledge([]), /between 1 and 100/);
+  await assert.rejects(() => inbox.acknowledge([""]), /between 1 and 100/);
+  await assert.rejects(() => inbox.listPending(0), /between 1 and 500/);
+});
