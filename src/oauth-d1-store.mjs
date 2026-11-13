@@ -157,6 +157,17 @@ export class OAuthD1Store {
     ).bind(stateHash, this.now()).first();
   }
 
+  async consumeLoginRequestFailure(stateHash) {
+    const now = this.now();
+    const result = await this.db.prepare(
+      `UPDATE mcp_oauth_login_requests
+       SET consumed_at = ?
+       WHERE state_hash = ? AND expires_at > ? AND consumed_at IS NULL
+       RETURNING state_hash`,
+    ).bind(now, stateHash, now).all();
+    return rows(result).length === 1;
+  }
+
   async consumeLoginRequestAndCreateCode({ stateHash, authorizationCodeHash, userId, guildId, ttlMs = 300000 }) {
     const now = this.now();
     const nonce = this.randomId();
