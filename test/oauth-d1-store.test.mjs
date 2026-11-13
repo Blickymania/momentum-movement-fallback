@@ -165,6 +165,11 @@ test("authorization code exchange atomically creates one access and one refresh 
     guildId: "1565048205970767992",
   });
   const issued = await store.exchangeAuthorizationCode(baseCode);
+  assert.equal(issued.client_id, baseLogin.clientId);
+  assert.equal(issued.user_id, "user-123");
+  assert.equal(issued.guild_id, "1565048205970767992");
+  assert.equal(issued.scope, baseLogin.scope);
+  assert.equal(issued.resource, baseLogin.resource);
   assert.ok(issued.accessExpiresAt > issued.issuedAt);
   assert.ok(issued.refreshExpiresAt > issued.issuedAt);
   assert.equal(db.raw.prepare("SELECT COUNT(*) as n FROM mcp_oauth_access_tokens").get().n, 1);
@@ -246,13 +251,18 @@ test("refresh-token rotation revokes the old token and issues a new pair atomica
     guildId: "1565048205970767992",
   });
   await store.exchangeAuthorizationCode(baseCode);
-  await store.rotateRefreshToken({
+  const rotated = await store.rotateRefreshToken({
     oldRefreshTokenHash: baseCode.refreshTokenHash,
     clientId: baseLogin.clientId,
     resource: baseLogin.resource,
     accessTokenHash: "next-access-hash",
     newRefreshTokenHash: "next-refresh-hash",
   });
+  assert.equal(rotated.client_id, baseLogin.clientId);
+  assert.equal(rotated.user_id, "user-123");
+  assert.equal(rotated.guild_id, "1565048205970767992");
+  assert.equal(rotated.scope, baseLogin.scope);
+  assert.equal(rotated.resource, baseLogin.resource);
   const old = db.raw.prepare("SELECT revoked_at, replaced_by FROM mcp_oauth_refresh_tokens WHERE token_hash=?").get(baseCode.refreshTokenHash);
   assert.ok(old.revoked_at);
   assert.equal(old.replaced_by, "next-refresh-hash");
