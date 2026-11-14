@@ -36,6 +36,7 @@ export function installGatewayOwnershipGuards({
 
   const originalOn = client.on;
   const originalOnce = client.once;
+  const originalLogin = client.login;
   const originalRestRequest = client.rest.request;
   const originalFetch = fetchTarget.fetch;
 
@@ -79,6 +80,11 @@ export function installGatewayOwnershipGuards({
     return originalOn.call(this, event, onceWrapper);
   };
 
+  client.login = function guardedGatewayLogin(...args) {
+    checkOwnership();
+    return originalLogin.apply(this, args);
+  };
+
   client.rest.request = function guardedRestRequest(...args) {
     checkOwnership();
     return originalRestRequest.apply(this, args);
@@ -115,6 +121,7 @@ export function installGatewayOwnershipGuards({
       revoked = true;
       client.on = originalOn;
       client.once = originalOnce;
+      client.login = originalLogin;
       client.rest.request = originalRestRequest;
       fetchTarget.fetch = originalFetch;
       restored = true;
