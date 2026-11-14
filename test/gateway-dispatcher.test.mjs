@@ -241,7 +241,7 @@ test("quarantines unknown routes and acknowledges only deliberately ignored even
   });
   assert.equal((await unknown.drain()).status, "blocked");
   assert.equal(unknownInbox.acks.length, 0);
-  assert.equal((await unknownLedger.get(unknownInbox.events[0].eventKey, "$route")).status, "quarantined");
+  assert.equal((await unknownLedger.getDisposition(unknownInbox.events[0].eventKey)).status, "quarantined");
 
   const ignoredInbox = new FakeInbox([gatewayEvent(15, "TYPING_START")]);
   const ignoredLedger = makeLedger().ledger;
@@ -252,7 +252,7 @@ test("quarantines unknown routes and acknowledges only deliberately ignored even
   });
   const result = await ignored.drain();
   assert.equal(result.acknowledged, 1);
-  assert.equal((await ignoredLedger.get("1565048205970767992:session-a:15:TYPING_START", "$route")).disposition, "ignored");
+  assert.equal((await ignoredLedger.getDisposition("1565048205970767992:session-a:15:TYPING_START")).disposition, "ignored");
 });
 
 test("preserves FIFO by blocking later events behind an incomplete earlier event", async () => {
