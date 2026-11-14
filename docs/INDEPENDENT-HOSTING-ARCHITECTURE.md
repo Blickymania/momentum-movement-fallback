@@ -196,3 +196,19 @@ This is a real SQLite execution through Node's node:sqlite and a simulated Durab
 Cloudflare account plan and current usage are not yet confirmed. Documentation indicates SQLite Durable Objects are available on Workers Free and that the approximate single-community lease traffic is within published Free-tier daily request/write budgets, subject to retries and all other account usage. This only potentially removes the extra database fee; it does not provide the persistent Bot 005/standby process host. Do not change the Cloudflare plan or deploy the Worker without explicit approval for the account-resource change.
 
 No Cloudflare Worker, Durable Object namespace, secret, route, DNS record, plan, or billing change has been created or modified.
+
+
+## Bot 005 candidate egress fencing — source-only
+
+Two new adapters prepare a future Bot 005 integration without changing the recovered production snapshot:
+
+- implementation/discord-gateway-ownership-guards.mjs installs the guard immediately after Discord Client construction and before application listeners are registered. It wraps login, on/once listeners, the Discord REST request method, and global fetch. All outbound HTTP except the Cloudflare coordinator origin requires active ownership. Railway hostnames and rlwy.net endpoints are rejected unconditionally, even when a lease is held.
+- implementation/fenced-discord-gateway-owner.mjs creates the Cloudflare lease client before the fetch guard is installed, then prepares the supervisor and guard. It refuses direct Gateway login unless the supervisor successfully acquires the fixed Momentum Movement lease. On denied acquisition it revokes the guard and leaves the client disconnected.
+
+Local Node.js v22.16.0 combined simulation suite: **27 passed, 0 failed** (19 coordinator/control-plane tests, six egress guard tests, and two prepared-owner integration tests).
+
+This is still not integrated into the recovered Bot 005 application. The guard must be installed before its listeners are registered. The recovered source uses Discord.js; the actual client.rest.request instance hook and writable method properties need a compatibility test against the precise runtime dependency/version before deploying a candidate. If setup cannot patch any required method, it fails before login.
+
+The guard prevents new REST/fetch calls after lease loss, but cannot recall a request already sent. Production safety still requires handler-level fencing/idempotency and out-of-band hard-stop before any standby Gateway login.
+
+The Bot 005 source still has a hard-coded http://coaching-workflow.railway.internal:3000/interaction endpoint. The new guard will reject that request even while ownership is active. That coaching workflow has to be migrated to a public HTTPS endpoint and configured via environment before coaching handlers can work on an independent host; there is no fallback to Railway.
