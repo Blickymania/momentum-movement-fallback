@@ -107,3 +107,70 @@ test("keeps OAuth disabled until explicitly enabled and schema migrated",async()
  const h=harness();const result=await h.worker.fetch(new Request("https://momentum.example/oauth/health"),h.env);
  assert.equal(result.status,404);assert.equal((await result.json()).error,"oauth_not_enabled");h.db.close();
 });
+
+test("internal Gateway controls require the configured bearer and call one named coordinator", async () => {
+  const h=harness({env:{MCP_INTERNAL_BEARER_TOKEN:INTERNAL}});
+  const calls=[];
+  h.env.GATEWAY_COORDINATOR={
+    idFromName(name){calls.push({type:"idFromName",name});return "coordinator-id";},
+    get(id){
+      calls.push({type:"get",id});
+      return {fetch:async request=>{
+        const url=new URL(request.url);
+        calls.push({type:"fetch",path:url.pathname,method:request.method,authorization:request.headers.get("authorization")});
+        return response({coordinator:"momentum",status:url.pathname.slice(1)});
+      }};
+    },
+  };
+  const unauthorized=await h.worker.fetch(new Request("https://momentum.example/internal/gateway/start",{method:"POST"}),h.env);
+  assert.equal(unauthorized.status,401);
+
+  const start=await h.worker.fetch(new Request("https://momentum.example/internal/gateway/start",{
+    method:"POST",headers:{authorization:"Bearer "+INTERNAL},
+  }),h.env);
+  assert.equal(start.status,200);
+  assert.equal((await start.json()).status,"start");
+  assert.deepEqual(calls.map(x=>x.type),["idFromName","get","fetch"]);
+  assert.equal(calls[0].name,"momentum-movement");
+  assert.equal(calls[2].path,"/start");
+  assert.equal(calls[2].method,"POST");
+  assert.equal(calls[2].authorization,"Bearer "+INTERNAL);
+  h.db.close();
+});
+
+test("internal Gateway controls fail closed when no Durable Object binding exists", async () => {
+  const h=harness({env:{MCP_INTERNAL_BEARER_TOKEN:INTERNAL}});
+  const result=await h.worker.fetch(new Request("https://momentum.example/internal/gateway/status",{
+    headers:{authorization:"Bearer "+INTERNAL},
+  }),h.env);
+  assert.equal(result.status,503);
+  assert.equal((await result.json()).error,"Gateway coordinator binding is unavailable");
+  h.db.close();
+});
+
+test("internal Gateway reset-fatal endpoint enforces bounded JSON and method", async () => {
+  const h=harness({env:{MCP_INTERNAL_BEARER_TOKEN:INTERNAL}});
+  const calls=[];
+  h.env.GATEWAY_COORDINATOR={
+    idFromName:()=> "id",
+    get:()=>({fetch:async req=>{
+      calls.push({path:new URL(req.url).pathname,method:req.method,body:await req.text()});
+      return response({reset:true});
+    }}),
+  };
+  const wrongMethod=await h.worker.fetch(new Request("https://momentum.example/internal/gateway/reset-fatal",{
+    headers:{authorization:"Bearer "+INTERNAL},
+  }),h.env);
+  assert.equal(wrongMethod.status,405);
+  const oversized=await h.worker.fetch(new Request("https://momentum.example/internal/gateway/reset-fatal",{
+    method:"POST",headers:{authorization:"Bearer "+INTERNAL,"content-length":"5000"},body:"{}",
+  }),h.env);
+  assert.equal(oversized.status,413);
+  const valid=await h.worker.fetch(new Request("https://momentum.example/internal/gateway/reset-fatal",{
+    method:"POST",headers:{authorization:"Bearer "+INTERNAL,"content-type":"application/json"},
+    body:JSON.stringify({clientId:"bot-alpha"}),
+  }),h.env);
+  assert.equal(valid.status,200);
+  assert.deepEqual(calls,[{path:"/reset-fatal",method:"POST",body:'{"clientId":"bot-alpha"}'}]);
+  h.db.close();
+});
