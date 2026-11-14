@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS gateway_ownership (
   owner_id TEXT NOT NULL
     CHECK (length(owner_id) BETWEEN 1 AND 200),
   fencing_epoch INTEGER NOT NULL
-    CHECK (fencing_epoch >= 1),
+    CHECK (fencing_epoch >= 0),
   lease_until_ms INTEGER NOT NULL,
   heartbeat_at_ms INTEGER NOT NULL,
   deployment_id TEXT NOT NULL
