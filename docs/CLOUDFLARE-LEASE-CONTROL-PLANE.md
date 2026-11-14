@@ -196,3 +196,10 @@ A single local Node.js v22.16.0 test invocation across isolated component workin
 - Shared lease + Gateway supervisor + independent preflight: 23
 
 Latest observed GitHub Actions run is `43556643815`, commit `3d06db570263be426a62a846ffac64a2e044673c`, with conclusion `startup_failure`; the jobs endpoint returned an empty list. Immediately preceding runs `43556634163` and `43556557762` failed the same way. No runner or job logs exist. This is an unresolved hosted-CI blocker; do not claim GitHub Actions passed or guess at the cause.
+
+
+## Fence-request timeout alignment
+
+The bot-facing fence requester now defaults to 30 seconds (the maximum supported by its validator). The Worker fencer allows up to 15 seconds of suspension-state polling, with each Render service-state request independently bounded to 5 seconds. This gives the caller room for the candidate-state read, prior-state read, suspend acknowledgement, state readback/poll, and Durable Object confirmation. The operation remains fail-closed on any timeout or unavailable response; it never treats the Render HTTP 202 acknowledgement alone as proof of a stopped Gateway host.
+
+After this timeout adjustment, the full selected local Node.js 22.16.0 component run still returned 65 tests passed and 0 failed.
