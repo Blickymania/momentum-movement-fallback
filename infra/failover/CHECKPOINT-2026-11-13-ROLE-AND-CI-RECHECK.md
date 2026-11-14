@@ -387,3 +387,30 @@ Continue security review of OAuth client registration and persistence growth, th
 
 ### Next execution step
 Run a full source diff review focused on OAuth cleanup, schema migration safety, request-local DB lifetime, and concurrency. Then continue seeking a real PostgreSQL test environment and actual Node/TypeScript/Wrangler execution.
+
+
+## OAuth authorization-code transaction atomicity cycle
+
+### Implemented
+- Refactored authorization-code exchange so one PostgreSQL transaction now locks and validates the code, marks it consumed, inserts the access-token hash, and inserts the refresh-token hash.
+- This removes the prior gap where the code could be consumed in a committed transaction and token insertion could fail in a second transaction, forcing unnecessary reauthorization.
+- Source commit: `32e886aa036a7d3a1e55ee182d96e35d6fd5e002`.
+- Added a static test for the one-transaction invariant. Test commit: `53d06fa8e4ef6eceedd00a25518e4e0eed274ff4`.
+
+### Verification
+- Read-back confirms the code-row lock, consumed marker, access-token insert, and refresh-token insert are all inside the same transaction callback.
+- Executed the actual extracted transaction callback with mocked database/query dependencies: exactly one transaction opened; query order was SELECT → consume UPDATE → access INSERT → refresh INSERT; returned client context matched. All checks passed.
+- Executed the full static source-test harness against current read-back files: **33 tests executed, 33 passed, 0 failed**.
+- This is a mocked transaction and isolated harness, not a live PostgreSQL integration test or native Node test run.
+
+### CI
+- Latest observed run: `43542962228`, commit `53d06fa8e4ef6eceedd00a25518e4e0eed274ff4`, conclusion `startup_failure`, path `BuildFailed`.
+- Jobs returned: 0.
+- Native CI remains blocked before job creation.
+
+### Production and scheduler
+- No live database, production service, Discord resource, Cloudflare resource, secret, DNS, billing, or scheduler was changed.
+- No scheduled process was created.
+
+### Next execution step
+Re-run the full source harness and final secret/config/diff audit after this transaction change. Then continue toward a real PostgreSQL and Worker runtime validation path.
