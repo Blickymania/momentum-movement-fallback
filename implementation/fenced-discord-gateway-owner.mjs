@@ -40,6 +40,9 @@ export function prepareFencedDiscordGatewayOwner({
     ownerId || deployment + ":" + globalThis.crypto.randomUUID(),
     "owner_id"
   );
+  if (!processOwner.startsWith(deployment + ":")) {
+    throw new TypeError("owner_id_must_be_bound_to_deployment");
+  }
 
   // Create the remote store before wrapping global fetch so the client captures
   // its dedicated lease transport. The guard exempts only this public HTTPS origin.
