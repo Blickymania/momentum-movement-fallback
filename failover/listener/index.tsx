@@ -410,8 +410,9 @@ const lease=runtimeActive?new LeaseClient({
  safetyMs:5000,
  onLost:async reason=>{
   gatewayReady=false;started=false;
-  const old=client;client=null;
+  const old=client;
   if(old)try{await old.destroy()}catch{}
+  if(client===old)client=null;
   console.warn(JSON.stringify({event:'momentum-listener-lease-lost',reason:String(reason).slice(0,140)}));
  },
  onError:error=>console.error(JSON.stringify({event:'momentum-listener-lease-error',reason:String(error?.message||'unknown').slice(0,140)}))
