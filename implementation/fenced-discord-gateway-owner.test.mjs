@@ -156,11 +156,12 @@ test("prepared gateway stays disconnected when Cloudflare denies its lease", asy
 test("graceful shutdown aborts a pending Gateway login and releases the acquired lease", async () => {
   const client = fakeClient();
   let loginStartedResolve;
+  let finishLateLogin;
   const loginStarted = new Promise(resolve => { loginStartedResolve = resolve; });
   client.login = async () => {
     client.loginCount++;
     loginStartedResolve();
-    return new Promise(() => {});
+    return new Promise(resolve => { finishLateLogin = resolve; });
   };
   const leaseTransport = makeLeaseTransport();
   const prepared = prepareFencedDiscordGatewayOwner({
@@ -182,6 +183,9 @@ test("graceful shutdown aborts a pending Gateway login and releases the acquired
   assert.equal(client.destroyCount, 1);
   assert.equal(prepared.ready, false);
   await assert.rejects(() => startPromise, /gateway_start_aborted/);
+  finishLateLogin("late-connected");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(client.destroyCount, 2);
   assert.equal(leaseTransport.calls.filter(x => x.path === "/lease/acquire").length, 1);
   assert.equal(leaseTransport.calls.filter(x => x.path === "/lease/release").length, 1);
 });
