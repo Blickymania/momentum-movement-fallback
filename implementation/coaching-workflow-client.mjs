@@ -50,6 +50,39 @@ export function createCoachingWorkflowClient({
   return Object.freeze({
     endpoint: url.origin + url.pathname,
 
+    async checkReady() {
+      const readyUrl = new URL("/readyz", url.origin);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const response = await fetchFn(readyUrl, {
+          method: "GET",
+          headers: { accept: "application/json" },
+          signal: controller.signal
+        });
+        if (!response || typeof response.ok !== "boolean") {
+          throw new Error("coaching_workflow_response_invalid");
+        }
+        let body = null;
+        try { body = await response.json(); }
+        catch { throw new Error("coaching_workflow_response_invalid"); }
+        return Object.freeze({
+          ok: response.ok,
+          status: response.status,
+          ready: response.ok && body?.ready === true
+        });
+      } catch (error) {
+        if (error instanceof Error &&
+            /^coaching_workflow_(http_\\d{3}|response_invalid)$/.test(error.message)) {
+          throw error;
+        }
+        if (controller.signal.aborted) throw new Error("coaching_workflow_timeout");
+        throw new Error("coaching_workflow_unavailable");
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+
     async forward(payload) {
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
         throw new TypeError("coaching_interaction_payload_invalid");
