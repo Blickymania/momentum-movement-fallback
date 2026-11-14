@@ -231,3 +231,27 @@ Review MCP protocol method handling, error responses, OAuth client redirect regi
 
 ### Next execution step
 Inspect and validate router status/readiness semantics, origin allowlisting, URL rewriting, and request forwarding headers. Then review the isolated Worker config and package/build assumptions for a reproducible local validation path.
+
+
+## Router origin and readiness review cycle — implemented
+
+### Changes and verification
+- Confirmed origin validation requires HTTPS, rejects URL credentials, and accepts only an origin root (no path, query, or fragment).
+- Confirmed forwarding rewrites protocol/host to the configured upstream and strips URL username/password while preserving incoming path and query.
+- Updated router `/readyz` to return `discordVerified: true` only after it has selected an upstream whose own readiness response already proves the expected Manager identity and Discord identity.
+- Router readiness change commit: `3c9ef8be87147ff14745ced61659499fe5417910`.
+- Added three static tests for HTTPS origin validation, URL rewriting/credential stripping, and readiness identity. Test commit: `c830077c8cd4f55b4bcdd3548e39eb2cb76243ea`.
+- Read-back verified all six source invariants and 28 test cases. Test module syntax parsing succeeded in isolated V8.
+- No real HTTP forwarding simulation or deployment was performed. URL rewriting remains source-reviewed, not live-network verified.
+
+### CI
+- Latest push run: `43542459978`, commit `c830077c8cd4f55b4bcdd3548e39eb2cb76243ea`, conclusion `startup_failure`, path `BuildFailed`.
+- Jobs returned: 0.
+- The recurring Actions startup failure still prevents actual Node/TypeScript/Wrangler checks.
+
+### Production and scheduler
+- No production resource, database, Discord resource, Cloudflare resource, credentials, DNS, billing, or scheduler changed.
+- No cron, reminder, recurring automation, monitor, or centralized maintenance job created.
+
+### Next execution step
+Review OAuth dynamic client registration and redirect URI normalization/validation, OAuth error redirects, and MCP response semantics. Continue to seek an executable test path; do not represent source checks as full tests.
