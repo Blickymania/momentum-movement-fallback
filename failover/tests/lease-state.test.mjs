@@ -15,6 +15,14 @@ test("only one instance acquires an unexpired lease", () => {
   assert.equal(second.state.ownerId, A);
 });
 
+test("same-owner acquire retry is idempotent and extends the lease", () => {
+  const first = acquireLeaseState(null, A, 1_000, TTL);
+  const retried = acquireLeaseState(first.state, A, 5_000, TTL);
+  assert.equal(retried.result.acquired, true);
+  assert.equal(retried.result.fencingToken, "1");
+  assert.equal(retried.state.expiresAtMs, 35_000);
+});
+
 test("owner renews without changing its fencing token", () => {
   const acquired = acquireLeaseState(null, A, 1_000, TTL);
   const renewed = renewLeaseState(acquired.state, A, "1", 10_000, TTL);
