@@ -209,6 +209,8 @@ test("Cloudflare Worker + SQLite Durable Object + remote lease-store supervisor 
     loginGateway: async () => { primaryLogins++; }
   });
   assert.equal(primary.ok, true);
+  const currentLease = await store.read();
+  assert.equal(currentLease.owner_id, "primary-process-unique");
   const standbyDenied = await startGatewayOwner({
     ...common,
     ownerId: "standby-process-unique",
