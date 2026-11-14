@@ -28,15 +28,16 @@ A theoretical lower-cost configuration could combine a $12 Manager with a small 
 
 ## Recommended project layout
 
-Create one Northflank project named `momentum-movement-manager`:
+Create one Northflank project named `momentum-movement-manager` with:
 
 1. One deployment service: `dawn-dotta-discord-manager`.
-2. One PostgreSQL addon dedicated to the Manager's OAuth persistence.
-3. One secret group for runtime credentials and connection settings.
+2. One secret group for runtime credentials and connection settings.
 
-Keep the database private to the project. Enable TLS for PostgreSQL and link its connection details to the Manager service through Northflank's secret/variable mechanism. Do not expose the database publicly just to make it reachable.
+**Do not create a Northflank PostgreSQL addon as the production OAuth store yet.** A private Northflank addon is reachable by services inside the project, but the Railway, Cloudflare, and Render fallback origins do not automatically share that private network. A Northflank-only database would create a second data domain and could make the fallbacks appear healthy while lacking the live OAuth clients, authorization codes, access tokens, and refresh tokens.
 
-Northflank documentation says services and addons in the same project can communicate over private networking. A database is private by default unless public access is explicitly enabled.
+For true cross-provider Manager failover, all eligible origins must use the same logical OAuth data plane, or a formally replicated store with measured lag, conflict handling, and a tested promotion process. The database must also survive an outage of the Northflank compute/provider if it is meant to support Railway as a fallback. A database hosted only beside the Northflank service does not satisfy that fault-domain requirement.
+
+Northflank supports private project networking by default, plus optional public TCP ingress with TLS for supported PostgreSQL addons. Public ingress can be restricted with network rules, but it is a security-sensitive change and must not be enabled as a shortcut. Choose the database topology first; then configure only the minimum network path required for every approved Manager origin. 
 
 ## Service configuration
 
@@ -89,15 +90,19 @@ The legacy production Manager currently exposes a `RAILWAY_SERVICE_KEY` compatib
 
 The Manager uses PostgreSQL for OAuth clients, login requests, authorization codes, access tokens, and refresh tokens. The existing production `OAUTH_DATABASE_URL` hostname is not readable through the current connected Railway API (the connection returns variable names only). The exact owning database therefore remains unverified.
 
+**This is a hard deployment gate.** A successful `SELECT 1` only proves that a host can reach *a* database; it does not prove that it is the same OAuth dataset as the live Railway Manager. The Northflank candidate must not receive traffic while its database is empty, stale, or different from the database used by another eligible origin.
+
 Before copying data:
 1. Identify the current database owner and confirm it is Dawn-only.
-2. Record the exact schema, extensions, indexes, constraints, and row counts without exposing credentials.
-3. Create the independent Northflank PostgreSQL addon only after the free resource estimate is verified.
-4. Export/import only the Dawn Manager OAuth schema using secure database-to-database tooling.
-5. Compare table row counts and canonical data digests; verify PKCE, single-use authorization code consumption, refresh-token rotation, and cleanup behavior.
-6. Keep the original database and its backups unchanged for rollback.
+2. Record the exact schema, extensions, indexes, constraints, row counts, and backup coverage without exposing credentials.
+3. Choose one shared data-plane design that can be reached securely by Northflank and every fallback origin. Evaluate provider diversity, TLS, IP/network restrictions, connection pooling, backup/restore, limits, and outage behavior.
+4. Verify the selected provider's no-card policy and the full compute + database + disk + egress budget. A free database that scales to zero or expires is not automatically suitable for production failover.
+5. Export/import only the Dawn Manager OAuth schema using secure database-to-database tooling.
+6. Compare table row counts and canonical data digests; verify PKCE, single-use authorization code consumption, refresh-token rotation, expiry cleanup, and restore from backup.
+7. Keep the original database and its backups unchanged for rollback.
+8. Prove both candidate Manager origins read the same data plane and can complete a controlled OAuth lifecycle before enabling either one in the router.
 
-Do not point the new Manager at a guessed Railway database or repurpose either existing Supabase OAuth project.
+Do not point the new Manager at a guessed Railway database or repurpose either existing Supabase OAuth project. Do not treat a separately created Northflank database as shared state merely because it has the same schema or passes `SELECT 1`.
 
 ## Readiness and routing contract
 
@@ -107,7 +112,7 @@ The Manager's `/readyz` must return HTTP 200 and:
 - `discordVerified: true`
 - `oauthDatabaseVerified: true`
 
-Readiness fails closed when the OAuth database is enabled but cannot answer `SELECT 1), or when the Discord bot/application/guild identity check fails.
+Readiness fails closed when the OAuth database is enabled but cannot answer `SELECT 1`, or when the Discord bot/application/guild identity check fails.
 
 After Northflank has a real HTTPS origin and its readiness endpoint passes:
 - Set `NORTHFLANK_MANAGER_ORIGIN` on the Cloudflare failover router.
