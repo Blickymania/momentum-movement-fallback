@@ -120,3 +120,37 @@ This matrix records configuration names and code dependencies only. Secret value
 ### Important inventory correction
 
 The six baseline rows in the production service inventory were confirmed by the initial read-only service audit. The additional LIVE NOW / Upcoming Events Function source has now been confirmed by its successful deployment metadata and startup logs: it activated its Gateway client and reported the expected bot identity. The current migration scope therefore includes **seven confirmed Gateway-connected deployments**. Its exact functional overlap with the LIVE NOW V2 Shadow Engine remains unresolved and must be mapped before implementation.
+
+
+## LIVE NOW dashboard incident and safe-repair checkpoint — 2026-11-14
+
+### Production observations (read-only)
+
+- LIVE NOW V2 service: `7b194622-a8db-4a43-9bfd-4d17a7ba360e`; latest deployment `9d72eb28-e6d2-4bef-9cd6-43eb569d160f` is `SUCCESS`, created 2026-11-10 23:43:37 UTC. Startup logs reported the expected bot application ID `1565304619838742598`, `mode=active`, and a verified dashboard ID `1566082077768814717`.
+- The V2 service's later passive audit on 2026-11-14 22:43:44 UTC reported `healthy=false`, `count=0`, `legacy=0`, `panel=null`.
+- Discord readback on 2026-11-14: `#live-now` (channel `1565643739353972846`) returned no messages and no pins. A direct read of former panel `1566082077768814717` returned Discord 404 `Unknown Message`.
+- `#upcoming-events` remains intact: message `1569626020917805078` still contains its Submit Event, How It Works, and Archived Flyers controls.
+- The separate Dawn Dotta LIVE & Events Listener (service `75ec092b-7f53-465d-b46a-9f01a2b155a2`) remains separately deployed. Its source has `LIVE_V2_CUTOVER` logic that skips legacy LIVE NOW panel reconciliation when cutover is enabled; its last observed successful startup confirmed Gateway readiness. The exact division of runtime responsibilities is still not fully mapped.
+
+### Why a direct message post was not used as a repair
+
+The V2 process keeps `panelId` in memory after initial publication. Its page/navigation handlers prefer that stored ID when editing the dashboard, rather than always using the clicked interaction's message ID. The stored ID still points to the deleted message. Posting a replacement directly through Discord would therefore risk presenting working-looking controls that target the deleted ID. No replacement message was posted and the channel remains unchanged.
+
+### Source-only repair component
+
+- Added `implementation/live-now-panel-recovery.mjs`, a bounded reconciliation helper intended for integration with the existing V2 passive audit.
+- Added `implementation/live-now-panel-recovery.test.mjs`. Focused local Node.js 22.16.0 test run: **11/11 passed**.
+- Behavior: leave one correctly tracked V2 dashboard untouched; ask the existing guarded publisher to publish a missing dashboard only when no legacy panel exists; ask the existing publisher to adopt/update a sole V2 dashboard when the in-memory ID is stale; hold if duplicate V2 dashboards or any legacy panel are found; and require a second read scan to verify exactly one V2 panel and no legacy panel.
+- The helper is **not yet integrated into the recovered runtime or any active service**. The existing V2 `passiveAudit` remains read-only. The helper does not itself connect a Gateway, access secrets, send Discord requests, or create a timer.
+- The repository's `npm test` script already includes `implementation/*.test.mjs`. The focused helper tests were run locally; the complete repository test suite and hosted CI have not been verified.
+
+### Runtime and scheduler boundary
+
+- The only existing periodic panel audit is the V2 service's 30-minute `passiveAudit` interval. This work created no cron job, scheduler, reminder, automation, or new interval. Existing V2 expiry/duration timers were not changed.
+- No Railway service was updated, restarted, stopped, suspended, or redeployed. No Discord message, channel, category, role, bot role, permission, or assignment was changed in this repair cycle.
+- No Hostless app/worker was created, no Gateway token was supplied, and no new Gateway session was opened.
+- The helper is a source-only building block. It does not resolve the live panel until it is integrated into a separately fenced V2 runtime and that runtime can safely become the sole owner after independently verified hard-stop of the old process.
+
+### Next execution step
+
+Integrate the helper into a distinct LIVE NOW V2 candidate's existing passive audit, preserving the current one-per-30-minute audit cadence and the publisher's duplicate/legacy protection. Add the V2 workload's own independent ownership scope and verify exact process-stop proof before any new Gateway login. Keep production untouched until these conditions are met.
