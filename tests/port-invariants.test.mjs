@@ -170,6 +170,8 @@ test("router rewrites only the upstream origin and strips URL credentials", asyn
 test("router readiness reports verified upstream Discord identity", async () => {
   const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
   assert.match(router, /oauthDatabaseVerified: selected\.oauthDatabaseVerified/);
+  assert.match(router, /status: fullyReady \? "ready" : "degraded"/);
+  assert.match(router, /fullyReady \? 200 : 503/);
   assert.match(router, /status: "ready"/);
   assert.match(router, /manager: MANAGER_NAME/);
   assert.match(router, /discordVerified: true/);
