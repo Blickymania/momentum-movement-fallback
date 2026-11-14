@@ -55,3 +55,38 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 2. Research and confirm Cloudflare Workers free signup/payment method policy and test a minimal Bun/SQL port feasibility.
 3. Inspect OAuth database dependencies and Render service requirements, but do not touch Render until the workspace is explicitly selected.
 4. Build and test an isolated migration branch, then deploy a backup endpoint only after the destination workspace/access and secret provisioning are available.
+
+
+## Cycle checkpoint — 2026-11-13 (Cloudflare account + migration-port review)
+
+### Account inspection (read-only, verified in the user's authenticated browser tab)
+- Cloudflare account dashboard is authenticated; account Workers subdomain: `redcell4400.workers.dev`.
+- Workers & Pages dashboard shows Free-tier usage counters: 0 / 100,000 requests today and 0 / 200,000 observability events today. The UI displays an Upgrade control but no upgrade was selected.
+- Exactly one existing Worker is listed: `empress-discord-cloudflare`. It is another community's resource and is explicitly out of scope; do not inspect secrets, modify, deploy over, or route Dawn traffic through it.
+- No Dawn Dotta Worker, Hyperdrive, D1, KV, R2, Queue, or Workflow has been created in this project during this cycle.
+- Official Cloudflare documentation states Hyperdrive is included in Workers Free with 100,000 database statements/day; all DB statements count and limits reset daily at 00:00 UTC. Official Cloudflare product information states free signup does not require a credit card. This is consistent with the dashboard's free usage counters; billing/payment settings themselves have not been opened or audited.
+
+### Port review findings (source branch; no deployment)
+- `wrangler.jsonc` has no `hyperdrive` binding declaration or binding ID. `src/index.ts` expects `env.HYPERDRIVE?.connectionString` and falls back to `OAUTH_DATABASE_URL`; a direct Railway private DB URL is not reachable from a Cloudflare Worker. A real Hyperdrive binding must be provisioned and tested against a reachable Postgres endpoint before OAuth readiness can pass.
+- The existing Railway OAuth Postgres service has only a private Railway endpoint (previous inventory: `oauth-postgresql`). No public TCP endpoint has been verified, and no database exposure or firewall change was made.
+- `src/index.ts` creates a new `pg.Client` for each Worker request and closes it in `finally`. This lifecycle, Hyperdrive binding configuration, Worker compatibility, and OAuth concurrency have not been exercised in a real Worker runtime. Static regex tests are not evidence of functional compatibility.
+- `mcpOAuthSchemaPromise` is module-global while DB clients are request-scoped; concurrent first-time OAuth schema initialization could share work tied to the first request's DB client. This requires a focused concurrency test/fix before deployment.
+- `wrangler.router.jsonc` currently configures only the Railway fallback origin; its Cloudflare primary and Render fallback are unset. The router itself is Cloudflare-hosted and is not independent of Cloudflare availability; do not describe it as independent DNS-level failover.
+- Existing test suite is static source-pattern assertions. No Node install/typecheck/test/Wrangler dry-run was executed in this cycle, and prior GitHub Actions attempts produced zero jobs/startup failure. Do not claim tests passed.
+
+### Cycle outcome
+- Completed: account dashboard inspection; verified visible Workers free quotas; inspected current Worker inventory; reviewed Worker source, router, wrangler configs, tests, and branch checkpoint.
+- No code changes, resource creation, secrets, database exposure, DNS edits, billing changes, or production cutover performed.
+- Railway production manager remains the known working service; preserve it unchanged.
+
+### Remaining objectives / exact next step
+1. Inspect Cloudflare Hyperdrive dashboard and confirm available creation path/limits without creating a paid resource. Inspect Workers Plans and billing only read-only if needed to confirm Free status and no payment requirement.
+2. Determine whether the existing Railway OAuth Postgres can be safely reached from Hyperdrive without exposing credentials or opening broad public access. If not, design a dedicated free database migration path and migration/rollback plan; do not use other communities' Supabase projects.
+3. Fix/test the Worker DB lifecycle and schema-initialization concurrency; add a declared Hyperdrive binding only after its real binding ID is provisioned.
+4. Run actual typecheck, tests, and Wrangler dry-runs in a working isolated checkout/CI runner. Current static tests and failed CI are insufficient.
+5. Keep the Cloudflare router and Manager un-deployed until the primary Worker, OAuth flows, Discord status/audit, and failover behavior are all verified.
+6. Do not create schedulers/cron. Existing Railway cron services remain untouched; centralized scheduler inventory remains incomplete.
+
+### User-only/external dependency
+- The authenticated Cloudflare tab can be inspected read-only. The available browser connector cannot navigate the user's tab; user can open the Hyperdrive dashboard URL `https://dash.cloudflare.com/7738d94fbc5466ad91eb65045ee746f2/workers/hyperdrive` and Workers Plans URL `https://dash.cloudflare.com/7738d94fbc5466ad91eb65045ee746f2/workers/plans`, then the current tab context can be inspected.
+- Do not ask for passwords, tokens, or secrets in chat. Do not enable paid billing or add a card.
