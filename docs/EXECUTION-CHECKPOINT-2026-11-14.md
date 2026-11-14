@@ -32,10 +32,10 @@ The recovered production Workflow and Relay were not modified. Candidate source 
 ## Cycle 17 — durable coaching interaction claims and URL hardening
 
 ### Durable idempotency
-- Extended the existing Cloudflare Durable Object with a separate SQLite table `coaching_interaction_claims`; it does not alter the `gateway_ownership` lease row or add the Coaching Relay to the Bot 005 lease.
-- A unique Discord interaction ID is claimed atomically and retained for seven days. The Worker exposes a separately authenticated `POST /coaching/interaction/claim` route using `COACHING_IDEMPOTENCY_TOKEN`.
+- Added a distinct Cloudflare `CoachingInteractionIdempotency` Durable Object class, separate namespace binding, own SQLite database and seven-day retention index; it does not alter the `GatewayLeaseCoordinator` or add the Coaching Relay to the Bot 005 lease.
+- A unique Discord interaction ID is claimed atomically and retained for seven days. The Worker exposes a separately authenticated `POST /coaching/interaction/claim` route using `COACHING_IDEMPOTENCY_TOKEN`, then delegates to the isolated DO's internal `/claim` route.
 - The candidate Workflow calls the claim endpoint after HMAC verification and JSON parsing but before dispatch. A duplicate receives a duplicate response; an unavailable claim service returns 503 and fails closed.
-- The Durable Object and Worker have dedicated tests for claims, duplicate detection, restart persistence, input validation, authentication and fail-closed behavior.
+- The isolated Durable Object and Worker have dedicated tests for claims, duplicate detection, restart persistence, input validation, authentication and fail-closed behavior.
 - The in-memory map remains only as a short-lived process-local fast path.
 
 ### Reliability qualification
@@ -51,8 +51,18 @@ The current durable claim is **at-most-once**, not a durable work queue. A proce
 - HMAC helper: 4/4 tests passed in an isolated Node.js v22.16.0 harness after correcting async assertion use. This is not the full repo test suite.
 - Durable claim SQL semantics: local Node.js v22.16.0 SQLite harness passed first claim, duplicate claim after simulated Durable Object recreation, invalid ID/source, and seven-day expiry cases.
 - Lease/fence URL validation: local Node.js v22.16.0 check passed nine rejected private/reserved URL patterns and two allowed public HTTPS patterns.
-- Source-level verification: HMAC verification precedes JSON parsing; durable claim precedes accepted dispatch; Bot 005 and Relay identities are distinct; Worker route uses a separate bearer token; DO table is separate from the Gateway lease.
+- Source-level verification: HMAC verification precedes JSON parsing; durable claim precedes accepted dispatch; Bot 005 and Relay identities are pinned to distinct source IDs and unique secrets; the Worker route uses a separate bearer token; coaching claims use a different Durable Object class/binding/SQLite store from the Gateway lease.
 - Full repository test suite remains unverified. GitHub Actions pushes on 2026-11-14 terminate with `startup_failure` before any jobs are created (`total_count: 0`, no runner/job logs). The exact cause is unknown; no claim is made that CI tests passed.
+
+### Additional Cycle 18 — execution isolation and credential separation
+
+- Moved coaching claims out of the Gateway lease Durable Object into `cloudflare/coaching-interaction-idempotency.mjs`, exported as `CoachingInteractionIdempotency`.
+- Added `COACHING_IDEMPOTENCY_STORE` binding and `v2` SQLite-class migration in `cloudflare/wrangler.jsonc`; Worker claim route now uses that dedicated object ID and internal `/claim` path.
+- Removed claim table, claim route and tests from `GatewayLeaseCoordinator`, keeping it strictly focused on `momentum-movement:bot-005-gateway`.
+- Added separate DO test file: 5/5 pass in local Node.js v22.16.0 test harness copied from current committed module/test source.
+- Restricted sender client source to exactly `bot005` or `coaching-relay`; Bot 005 and Relay candidates each assert their own source and reject HMAC secrets equal to the Discord token. Receiver bootstrap rejects duplicate sender secrets, HMAC/Discord credential reuse, and reuse of the separate idempotency token.
+- Redacted internal bootstrap error strings from public Workflow `/healthz` and `/readyz`; public output exposes only an `errorPresent` boolean.
+- Hardened lease/fence URL validation; dedicated tests now include reserved/private hostnames and IPv6.
 
 ## Current blockers and next work
 
@@ -72,3 +82,15 @@ Checkpoint recorded on `main` at commit:
 `4546854baf878f329291c4d0ab37b60364c1c747`
 
 Production state remains unchanged. Failover is not complete or production-ready.
+
+
+## Render workspace recheck — 2026-11-14
+
+- Confirmed Render workspace metadata still lists `My Workspace` (`tea-dbcqe7ss728c73fthlug`).
+- Read-only Render calls returned: service inventory = literal `null` (unverified; do not assume empty), Postgres = “No Postgres instances found”, Key Value = “No Key Value instances found”.
+- No Render resources were created. Workspace approval remains inspection-only; paid provisioning is not authorized.
+- The older `infra/failover/CHECKPOINT.md` refers to the separate stateless Discord Manager migration, not the Bot 005 Gateway primary/standby. Keep those migration scopes distinct.
+
+## Updated repository revision
+
+This checkpoint is being refreshed after additional source and test changes. Production remains untouched; failover is not complete or production-ready.
