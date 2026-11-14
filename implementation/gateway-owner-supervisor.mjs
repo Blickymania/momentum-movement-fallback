@@ -10,6 +10,7 @@ import {
 // stop the prior Gateway process before any replacement process is allowed to log in.
 export async function startGatewayOwner({
   db,
+  leaseStore,
   scope,
   ownerId,
   deploymentId,
@@ -20,12 +21,25 @@ export async function startGatewayOwner({
   destroyGateway,
   onLeaseLost
 }) {
-  if (!db || typeof db.unsafe !== "function") throw new TypeError("database_required");
+  if (leaseStore !== undefined &&
+      (!leaseStore || typeof leaseStore.acquire !== "function" ||
+       typeof leaseStore.renew !== "function" ||
+       typeof leaseStore.release !== "function")) {
+    throw new TypeError("lease_store_contract_invalid");
+  }
+  if (!leaseStore && (!db || typeof db.unsafe !== "function")) {
+    throw new TypeError("database_or_lease_store_required");
+  }
   if (typeof loginGateway !== "function") throw new TypeError("login_gateway_required");
   if (typeof destroyGateway !== "function") throw new TypeError("destroy_gateway_required");
 
+  const store = leaseStore || {
+    acquire: input => acquireGatewayLease(db, input),
+    renew: input => renewGatewayLease(db, input),
+    release: input => releaseGatewayLease(db, input)
+  };
   const identity = { scope, ownerId, deploymentId, ttlSeconds };
-  const lease = await acquireGatewayLease(db, identity);
+  const lease = await store.acquire(identity);
   if (!lease) return { ok: false, reason: "lease_unavailable" };
 
   let leaseLost = false;
@@ -72,7 +86,7 @@ export async function startGatewayOwner({
   heartbeat = startLeaseHeartbeat({
     intervalMs: heartbeatIntervalMs,
     renewTimeoutMs,
-    renew: () => renewGatewayLease(db, {
+    renew: () => store.renew({
       scope: lease.lease_scope,
       ownerId: lease.owner_id,
       fencingEpoch: lease.fencing_epoch,
@@ -113,7 +127,7 @@ export async function startGatewayOwner({
     heartbeat.stop();
     await destroy("gateway_start_failed").catch(() => {});
     if (!leaseLost) {
-      await releaseGatewayLease(db, {
+      await store.release({
         scope: lease.lease_scope,
         ownerId: lease.owner_id,
         fencingEpoch: lease.fencing_epoch
