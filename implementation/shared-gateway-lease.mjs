@@ -110,7 +110,7 @@ export async function renewGatewayLease(db, {
   ttlSeconds = 30
 }) {
   const epoch = String(fencingEpoch ?? "");
-  if (!/^\\d{1,20}$/.test(epoch)) throw new TypeError("fencing_epoch_invalid");
+  if (!/^\d{1,20}$/.test(epoch)) throw new TypeError("fencing_epoch_invalid");
   const args = [
     requiredString(scope, "scope"),
     requiredString(ownerId, "owner_id"),
@@ -123,7 +123,7 @@ export async function renewGatewayLease(db, {
 
 export async function releaseGatewayLease(db, { scope, ownerId, fencingEpoch }) {
   const epoch = String(fencingEpoch ?? "");
-  if (!/^\\d{1,20}$/.test(epoch)) throw new TypeError("fencing_epoch_invalid");
+  if (!/^\d{1,20}$/.test(epoch)) throw new TypeError("fencing_epoch_invalid");
   return first(await db.unsafe(RELEASE_SQL, [
     requiredString(scope, "scope"),
     requiredString(ownerId, "owner_id"),
