@@ -147,3 +147,15 @@ User selected Option A on 2026-11-14: preserve the existing Railway OAuth Postgr
 
 ### Exact next step
 Resolve a secure, cloud-only path to read the private Railway PostgreSQL source without enabling an unapproved public TCP endpoint or incurring Railway charges. If no private migration runner is available under the current account, explain the one-time temporary TCP proxy requirement and obtain explicit approval before creating it. Then take a source backup, restore into Neon branch br-summer-union-bfqjjfbw, verify schema and row counts, and only then configure Render to use the new Neon branch.
+
+
+### Cloud-only runner investigation — 2026-11-14
+- Rechecked current Railway CLI documentation. `railway connect <service> --tunnel-only` opens an SSH tunnel and does not require a public TCP proxy; it holds the tunnel open for an external client. Railway SSH requires a registered SSH key. Source: https://docs.railway.com/cli/connect and https://docs.railway.com/cli/ssh.
+- Railway documents that workspace-owned SSH keys grant access to every service in that workspace; adding/removing them requires workspace Admin access. Project-scoped `RAILWAY_TOKEN` does not support SSH-key management; `RAILWAY_API_TOKEN` is workspace/account scoped. Source: https://docs.railway.com/cli/ssh and https://docs.railway.com/cli/login.
+- Railway workspace enumeration succeeded and returned the user's personal workspace `blickymania's Projects` (ID recorded in connected tool context, not needed in this checkpoint). A read-only attempt to inspect connector tunnels returned: "Connector tunnels are not available for your account." No connector tunnel is available through the connected Railway account interface.
+- GitHub connector exposes file operations and workflow-run inspection but no Actions secret-management or workflow-dispatch action. Do not assume the agent can add GitHub secrets or trigger an Actions run through the connector.
+- Therefore GitHub Actions remains technically possible only if a pre-registered personal SSH key can be used with the project-scoped token, or if the user supplies a safe one-time setup for a personal SSH key. Avoid workspace-scoped key registration unless the user explicitly approves its broader workspace access. Do not put any Railway token, SSH private key, or DB URL in repository files or logs.
+- No workflow was created, no secret was configured, no SSH key was added/removed, no connector tunnel was created, and no database/network/production changes were made.
+
+### Next safe step
+Confirm whether the Railway personal account already has a registered SSH key that can be used by a temporary GitHub Actions runner. If so, use a project-scoped token plus that key for a tunnel-only connectivity test, with all tunnel output/connection strings suppressed from logs. If not, use a user-controlled one-time personal-key registration route; do not broaden to a workspace key without explicit approval. Only after tunnel connectivity is proven should a one-shot migration workflow be designed.
