@@ -4,11 +4,15 @@ on:
   push:
     paths:
       - "implementation/**"
+      - "cloudflare/**"
+      - "candidate/**"
       - "package.json"
       - ".github/workflows/failover-tests.yml"
   pull_request:
     paths:
       - "implementation/**"
+      - "cloudflare/**"
+      - "candidate/**"
       - "package.json"
       - ".github/workflows/failover-tests.yml"
 
