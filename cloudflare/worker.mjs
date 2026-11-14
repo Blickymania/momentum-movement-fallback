@@ -64,14 +64,6 @@ async function internalFenceConfirm(stub, input) {
 }
 
 async function fenceCandidate(request, env) {
-  const requestToken = env.FENCE_REQUEST_TOKEN || "";
-  if (typeof requestToken !== "string" || requestToken.length < 32 || requestToken.length > 512) {
-    return json({ error: "fence_controller_not_configured" }, 503);
-  }
-  const authorization = request.headers.get("authorization") || "";
-  const candidate = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-  if (!await sameSecret(candidate, requestToken)) return json({ error: "unauthorized" }, 401);
-
   let body;
   try {
     const raw = await request.text();
@@ -80,6 +72,7 @@ async function fenceCandidate(request, env) {
   } catch {
     return json({ error: "invalid_json" }, 400);
   }
+
   if (!body || typeof body !== "object" || Array.isArray(body) ||
       Object.keys(body).sort().join(",") !== "candidateDeploymentId,candidateOwnerId" ||
       typeof body.candidateDeploymentId !== "string" ||
@@ -89,6 +82,31 @@ async function fenceCandidate(request, env) {
       !body.candidateOwnerId.startsWith(body.candidateDeploymentId + ":")) {
     return json({ error: "fence_request_invalid" }, 400);
   }
+
+  // Each runtime deployment gets its own token. A primary process cannot use
+  // its credential to request a promotion for the standby deployment.
+  const requestTokensRaw = env.FENCE_REQUEST_TOKENS_JSON || "";
+  if (typeof requestTokensRaw !== "string" || requestTokensRaw.length > 4096) {
+    return json({ error: "fence_request_tokens_not_configured" }, 503);
+  }
+
+  let requestTokens;
+  try {
+    requestTokens = JSON.parse(requestTokensRaw);
+  } catch {
+    return json({ error: "fence_request_tokens_invalid" }, 503);
+  }
+  if (!requestTokens || typeof requestTokens !== "object" || Array.isArray(requestTokens)) {
+    return json({ error: "fence_request_tokens_invalid" }, 503);
+  }
+
+  const requestToken = requestTokens[body.candidateDeploymentId] || "";
+  if (typeof requestToken !== "string" || requestToken.length < 32 || requestToken.length > 512) {
+    return json({ error: "fence_request_not_authorized_for_deployment" }, 401);
+  }
+  const authorization = request.headers.get("authorization") || "";
+  const candidate = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!await sameSecret(candidate, requestToken)) return json({ error: "unauthorized" }, 401);
 
   const apiKey = env.RENDER_API_KEY || "";
   const serviceMapRaw = env.RENDER_SERVICE_IDS_JSON || "";
