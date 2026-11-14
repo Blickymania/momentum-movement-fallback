@@ -374,7 +374,7 @@ Bun.serve({port:Number(Bun.env.PORT||3000),async fetch(request){
  const u=new URL(request.url);const oauthResponse=await mcpOAuthDispatch(request,u);if(oauthResponse)return oauthResponse;
  if(u.pathname==="/readyz"&&request.method==="GET"){
   const bot=Bun.env.DISCORD_BOT_TOKEN,guild=Bun.env.AUTHORIZED_GUILD_ID,expectedBot=Bun.env.APPLICATION_ID;
-  if(!bot||!/^\\d{15,22}$/.test(guild||"")||!/^\\d{15,22}$/.test(expectedBot||""))return reply({status:"not_ready",reason:"configuration"},503);
+  if(!bot||!/^\d{15,22}$/.test(guild||"")||!/^\d{15,22}$/.test(expectedBot||""))return reply({status:"not_ready",reason:"configuration"},503);
   try{
    const h={authorization:"Bot "+bot,"user-agent":"DiscordManagerReadiness/1.0"};
    const [identity,access]=await Promise.all([
