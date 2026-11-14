@@ -141,12 +141,19 @@ export function createRenderServiceFencer({
     if (typeof confirmFence !== "function") throw new TypeError("fence_confirmation_callback_required");
     const candidateOwner = requiredText(candidateOwnerId, "candidate_owner_id");
     const candidateDeployment = requiredText(candidateDeploymentId, "candidate_deployment_id");
+    if (!candidateOwner.startsWith(candidateDeployment + ":")) {
+      throw new TypeError("candidate_owner_id_must_be_bound_to_deployment");
+    }
     const current = await leaseStore.read();
     if (!current) throw new Error("lease_bootstrap_required");
     if (current.lease_active === true || current.lease_active === 1) {
       throw new Error("lease_still_active");
     }
     const oldDeployment = requiredText(current.deployment_id, "previous_deployment_id");
+    const oldOwner = requiredText(current.owner_id, "previous_owner_id");
+    if (!oldOwner.startsWith(oldDeployment + ":")) {
+      throw new Error("previous_owner_id_not_bound_to_deployment");
+    }
     const previousServiceId = serviceMap.get(oldDeployment);
     const candidateServiceId = serviceMap.get(candidateDeployment);
     if (!previousServiceId || !candidateServiceId) {
