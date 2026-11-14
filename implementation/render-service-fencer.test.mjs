@@ -73,7 +73,7 @@ function fencerOptions(overrides = {}) {
 
 function inactiveLease(overrides = {}) {
   return {
-    lease_scope: "momentum-movement:discord-gateway",
+    lease_scope: "momentum-movement:bot-005-gateway",
     owner_id: "primary-deploy:primary-owner",
     fencing_epoch: "3",
     deployment_id: "primary-deploy",
