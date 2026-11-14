@@ -190,3 +190,10 @@ test("OAuth scopes default to read-only and require explicit write scope", () =>
   assert.match(source, /String\(value\|\|"mcp:read"\)/);
   assert.match(source, /unique\.some\(x=>!\["mcp:read","mcp:write"\]/);
 });
+
+test("OAuth expired-record cleanup is bounded, advisory-locked, and request-driven", () => {
+  assert.match(source, /pg_try_advisory_xact_lock\(hashtext\(\$1\)::bigint\)/);
+  assert.equal((source.match(/LIMIT 250/g)||[]).length, 4);
+  assert.match(source, /Date\.now\(\)-mcpOAuthCleanupLastRun>24\*60\*60\*1000/);
+  assert.match(source, /oauth_expired_record_cleanup_failed/);
+});
