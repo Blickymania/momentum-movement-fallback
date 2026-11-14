@@ -11,7 +11,7 @@ This directory packages the recovered, unmodified Bun HTTP/MCP Manager for an in
 - Region: Ohio or Virginia
 - Interim health check path: /healthz (process liveness only). Switch to /readyz only after Discord credentials and the intended OAuth database are configured and /readyz returns 200.
 - Auto deploy: disabled until the migration branch is reviewed
-- No database is embedded in the image. Confirm the exact Dawn-only PostgreSQL endpoint used by the Cloudflare Worker before configuring OAUTH_DATABASE_URL. Do not use Railway's private-only `oauth-postgresql` hostname from Render; Render cannot join Railway's private network. Do not assume the Neon `staging` branch is production OAuth storage: it was empty at the last read-only count and must not be used until the intended data source is confirmed.
+- No database is embedded in the image. Confirm the intended Dawn-only PostgreSQL endpoint before configuring OAUTH_DATABASE_URL. The checked-in Cloudflare failover Worker in this repository only probes manager origins and contains no database binding or database URL; it does not identify an OAuth database. A separate Cloudflare Worker database source was not discoverable in the connected GitHub repositories. Do not use Railway's private-only `oauth-postgresql` hostname from Render; Render cannot join Railway's private network. Do not assume the Neon `staging` branch is production OAuth storage: it was empty at the last read-only count and must not be used until the intended data source is confirmed.
 
 ## Required environment values
 
