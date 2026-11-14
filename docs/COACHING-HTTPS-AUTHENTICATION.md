@@ -42,6 +42,8 @@ The value generated for Bot 005 must be copied only to Bot 005's `COACHING_WORKF
 
 The candidate workflow calls the separately authenticated Cloudflare Worker route `POST /coaching/interaction/claim` after HMAC verification and JSON parsing but before dispatch. The Worker uses its own `COACHING_IDEMPOTENCY_TOKEN` and a dedicated `COACHING_IDEMPOTENCY_STORE` namespace binding to reach a separate `CoachingInteractionIdempotency` Durable Object class. That class has its own SQLite storage and a `coaching_interaction_claims` table keyed by Discord interaction ID, with a seven-day retention index. It is a different Durable Object class and instance from `GatewayLeaseCoordinator`, so coaching claims do not contend with Bot 005's lease heartbeat/fence operations and do not add the Coaching Relay to Bot 005's Gateway lease scope.
 
+The same token protects `GET /coaching/interaction/healthz`. Before the Workflow sets itself ready, it makes a bounded health request and checks the expected service identity and `ready:true`. The Worker then reads the dedicated Durable Object's internal `GET /healthz`. This prevents a missing binding or unavailable claim store from being mistaken for a ready Workflow at startup.
+
 The durable claim is at-most-once: if the workflow process crashes after the claim is stored but before dispatch completes, the interaction will not be replayed automatically and may require manual recovery. This failure mode remains an explicit release gate; a durable processing-state/recovery queue would be required to guarantee eventual processing after that crash window.
 
 ## Mandatory release gates
