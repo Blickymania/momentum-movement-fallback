@@ -254,3 +254,36 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 - Fix or obtain account-side access for GitHub Actions runner startup, then execute the committed test workflow.
 - Connect or authorize Northflank account access for read-only Sandbox/resource/billing inspection; do not accept a card or paid upgrade.
 - Establish a shared provider-independent OAuth data plane before attempting isolated Northflank preproduction routing or cutover.
+
+
+## Cycle 15 — final Manager/Worker shared-database consistency audit (2026-11-13 ET / 2026-11-14 UTC)
+
+### Findings
+- Verified that the Cloudflare Worker fallback already executes its Hyperdrive-backed PostgreSQL SELECT 1 check when MCP_OAUTH_ENABLED=true before returning oauthDatabaseVerified=true; an unavailable backend returns HTTP 503. The readiness field is not hard-coded without a database probe.
+- Corrected the Northflank runbook's OAUTH_DATABASE_URL entry: it now explicitly requires the selected shared OAuth data plane and forbids an isolated Northflank-only production database.
+- Confirmed both the Bun Manager candidate and Worker Manager port have explicit DB checks, and the router rejects new origins lacking oauthDatabaseVerified=true.
+- Router /readyz now reports status=degraded and HTTP 503 when it selects the legacy Railway origin without explicit DB verification. Ordinary request routing to that legacy origin continues; the degraded response prevents monitoring from treating unverified OAuth data as fully ready.
+
+### Verification
+- Final retrieved-source invariant validation: **35 passed, 0 failed**.
+- Verified files: Northflank Dockerfile/runbook, recovered Bun Manager candidate, Cloudflare Worker Manager port, failover router, Northflank/router tests, and GitHub validation workflow.
+- Validation included Manager/Worker database query ordering and fail-closed status, neutral bearer key compatibility, provider order, readiness truth propagation, degraded/503 state, 5-second cache and in-flight coalescing, GET/HEAD-only retry, no automatic write replay, HTTPS-origin validation, database fault-domain rollout gate, no-card guardrails, and credential-pattern scans.
+- Source-only invariant validation does not equal a full Node test run, TypeScript build, Wrangler build, Docker build, live OAuth lifecycle, or live failover test; these remain unverified.
+
+### Outstanding external blockers
+- GitHub Actions has not created a runner job; latest observed run for the prior branch head ended startup_failure with zero jobs.
+- No Northflank account/API connection is available. The Sandbox plan, no-card status, actual service/database minimums, and combined resource estimate are not verified in the account.
+- No independent shared PostgreSQL provider/data plane has been selected. The production Railway OAuth database owner/host remains unknown because variable values are redacted.
+- No production resource, route, secret, billing/payment setting, database, or Discord content was changed.
+
+### Project disposition
+- Draft PR #2 remains the implementation/review record, open and unmerged.
+- Northflank Manager package and router integration are source-prepared only.
+- Do not set NORTHFLANK_MANAGER_ORIGIN, deploy the Worker/router, migrate OAuth records, or change the production MCP URL until the shared data plane and all runtime tests are verified.
+- No scheduler, cron, keepalive, or recurring repair was created.
+
+### Resume step
+1. Resolve GitHub Actions account/repository runner startup so the actual test workflow executes.
+2. Connect Northflank account access for read-only free-tier/billing inspection; stop at card/upgrade prompts.
+3. Resolve the shared provider-independent PostgreSQL topology and existing production DB owner securely.
+4. Resume isolated preproduction deployment, OAuth lifecycle, routing, and rollback tests only after the shared DB prerequisite is met.
