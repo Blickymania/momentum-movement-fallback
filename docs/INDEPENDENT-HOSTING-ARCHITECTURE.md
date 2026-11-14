@@ -185,11 +185,7 @@ The Cloudflare candidate uses:
 - One shared leaseStore interface, so the same Gateway owner supervisor can use either the Cloudflare client or the PostgreSQL module.
 - Monotonically increasing fencing epoch, active-lease exclusion, owner/epoch-bound renewal/release, short lease TTL, and fail-closed behavior on network errors/timeouts.
 
-Local Node.js v22.16.0 simulation tests:
-- Durable Object/SQLite API: 9 passed.
-- Worker/client: 9 passed.
-- Supervisor-to-Worker-to-Durable-Object end-to-end path: 1 passed.
-- **Combined Cloudflare control-plane suite: 19 passed, 0 failed.**
+Historical initial Cloudflare prototype tests: 19 passed, 0 failed. After hard-fence, Render integration, ownership guard, and deployment identity changes, the latest combined local Node.js v22.16.0 suite is 65 passed, 0 failed across isolated working directories.
 
 This is a real SQLite execution through Node's node:sqlite and a simulated Durable Object context/Worker namespace, but it is not deployed Cloudflare edge verification. It does not verify real namespace provisioning, production secret setup, actual Cloudflare quota/plan, external network failures, or physical process fencing.
 
@@ -247,3 +243,29 @@ Cloudflare Worker/DO remain undeployed; account plan and usage are unavailable d
 ## Render credential isolation correction
 
 The unused helper that could combine a PostgreSQL/Cloudflare lease store with the Render API adapter inside a Bot process has been removed. The Render service fencer is now intentionally consumed only by cloudflare/worker.mjs. Bot-side code uses only cloudflare-fence-request-client.mjs, which sends candidate identity and a deployment-specific request token to the Worker; it never imports a Render API client or receives the Render API key. The current component suite no longer includes the two removed helper-wrapper tests. The Render fencer suite is 7/7, and the Worker-to-Render-to-Durable-Object flow remains separately simulated.
+
+
+## Storage-level owner identity invariant
+
+The lease coordinator itself now validates owner/deployment binding. Every owner ID must have the exact form `deployment-id:process-uuid`. The prefix is checked in the Durable Object during bootstrap, first acquire, and fence confirmation (for both the prior owner stored in the current row and the candidate identity). Worker checks are an additional outer layer, not the authority. Render fencer also checks both old and candidate owner/deployment pairs before any Render API request. Tests cover direct attempts to bypass the Worker with an unbound owner identity.
+
+## Latest test run and Actions blocker
+
+Latest combined Node.js v22.16.0 local result: **65 passed, 0 failed** across separately reconstructed component working directories:
+- Durable Object + Render fencer: 14
+- Worker controller + fence client + ownership guard: 15
+- Prepared Gateway owner adapter: 5
+- Provider-neutral hard-stop controller: 8
+- Shared lease + Gateway supervisor + independent preflight: 23
+
+This is local simulation using Node SQLite, mocked Discord clients, fake process-control evidence, and mocked Render API replies. It is not a clean repository checkout, deployed Cloudflare test, actual Render service suspend, or production Gateway test.
+
+Latest GitHub Actions run `43556643815` (commit `3d06db570263be426a62a846ffac64a2e044673c`) ended `startup_failure`; its jobs endpoint returned an empty list. The two immediately preceding runs also returned startup failure and zero jobs. No hosted runner or job logs exist; the cause remains unknown.
+
+## Durable Object identity hardening
+
+The Durable Object now enforces the deployment-prefixed owner ID directly at storage boundary:
+- `bootstrap` and `acquire` reject owner IDs without the requested deployment prefix.
+- `confirmFence` verifies the existing owner ID is bound to the current row's deployment and the candidate owner ID is bound to the candidate deployment before recording any proof.
+- A mismatched candidate or old owner is rejected before the fencing update.
+This prevents bypassing the Worker-only owner-prefix check by calling the Durable Object or internal routes directly.
