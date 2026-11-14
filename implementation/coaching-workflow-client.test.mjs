@@ -54,6 +54,8 @@ test("posts the original interaction payload once to the configured endpoint", a
   let captured;
   const client = createCoachingWorkflowClient({
     endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars",
     fetchFn: async (url, init) => {
       calls++;
       captured = { url: String(url), init, body: JSON.parse(init.body) };
@@ -67,6 +69,9 @@ test("posts the original interaction payload once to the configured endpoint", a
   assert.equal(captured.url, "https://coaching.example.com/interaction");
   assert.equal(captured.init.method, "POST");
   assert.equal(captured.init.headers["content-type"], "application/json");
+  assert.equal(captured.init.headers["x-coaching-source"], "bot005");
+  assert.match(captured.init.headers["x-coaching-timestamp"], /^[1-9][0-9]+$/);
+  assert.match(captured.init.headers["x-coaching-signature"], /^[a-f0-9]{64}$/);
   assert.deepEqual(captured.body, payload);
   assert.ok(captured.init.signal instanceof AbortSignal);
 });
@@ -96,6 +101,8 @@ test("fails closed on HTTP errors without retrying interaction submissions", asy
   let calls = 0;
   const client = createCoachingWorkflowClient({
     endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars",
     fetchFn: async () => {
       calls++;
       return response(503);
@@ -111,6 +118,8 @@ test("fails closed on HTTP errors without retrying interaction submissions", asy
 test("fails closed on network errors and bounded request timeouts", async () => {
   const unavailable = createCoachingWorkflowClient({
     endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars",
     fetchFn: async () => { throw new Error("network details must not leak"); }
   });
   await assert.rejects(
@@ -120,6 +129,8 @@ test("fails closed on network errors and bounded request timeouts", async () => 
 
   const stalled = createCoachingWorkflowClient({
     endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars",
     timeoutMs: 500,
     fetchFn: (_url, init) => new Promise((_resolve, reject) => {
       init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
@@ -135,6 +146,8 @@ test("rejects malformed and oversized payloads before making a network request",
   let calls = 0;
   const client = createCoachingWorkflowClient({
     endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars",
     maxPayloadBytes: 1024,
     fetchFn: async () => {
       calls++;
@@ -152,7 +165,7 @@ test("rejects malformed and oversized payloads before making a network request",
 test("loads the endpoint from COACHING_WORKFLOW_URL without reading unrelated environment values", async () => {
   let captured = null;
   const client = createCoachingWorkflowClientFromEnv({
-    env: { COACHING_WORKFLOW_URL: "https://coaching.example.com/interaction" },
+    env: { COACHING_WORKFLOW_URL: "https://coaching.example.com/interaction", COACHING_WORKFLOW_SOURCE: "bot005", COACHING_WORKFLOW_AUTH_SECRET: "local-test-auth-secret-at-least-thirty-two-chars" },
     fetchFn: async (url, init) => {
       captured = { url: String(url), body: JSON.parse(init.body) };
       return response(200);
@@ -168,10 +181,14 @@ test("loads the endpoint from COACHING_WORKFLOW_URL without reading unrelated en
 test("validates timeout and payload limits", () => {
   assert.throws(() => createCoachingWorkflowClient({
     endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars",
     timeoutMs: 100
   }), /coaching_workflow_timeout_invalid/);
   assert.throws(() => createCoachingWorkflowClient({
     endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars",
     maxPayloadBytes: 10
   }), /coaching_workflow_payload_limit_invalid/);
 });
@@ -181,6 +198,8 @@ test("checks workflow readiness without sending an interaction payload", async (
   const requests = [];
   const client = createCoachingWorkflowClient({
     endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars",
     fetchFn: async (url, init) => {
       requests.push({ url: String(url), method: init.method, body: init.body });
       return {
@@ -202,6 +221,8 @@ test("checks workflow readiness without sending an interaction payload", async (
 test("readiness reports false when the service is healthy HTTP but application is not ready", async () => {
   const client = createCoachingWorkflowClient({
     endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars",
     fetchFn: async () => ({
       ok: true,
       status: 200,
@@ -214,11 +235,15 @@ test("readiness reports false when the service is healthy HTTP but application i
 test("readiness fails closed on HTTP and network errors", async () => {
   const unavailable = createCoachingWorkflowClient({
     endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars",
     fetchFn: async () => { throw new Error("private network detail"); }
   });
   await assert.rejects(() => unavailable.checkReady(), /coaching_workflow_unavailable/);
   const failed = createCoachingWorkflowClient({
     endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars",
     fetchFn: async () => ({
       ok: false,
       status: 503,
@@ -226,4 +251,16 @@ test("readiness fails closed on HTTP and network errors", async () => {
     })
   });
   assert.deepEqual(await failed.checkReady(), { ok: false, status: 503, ready: false });
+});
+
+
+test("requires per-source authentication configuration before exposing the client", () => {
+  assert.throws(() => createCoachingWorkflowClient({
+    endpoint: "https://coaching.example.com/interaction"
+  }), /coaching_workflow_authentication_required/);
+  assert.throws(() => createCoachingWorkflowClient({
+    endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "short"
+  }), /coaching_workflow_authentication_required/);
 });
