@@ -1,5 +1,9 @@
 import { startGatewayOwner } from "./gateway-owner-supervisor.mjs";
 import { createCloudflareGatewayLeaseStore } from "./cloudflare-gateway-lease-client.mjs";
+import {
+  createCloudflareFenceRequester,
+  createRemoteFencedCloudflareLeaseStore
+} from "./cloudflare-fence-request-client.mjs";
 import { installGatewayOwnershipGuards } from "./discord-gateway-ownership-guards.mjs";
 import { GATEWAY_LEASE_SCOPE } from "../cloudflare/gateway-lease-coordinator.mjs";
 
@@ -20,6 +24,7 @@ export function prepareFencedDiscordGatewayOwner({
   ownerId,
   leaseCoordinatorUrl,
   leaseServiceToken,
+  fenceRequestToken,
   leaseStore: suppliedLeaseStore,
   ttlSeconds = 30,
   heartbeatIntervalMs = 10000,
@@ -46,15 +51,28 @@ export function prepareFencedDiscordGatewayOwner({
 
   // Create the remote store before wrapping global fetch so the client captures
   // its dedicated lease transport. The guard exempts only this public HTTPS origin.
-  const leaseStore = suppliedLeaseStore || createCloudflareGatewayLeaseStore({
+  const baseLeaseStore = suppliedLeaseStore || createCloudflareGatewayLeaseStore({
     baseUrl: leaseCoordinatorUrl,
     serviceToken: leaseServiceToken,
     fetchFn
   });
-  if (!leaseStore || typeof leaseStore.acquire !== "function" ||
-      typeof leaseStore.renew !== "function" || typeof leaseStore.release !== "function") {
+  if (!baseLeaseStore || typeof baseLeaseStore.acquire !== "function" ||
+      typeof baseLeaseStore.renew !== "function" || typeof baseLeaseStore.release !== "function") {
     throw new TypeError("lease_store_contract_invalid");
   }
+
+  // The bot gets only its deployment-specific fence-request token. Render API
+  // credentials and direct Durable Object fence-confirm authority stay in Worker.
+  const fenceRequester = suppliedLeaseStore ? null : createCloudflareFenceRequester({
+    baseUrl: leaseCoordinatorUrl,
+    requestToken: fenceRequestToken,
+    fetchFn,
+    timeoutMs: 30000
+  });
+  const leaseStore = suppliedLeaseStore || createRemoteFencedCloudflareLeaseStore({
+    baseLeaseStore,
+    fenceRequester
+  });
   const guards = installGatewayOwnershipGuards({
     client,
     leaseCoordinatorUrl,
