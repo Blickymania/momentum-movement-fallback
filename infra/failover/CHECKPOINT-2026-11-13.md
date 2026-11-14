@@ -226,3 +226,36 @@ Scope: Dawn Dotta / Momentum Movement only. No other Discord community or projec
 - Render runtime: unverified.
 - No production or cloud resources changed.
 - Next: continue source-level reliability review and keep runtime deployment blocked until a persistent private DB tunnel connector and an authorized no-cost deployment environment are available.
+
+
+## Follow-up execution cycle — configuration and route readiness checks
+
+### Static checks executed
+- Parsed both Wrangler JSONC files as JSON (they currently contain no JSONC comments).
+- Ran 9 source/config assertions:
+  1. Worker config parses and points to `src/index.ts`.
+  2. `nodejs_compat` is enabled.
+  3. Hyperdrive binding is intentionally absent until a real resource ID exists.
+  4. Worker uses workers.dev for isolated testing.
+  5. Router config parses and points to `src/failover-router.ts`.
+  6. Cloudflare primary origin is intentionally unset before deployment.
+  7. Railway fallback origin matches the verified production Manager domain.
+  8. Render fallback origin is intentionally unset until Render is provisioned and verified.
+  9. Render source matches the recovered Manager source except for a single trailing newline.
+- Result: **9 passed, 0 failed**.
+- These are JavaScript-level static checks only. Wrangler schema validation, TypeScript compilation, npm tests, and deploy dry-runs remain unexecuted.
+
+### Routing posture verified
+- Router is not yet deployed and currently has only the Railway fallback configured.
+- It cannot route to a Cloudflare Worker or Render service until those origins are provisioned and pass /readyz identity checks.
+- This is intentional fail-closed configuration; do not add placeholder origins or route production traffic to an unverified target.
+
+### Browser status
+- Rechecked authenticated browser tab 1554475672. It remains on Workers & Pages; the user has not navigated to the Workers VPC or Hyperdrive dashboard.
+- The sidebar exposes the Workers VPC and Hyperdrive dashboard routes, but the browser connector is read-only and cannot navigate the user's tab.
+- No account role or VPC resource inventory has been verified yet.
+
+### Cycle result
+- Static Wrangler config/parity: 9/9 passed.
+- No code or production resource changed.
+- Next: inspect VPC dashboard permissions/tunnels and continue non-destructive code audit. Actual build/deployment remains blocked by lack of an authorized runner, Railway trial expiry, and the missing private-network connector.
