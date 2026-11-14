@@ -198,3 +198,33 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 4. Only after the shared database, data-plane identity, backup/restore, and provider access path are proven, deploy Northflank as an isolated preproduction Manager with writes disabled.
 5. Test MCP discovery, authenticated status/audit, OAuth registration/PKCE/token lifecycle, database outage handling, controlled writes, origin routing, failback, and rollback.
 6. Keep Northflank origin unset and the live Railway Manager unchanged until all gates pass.
+
+
+## Cycle 13 — final source-invariant validation and draft PR checkpoint (2026-11-13 ET / 2026-11-14 UTC)
+
+### Verification completed
+- Retrieved the exact current branch versions of the Dockerfile, Northflank runbook, Bun Manager, Cloudflare Worker Manager port, failover router, tests, and validation workflow from GitHub.
+- Executed 27 direct source-level invariants against those retrieved file contents in the current JavaScript execution environment: **27 passed, 0 failed**.
+- Checks cover pinned Bun runtime and container command, HTTP Manager scope/no Gateway login, PostgreSQL readiness/fail-closed behavior, provider-neutral auth compatibility, Northflank/Railway/Cloudflare/Render priority, required DB-ready response on new origins, legacy Railway compatibility, true readiness propagation, 5-second cache/in-flight probe coalescing, safe-read-only retry behavior, origin URL validation, no-card/no-upgrade guide guardrails, shared OAuth database rollout gate, and common embedded credential-pattern scans.
+- Compared the exact base-branch and candidate source contents for Manager and Worker: after applying only the expected readiness/auth changes, each file matched exactly. No additional source drift was found.
+- Draft pull request opened: https://github.com/Blickymania/momentum-movement-fallback/pull/2 (base: infra/dawn-dotta-cloudflare-worker; head: infra/dawn-dotta-northflank-manager). It is open, unmerged, and draft. The branch was not merged into the base branch or main.
+- GitHub PR metadata reports the draft PR mergeable after the initial metadata refresh. This is not evidence of a successful build or test run.
+
+### Still unverified
+- GitHub Actions newest observed run after these changes ended in startup_failure; jobs endpoint reports zero jobs. No CI test steps ran.
+- 27/27 are direct source-level invariant checks, not a Node test-suite execution, TypeScript compilation, Wrangler build, Docker build, live Northflank run, live Cloudflare run, OAuth lifecycle, or production failover test.
+- Bun and Docker CLIs are not installed in the current execution environment; a full project checkout/dependency install is not available through the connected GitHub tool.
+- Northflank account-side Sandbox estimator, card/payment state, and actual resource availability are not verified.
+- Shared production OAuth PostgreSQL location/ownership remains unknown; current Railway environment variables are value-redacted.
+
+### Current disposition
+- Candidate code and deployment instructions are preserved in the open draft PR.
+- NORTHFLANK_MANAGER_ORIGIN must remain unset until the same OAuth data plane is proven across Northflank and the existing fallback origin, and live OAuth/restore tests pass.
+- Railway production Manager and all other production services remain unchanged. No database, secret, card, paid plan, cloud resource, DNS, production route, or Discord content was modified.
+- No scheduler, cron job, keepalive, or recurring maintenance process was created.
+
+### Next exact action
+- Resolve the GitHub Actions zero-job startup failure from repository/account Actions settings or GitHub support, then rerun the branch validation job.
+- Obtain Northflank account access for read-only Sandbox resource and no-card verification.
+- Identify the existing OAuth database owner/host safely and select a shared provider-independent database path.
+- Resume with isolated preproduction deployment only after those external prerequisites are met; do not cut over production.
