@@ -4,7 +4,9 @@ Updated: 2026-11-13 (US Eastern) / 2026-11-14 UTC
 
 ## Current live state
 
-- Bot 005 remains the only active Discord Gateway owner.
+> **Superseded inventory correction (2026-11-14):** The earlier statement that Bot 005 was the only active Gateway owner in this Railway project is incorrect and must not be used for migration planning. A later read-only audit identified six live Gateway-connected workloads in the Momentum Movement project. Bot 005's new lease scope covers only its own primary/standby pair; the other five workloads, including the Coaching Interaction Relay, remain independent. See `docs/MOMENTUM-MOVEMENT-GATEWAY-WORKLOAD-INVENTORY.md`.
+
+- Bot 005 remains the current primary for its own command/interaction workload on Railway.
 - Bot 005's latest Railway deployment is still the successful deployment from 2026-11-11.
 - Runtime logs show Bot 005 resumed its Discord Gateway at 2026-11-14 02:49 UTC.
 - The Dawn Dotta Discord Manager is connected; the latest read-only guild audit passed.
