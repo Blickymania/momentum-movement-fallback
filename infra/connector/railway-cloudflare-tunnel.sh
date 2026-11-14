@@ -7,10 +7,21 @@ set -eu
 : "${RAILWAY_DATABASE_SERVICE_ID:?RAILWAY_DATABASE_SERVICE_ID is required}"
 : "${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}"
 
+for command_name in railway cloudflared nc; do
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    echo "Required command is missing: $command_name" >&2
+    exit 127
+  fi
+done
+
 LOCAL_FORWARD_PORT="${LOCAL_FORWARD_PORT:-15432}"
 case "$LOCAL_FORWARD_PORT" in
   ''|*[!0-9]*) echo "LOCAL_FORWARD_PORT must be numeric" >&2; exit 2 ;;
 esac
+if [ "${#LOCAL_FORWARD_PORT}" -gt 5 ] || [ "$LOCAL_FORWARD_PORT" -lt 1 ] || [ "$LOCAL_FORWARD_PORT" -gt 65535 ]; then
+  echo "LOCAL_FORWARD_PORT must be between 1 and 65535" >&2
+  exit 2
+fi
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dawn-railway-tunnel.XXXXXX")"
 RAILWAY_PID=""
@@ -58,6 +69,8 @@ until nc -z 127.0.0.1 "$LOCAL_FORWARD_PORT" >/dev/null 2>&1; do
   sleep 1
 done
 
+# The Railway CLI keeps its own inherited token; do not pass it to cloudflared.
+unset RAILWAY_TOKEN
 cloudflared tunnel --no-autoupdate run --token-file "$TOKEN_FILE" &
 CLOUDFLARED_PID=$!
 
