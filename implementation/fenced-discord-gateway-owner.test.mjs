@@ -8,7 +8,7 @@ function fakeClient() {
   client.loginCount = 0;
   client.destroyCount = 0;
   client.restCalls = [];
-  client.login = async () => { client.loginCount++; return "connected"; };
+  client.login = async () => { client.loginCount++; client.emit("ready"); return "connected"; };
   client.destroy = async () => { client.destroyCount++; };
   client.rest = {
     async request(...args) { client.restCalls.push(args); return { ok: true }; }
@@ -97,6 +97,7 @@ test("prepared gateway cannot login or execute event side effects until lease ac
   });
 
   let events = 0;
+  client.once("ready", () => prepared.markApplicationReady());
   client.on("interaction", async () => {
     events++;
     await client.rest.request("POST", "/channels/1/messages");
