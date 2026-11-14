@@ -101,17 +101,20 @@ This checkpoint is being refreshed after additional source and test changes. Pro
 - Moved coaching claim persistence into a dedicated `CoachingInteractionIdempotency` Durable Object class and a new `COACHING_IDEMPOTENCY_STORE` binding.
 - Added migration `v2` to `cloudflare/wrangler.jsonc`; the Worker public endpoint remains `POST /coaching/interaction/claim`, but internal delegation now uses the isolated object's `POST /claim`.
 - Removed the claims table, SQL, claim method, route and associated tests from `GatewayLeaseCoordinator`. A source check confirms the lease class no longer contains the coaching claims table.
-- Added a dedicated five-test SQLite suite. Local Node.js v22.16.0 run: **5/5 passed**.
-- Added a dedicated Worker claim-route suite. Local Node.js v22.16.0 route harness: **4/4 passed**. The focused harness used the committed route logic with unrelated Render/Gateway modules stubbed; it is not a full Worker integration test.
+- Added a dedicated SQLite suite. Local Node.js v22.16.0 run: **6/6 passed**, including schema/index, one-time claims across simulated object recreation, invalid source/ID rejection, seven-day retention, strict claim route and internal health.
+- Added a dedicated Worker claim-route suite. Local Node.js v22.16.0 focused route harness: **6/6 passed**, including bearer authentication, strict input validation, duplicate claims, fail-closed missing config, authenticated readiness and unavailable-object response. The focused harness used the route logic with unrelated Render/Gateway modules stubbed; it is not a full Worker integration test.
 - Re-ran HMAC helper tests: **4/4 passed** in the isolated Node.js v22.16.0 harness.
 - Re-ran URL validation checks: **14** private/reserved/malformed URL patterns rejected, and **2** public HTTPS URLs accepted. The repository regression tests for those cases are committed but full CI is still unavailable.
-- Total focused local tests executed in this cycle: **13/13** across HMAC, isolated SQLite idempotency and Worker claim routing. This is a targeted component count only, not the repository's complete test suite.
+- Total focused local tests executed after adding authenticated readiness: **16/16** across HMAC, isolated SQLite idempotency and Worker claim/readiness routing. This is a targeted component count only, not the repository's complete test suite.
+- GitHub-connected source inspection independently passed **17/17** current-head architectural invariants, covering Wrangler bindings/migrations, Gateway-vs-coaching DO isolation, HMAC-before-parse, health-before-ready, durable-claim-before-dispatch, credential separation and failed-hard-stop promotion guard. These are source assertions, not compiled/runtime tests.
 - Restricted the Workflow client to exactly two source identities; Bot 005 and Relay candidate code pin their own identities and reject sender-secret reuse with the Discord bot token. Receiver bootstrap checks that sender, Discord and idempotency secrets are all distinct.
 - Public Workflow health responses now disclose only whether a bootstrap error is present, not the internal error string.
+- Added authenticated `GET /coaching/interaction/healthz` Worker route and internal DO `/healthz`; Workflow startup probes it with a 5-second timeout and verifies exact service identity before `ready=true`.
+- Added `implementation/cloudflare-wrangler-config.test.mjs` to enforce unique migration tags, both separate DO class bindings, and the v1/v2 class migrations.
 
 ## CI status after Cycle 19
 
-Latest main push run `43563342927` (commit `4c260c47393c6626050fe601ac537e7781fade79`) ended `startup_failure`; earlier adjacent main runs show the same result. The jobs endpoint reports zero jobs and no runner logs. The subsequent regression-test commits do not change the verified limitation: the full repository suite remains unrun in CI, and exact root cause is unknown.
+Latest main push run `43563958104` (commit `80f23af4d2a69a05960bb7729e372b24e1da5fd1`, 2026-11-14 05:57:14 UTC) ended `startup_failure`; the jobs endpoint returned zero jobs. The immediately preceding seven main runs show the same conclusion. No runner/job logs exist, so the full repository suite remains unrun in CI and the root cause is still unknown. The subsequent regression-test commits do not change the verified limitation: the full repository suite remains unrun in CI, and exact root cause is unknown.
 
 ## Production and hosting state after Cycle 19
 
@@ -120,3 +123,22 @@ Latest main push run `43563342927` (commit `4c260c47393c6626050fe601ac537e7781fa
 - No Cloudflare Worker, Durable Object, migration, route, secret or DNS resource has been deployed or created.
 - Railway Bot 005 and the other five Gateway-connected workloads remain unchanged.
 - The separate `infra/failover/CHECKPOINT.md` is for the stateless Discord Manager migration; it must not be confused with the Bot 005 Gateway primary/standby plan.
+
+
+### Cycle 20 — verified idempotency readiness and migration guard
+
+- Added internal Durable Object `GET /healthz` returning a static service identity and ready boolean.
+- Added separately authenticated Worker `GET /coaching/interaction/healthz`, which verifies the idempotency token and probes the distinct Durable Object's health endpoint.
+- Candidate Coaching Workflow now performs this health call with a 5-second timeout during bootstrap; it refuses to set `ready=true` if the claim store is missing, misidentified or unavailable. This is a startup check; runtime claim calls remain fail-closed if the service later becomes unavailable.
+- Added two DO readiness tests and two Worker readiness tests. Focused local Node.js v22.16.0 component harness: **16/16 passed** across HMAC, DO SQLite/health, and Worker claim/readiness logic.
+- Added `implementation/cloudflare-wrangler-config.test.mjs` to guard the two separate DO class bindings, unique migration tags, and v1/v2 SQLite class migrations.
+- Read all current main source and test files through the GitHub connector and passed **17/17 static architectural invariants**. This is not TypeScript/Bun compilation, Wrangler validation, a full repository test, or live Cloudflare verification.
+
+## Latest CI after Cycle 20
+
+- Latest main run `43563958104` on commit `80f23af4d2a69a05960bb7729e372b24e1da5fd1` concluded `startup_failure` (2026-11-14 05:57:14 UTC).
+- Jobs API returned `jobs: []`. The preceding seven main runs show the same startup failure. No test job started; root cause cannot be established from available connector output.
+
+## Production safety state after Cycle 20
+
+No Render, Cloudflare, Railway or Discord production resource was created, changed, stopped, suspended, redeployed or routed. No secret values were generated or provisioned. Bot 005 remains the current Railway primary. Failover remains unproven and is not production-ready.
