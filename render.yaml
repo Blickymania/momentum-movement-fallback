@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: dawn-dotta-discord-manager
+    runtime: docker
+    plan: free
+    region: virginia
+    repo: https://github.com/Blickymania/momentum-movement-fallback
+    branch: infra/dawn-dotta-cloudflare-worker
+    dockerContext: .
+    dockerfilePath: render/Dockerfile
+    autoDeployTrigger: off
+    healthCheckPath: /healthz
+    envVars:
+      - key: WRITES_ENABLED
+        value: "false"
