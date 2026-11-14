@@ -51,11 +51,21 @@ export class MomentumMovementLease extends DurableObject {
   }
 
   async fetch(request) {
-    if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
     const path = new URL(request.url).pathname;
+    if (request.method === "GET" && path === "/health") {
+      return json({ ok: true, service: SERVICE, storage: "sqlite" });
+    }
+    if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
     if (!PATHS.includes(path)) return json({ error: "not_found" }, 404);
+    const contentType = String(request.headers.get("content-type") || "").toLowerCase();
+    if (!contentType.includes("application/json")) return json({ error: "unsupported_media_type" }, 415);
+    const declaredLength = Number(request.headers.get("content-length") || 0);
+    if (Number.isFinite(declaredLength) && declaredLength > 2048) return json({ error: "payload_too_large" }, 413);
+    let raw;
+    try { raw = await request.text(); } catch { return json({ error: "invalid_body" }, 400); }
+    if (new TextEncoder().encode(raw).byteLength > 2048) return json({ error: "payload_too_large" }, 413);
     let body;
-    try { body = await request.json(); } catch { return json({ error: "invalid_json" }, 400); }
+    try { body = JSON.parse(raw); } catch { return json({ error: "invalid_json" }, 400); }
     if (!validInstanceId(body?.instanceId)) return json({ error: "invalid_instance_id" }, 400);
     const ttlSeconds = Number(body?.ttlSeconds ?? 60);
     if ((path === "/v1/lease/acquire" || path === "/v1/lease/renew") &&
@@ -92,7 +102,17 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
-      return json({ ok: true, service: SERVICE, version: 1 });
+      try {
+        const id = env.LEASE_COORDINATOR.idFromName(SERVICE);
+        const response = await env.LEASE_COORDINATOR.get(id).fetch(
+          new Request("https://lease-coordinator.internal/health", { method: "GET" })
+        );
+        if (!response.ok) return json({ ok: false, service: SERVICE, error: "coordinator_unhealthy" }, 503);
+        const state = await response.json();
+        return json({ ...state, version: 1 });
+      } catch {
+        return json({ ok: false, service: SERVICE, error: "coordinator_unavailable" }, 503);
+      }
     }
     if (request.method !== "POST" || !PATHS.includes(url.pathname)) return json({ error: "not_found" }, 404);
     const expected = env.LEASE_CONTROL_TOKEN;
