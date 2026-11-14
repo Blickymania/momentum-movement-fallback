@@ -479,3 +479,13 @@ Keep the connector prepared and isolated. Continue the provider/host feasibility
 - That makes the verified member policy sufficient in principle for the separately documented VPC Service creation requirement; the earlier wording that the permission remained wholly unknown was overly cautious.
 - Sources: https://developers.cloudflare.com/fundamentals/manage-members/roles/ and https://developers.cloudflare.com/workers/networking/private-networks/vpc-services/
 - The exact VPC creation operation still has not been attempted, so operational access is not yet proven by a successful create/test. No role or member permission was changed.
+
+
+## Native Node test for connector artifact
+
+- Added `tests/connector-script.test.mjs` with three native Node tests covering shell syntax, secret handling/token-file use, and the no-public-TCP-proxy invariant.
+- Test file commit: `8ab173aeb18216a366563009a7ef53954406abfb`.
+- Copied the verified connector script and test file into an isolated local Node 22 test workspace and ran the actual `node --test tests/connector-script.test.mjs` command.
+- Result: **3 tests, 3 passed, 0 failed**.
+- This is a genuine Node test-runner result for the connector artifact only. It is not the full project test suite; the main TypeScript Worker source and its Node tests still have not been compiled/executed by the native runner.
+- No deployment or external resource creation occurred.
