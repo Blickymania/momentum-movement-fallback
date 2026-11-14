@@ -1,4 +1,4 @@
-const SNOWFLAKE = /^\\d{17,22}$/;
+const SNOWFLAKE = /^\d{17,22}$/;
 
 function validateSnapshot(snapshot, label) {
   if (!snapshot || typeof snapshot !== "object") {
