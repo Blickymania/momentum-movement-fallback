@@ -31,7 +31,9 @@
 - Added tests: 7 lease-state, 6 lease-client, 1 static listener-wiring, and 4 worker security/readiness checks (18 defined total).
 - Previous checkpoint recorded 13 state/client tests as passing; this session did not independently rerun them. Do not claim all 18 passed.
 - Added event-driven GitHub Actions workflow `.github/workflows/dawn-dotta-failover-tests.yml`.
-- Added manual-only Cloudflare deployment workflow `.github/workflows/deploy-dawn-dotta-lease.yml`; it runs all tests before deployment and requires repository Actions secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `LEASE_CONTROL_TOKEN`.
+- Added manual-only Cloudflare deployment workflow `.github/workflows/deploy-dawn-dotta-lease.yml`; it runs all tests before deployment and requires repository Actions secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `LEASE_CONTROL_TOKEN`. It deploys code and the lease secret together through a temporary protected secrets file and Wrangler `--secrets-file`.
+- Added `secrets.required: [LEASE_CONTROL_TOKEN]` to Wrangler config so a deployment without the lease secret fails closed.
+- Added provider-specific listener deployment instructions in `failover/listener/DEPLOYMENT.md`; both hosts must remain `LISTENER_RUNTIME_ACTIVE=false` until the old Railway listener is stopped.
 - Public verification returned 404 for repository/workflow/commit, consistent with private/inaccessible repository; this does not establish whether the workflow ran. CI status remains unverified.
 
 ### Production diagnostics
@@ -71,7 +73,7 @@
 
 ## Exact next execution steps
 
-1. Add the three required GitHub Actions secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `LEASE_CONTROL_TOKEN`) and manually run `.github/workflows/deploy-dawn-dotta-lease.yml`; verify the returned Worker URL and `/health` endpoint. The connected Railway app redacts the existing environment values, so do not copy or expose them in chat.
+1. Add the three required GitHub Actions secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `LEASE_CONTROL_TOKEN`) and manually run `.github/workflows/deploy-dawn-dotta-lease.yml`; verify the returned Worker URL and `/health` endpoint. For the first deploy, Cloudflare requires Workers Admin scoped only to the Workers product; rotate the API token to Workers Editor scoped to this Worker afterward. The connected Railway app redacts existing variable values, so do not copy or expose them in chat.
 2. Revalidate current no-card Botkeep and Silly Development terms/availability; provision only if free eligibility and persistent runtime are confirmed.
 3. Run the GitHub failover tests in an authenticated repository context; record the actual workflow run and test counts. Do not mark CI passed based on file creation.
 4. Inspect backup-service configuration and determine whether the existing single scheduled Postgres backup can safely cover both PostgreSQL services without adding a second scheduler.
