@@ -185,3 +185,8 @@ test("OAuth callback uses hashed, expiring, single-use state", () => {
   assert.match(source, /mcpOAuthHash\(state\)/);
   assert.match(source, /state_hash=\$1 AND expires_at>now\(\) AND consumed_at IS NULL/);
 });
+
+test("OAuth scopes default to read-only and require explicit write scope", () => {
+  assert.match(source, /String\(value\|\|"mcp:read"\)/);
+  assert.match(source, /unique\.some\(x=>!\["mcp:read","mcp:write"\]/);
+});
