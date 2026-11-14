@@ -489,3 +489,14 @@ Keep the connector prepared and isolated. Continue the provider/host feasibility
 - Result: **3 tests, 3 passed, 0 failed**.
 - This is a genuine Node test-runner result for the connector artifact only. It is not the full project test suite; the main TypeScript Worker source and its Node tests still have not been compiled/executed by the native runner.
 - No deployment or external resource creation occurred.
+
+
+## Production safety recheck
+
+- Railway production environment rechecked read-only after the code/connector work.
+- Dawn Dotta Discord Manager remains **online**, latest deployment `f878c9c8-4513-4d44-9a80-d546096d074f` SUCCESS, zero active warnings/criticals, zero recent failures, and no staged changes.
+- Environment still has 34 services and no pending work. No TCP proxy is configured on the Manager.
+- The sole reported production issue remains `Dawn Dotta News Forum 24h Retention Cleanup`: latest deployment `582277d8-108d-4d22-b214-0286be447404` CRASHED, one critical issue, one crashed replica. Its current config contains a base64-encoded no-op start command and restart policy NEVER; the prior failed deployment still runs the older code. Railway trial restrictions previously prevented redeploying the no-op config.
+- No production service was modified or restarted in this check.
+- No scheduler was created or changed.
+- Next: keep Manager untouched; resolve the retired-forum cleanup service only when a permitted redeploy path exists, and continue the persistent private-connector host investigation.
