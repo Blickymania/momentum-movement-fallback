@@ -132,3 +132,16 @@ test("malformed JSON-RPC requests return protocol errors and notifications do no
   assert.match(source, /code:-32600,message:"Invalid Request"/);
   assert.match(source, /if\(!Object\.prototype\.hasOwnProperty\.call\(rpc,"id"\)\)return new Response\(null,\{status:202\}\)/);
 });
+
+test("router retries safe reads only after a verified alternate is selected", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /const safeRead = request\.method === "GET" \|\| request\.method === "HEAD"/);
+  assert.match(router, /if \(!safeRead\) break/);
+  assert.match(router, /current = await chooseOrigin\(env, excluded\)/);
+});
+
+test("router excludes origins already attempted during safe-read failover", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /excluded\.add\(current\.name\)/);
+  assert.match(router, /if \(excluded\.has\(candidate\.name\)\) continue/);
+});
