@@ -121,3 +121,11 @@ test("Cloudflare Worker protects the durable coaching claim route with a separat
   assert.match(worker, /sameSecret\(candidate, token\)/);
   assert.match(worker, /source !== "bot005" && body\.source !== "coaching-relay"/);
 });
+
+
+test("candidate Coaching Workflow does not disclose internal bootstrap error strings on public health routes", async () => {
+  const source = await readFile(workflowPath, "utf8");
+  assert.match(source, /errorPresent:Boolean\(lastError\)/);
+  assert.doesNotMatch(source, /Response\.json\(\{ready,lastError\}/);
+  assert.doesNotMatch(source, /Response\.json\(\{error:"not-ready",lastError\}/);
+});
