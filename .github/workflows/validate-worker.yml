@@ -17,6 +17,21 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Build and smoke-test the standalone Bun Manager
+        run: |
+          docker build -f render/Dockerfile -t dawn-dotta-manager:ci .
+          docker run --detach --name dawn-dotta-manager-ci --publish 10000:10000 --env PORT=10000 --env WRITES_ENABLED=false dawn-dotta-manager:ci
+          cleanup() { docker rm --force dawn-dotta-manager-ci >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          healthy=false
+          for attempt in $(seq 1 30); do
+            code="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:10000/healthz || true)"
+            if [ "$code" = "200" ]; then healthy=true; break; fi
+            sleep 1
+          done
+          test "$healthy" = "true"
+          code="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:10000/readyz || true)"
+          test "$code" = "503"
       - uses: actions/setup-node@v4
         with:
           node-version: 22

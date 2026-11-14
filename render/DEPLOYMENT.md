@@ -21,7 +21,7 @@ Set these directly in Render's secret/environment manager. Do not place secret v
 - AUTHORIZED_GUILD_ID
 - APPLICATION_ID
 - WRITES_ENABLED (false until a verified controlled write test)
-- RAILWAY_SERVICE_KEY (temporary compatibility name for existing MCP clients)
+- MANAGER_SERVICE_KEY (preferred provider-neutral name; RAILWAY_SERVICE_KEY remains a legacy fallback)
 - MCP_OAUTH_ENABLED
 - OAUTH_DATABASE_URL (same Dawn-only database as the Worker)
 - DISCORD_OAUTH_CLIENT_ID

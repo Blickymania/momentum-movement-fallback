@@ -186,7 +186,7 @@ async function invoke(name,args){
  const channelId=segments[1]==="channels"&&/^[0-9]{15,22}$/.test(segments[2]||"")?segments[2]:null;
  if(!(route===root||route.startsWith(root+"/")||channelId))return fail("Route is outside this manager's authorized guild.");
  if(channelId){const owner=await channelGuild(channelId,c.token);if(owner.status)return fail("Channel ownership could not be verified (Discord returned "+owner.status+").");if(owner.guildId!==c.guild)return fail("Channel is outside this manager's authorized guild.");}
- if(method!=="GET"){if(!c.writes)return fail("Writes are disabled until WRITES_ENABLED=true is set for this Railway service.");if(!/^\d{15,22}$/.test(c.app||""))return fail("Configured bot application identity is missing.");try{const who=await fetch(API+"/users/@me",{headers:{authorization:"Bot "+c.token},signal:AbortSignal.timeout(12000)});if(!who.ok||String((await who.json()).id)!==c.app)return fail("Discord bot application identity mismatch; no write performed.");}catch{return fail("Discord bot identity could not be verified; no write performed.");}}
+ if(method!=="GET"){if(!c.writes)return fail("Writes are disabled until WRITES_ENABLED=true is set for this manager service.");if(!/^\d{15,22}$/.test(c.app||""))return fail("Configured bot application identity is missing.");try{const who=await fetch(API+"/users/@me",{headers:{authorization:"Bot "+c.token},signal:AbortSignal.timeout(12000)});if(!who.ok||String((await who.json()).id)!==c.app)return fail("Discord bot application identity mismatch; no write performed.");}catch{return fail("Discord bot identity could not be verified; no write performed.");}}
  const url=new URL(API+route);
  for(const [k,v] of Object.entries(args.query||{})){if(!/^[a-zA-Z0-9_-]{1,80}$/.test(k))return fail("Invalid query parameter.");url.searchParams.set(k,String(v));}
  const headers={authorization:"Bot "+c.token,"user-agent":"DiscordManager/1.0"};
@@ -374,7 +374,7 @@ Bun.serve({port:Number(Bun.env.PORT||3000),async fetch(request){
  const u=new URL(request.url);const oauthResponse=await mcpOAuthDispatch(request,u);if(oauthResponse)return oauthResponse;
  if(u.pathname==="/readyz"&&request.method==="GET"){
   const bot=Bun.env.DISCORD_BOT_TOKEN,guild=Bun.env.AUTHORIZED_GUILD_ID,expectedBot=Bun.env.APPLICATION_ID;
-  if(!bot||!/^\d{15,22}$/.test(guild||"")||!/^\d{15,22}$/.test(expectedBot||""))return reply({status:"not_ready",reason:"configuration"},503);
+  if(!bot||!/^\\d{15,22}$/.test(guild||"")||!/^\\d{15,22}$/.test(expectedBot||""))return reply({status:"not_ready",reason:"configuration"},503);
   try{
    const h={authorization:"Bot "+bot,"user-agent":"DiscordManagerReadiness/1.0"};
    const [identity,access]=await Promise.all([
@@ -384,12 +384,22 @@ Bun.serve({port:Number(Bun.env.PORT||3000),async fetch(request){
    if(!identity.ok||!access.ok)return reply({status:"not_ready",reason:"discord_unavailable"},503);
    const [who,server]=await Promise.all([identity.json(),access.json()]);
    if(String(who.id)!==String(expectedBot)||String(server.id)!==String(guild))return reply({status:"not_ready",reason:"scope_mismatch"},503);
-   return reply({status:"ready",manager:NAME,discordVerified:true});
+   let databaseVerified=false;
+   if(mcpOAuthEnabled()){
+    if(!mcpOAuthDb)return reply({status:"not_ready",reason:"oauth_database_unavailable",discordVerified:true,databaseVerified:false},503);
+    try{
+     const rows=await mcpOAuthQuery(mcpOAuthDb,"SELECT to_regclass('public.mcp_oauth_clients') IS NOT NULL AS clients,to_regclass('public.mcp_oauth_login_requests') IS NOT NULL AS login_requests,to_regclass('public.mcp_oauth_authorization_codes') IS NOT NULL AS authorization_codes,to_regclass('public.mcp_oauth_access_tokens') IS NOT NULL AS access_tokens,to_regclass('public.mcp_oauth_refresh_tokens') IS NOT NULL AS refresh_tokens");
+     const tables=rows[0]||{};
+     databaseVerified=["clients","login_requests","authorization_codes","access_tokens","refresh_tokens"].every(key=>tables[key]===true);
+     if(!databaseVerified)return reply({status:"not_ready",reason:"oauth_schema_unavailable",discordVerified:true,databaseVerified:false},503);
+    }catch{return reply({status:"not_ready",reason:"oauth_database_unavailable",discordVerified:true,databaseVerified:false},503);}
+   }
+   return reply({status:"ready",manager:NAME,discordVerified:true,databaseVerified});
   }catch{return reply({status:"not_ready",reason:"readiness_timeout"},503);}
  }
- if(u.pathname==="/healthz"&&request.method==="GET")return reply({status:"ok",manager:NAME,service:"railway"});
+ if(u.pathname==="/healthz"&&request.method==="GET")return reply({status:"ok",manager:NAME,service:"dawn-dotta-http-manager"});
  if(u.pathname!=="/mcp"||request.method!=="POST")return reply({error:"Not found"},404);
- const provided=request.headers.get("authorization")||"";const secret=Bun.env.RAILWAY_SERVICE_KEY;const staticAuth=!!secret&&provided==="Bearer "+secret;let oauthAuth=null;if(!staticAuth&&provided.startsWith("Bearer ")){try{oauthAuth=await mcpOAuthAuthenticate(provided.slice(7));}catch{return reply({error:"OAuth authentication backend unavailable"},503);}}if(!staticAuth&&!oauthAuth)return mcpOAuthUnauthorized();
+ const provided=request.headers.get("authorization")||"";const secret=Bun.env.MANAGER_SERVICE_KEY||Bun.env.RAILWAY_SERVICE_KEY;const staticAuth=!!secret&&provided==="Bearer "+secret;let oauthAuth=null;if(!staticAuth&&provided.startsWith("Bearer ")){try{oauthAuth=await mcpOAuthAuthenticate(provided.slice(7));}catch{return reply({error:"OAuth authentication backend unavailable"},503);}}if(!staticAuth&&!oauthAuth)return mcpOAuthUnauthorized();
  let rpc;try{rpc=await request.json();}catch{return reply({error:"Invalid JSON"},400);}
  const id=rpc.id??null;const result=(v)=>reply({jsonrpc:"2.0",id,result:v});
  if(oauthAuth&&rpc.params?.name==="discord_guild_request"&&String(rpc.params?.arguments?.method||"GET").toUpperCase()!=="GET"&&!String(oauthAuth.scope).split(/\s+/).includes("mcp:write"))return reply({jsonrpc:"2.0",id,error:{code:-32003,message:"OAuth token lacks mcp:write scope"}},403);
