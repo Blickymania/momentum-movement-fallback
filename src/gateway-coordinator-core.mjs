@@ -153,7 +153,7 @@ export class GatewayCoordinatorCore {
           : defaults;
         // A Durable Object restart invalidates all in-memory sockets. Keep only
         // resume/heartbeat metadata and let start() acquire a new generation.
-        state.status = def.enabled ? "disconnected" : "disabled";
+        if (state.status !== "fatal") state.status = def.enabled ? "disconnected" : "disabled";
         state.heartbeatAt = null;
         state.heartbeatAckDeadline = null;
         state.awaitingHeartbeatAck = false;
@@ -192,6 +192,7 @@ export class GatewayCoordinatorCore {
       for (const def of this.definitions) {
         if (!def.enabled) continue;
         const session = this.sessions.get(def.id);
+        if (session?.status === "fatal") continue;
         if (this.sockets.has(def.id)) continue;
         if (session.reconnectAt !== null && session.reconnectAt > this.now()) continue;
         await this.openSocket(def.id);
@@ -214,7 +215,7 @@ export class GatewayCoordinatorCore {
       const state = persisted && persisted.clientId === def.id
         ? { ...initialSession(def.id), ...persisted }
         : initialSession(def.id);
-      state.status = def.enabled ? "disconnected" : "disabled";
+      if (state.status !== "fatal") state.status = def.enabled ? "disconnected" : "disabled";
       state.heartbeatAt = null;
       state.heartbeatAckDeadline = null;
       state.awaitingHeartbeatAck = false;
@@ -239,7 +240,9 @@ export class GatewayCoordinatorCore {
     try {
       token = await this.tokenProvider(def.tokenRef, def);
       if (typeof token !== "string" || token.trim().length === 0) {
-        throw new Error("configured_discord_token_missing");
+        const error = new Error("configured_discord_token_missing");
+        error.code = "GATEWAY_TOKEN_MISSING";
+        throw error;
       }
       const saved = await this.getInbox(id).getState();
       const resume = state.pendingAuthAction !== "identify" &&
@@ -301,10 +304,17 @@ export class GatewayCoordinatorCore {
         this.sockets.delete(id);
         try { failedSocket.close(1011, "Gateway adapter initialization failed"); } catch {}
       }
-      state.lastError = String(error?.message || "gateway_connect_failed").slice(0, 120);
-      state.status = "reconnect_wait";
-      state.reconnectAttempt += 1;
-      state.reconnectAt = this.now() + boundedReconnectDelay(state.reconnectAttempt, this.random());
+      if (error?.code === "GATEWAY_TOKEN_MISSING") {
+        state.lastError = "gateway_token_missing";
+        state.status = "fatal";
+        state.reconnectAt = null;
+        state.pendingAuthAction = null;
+      } else {
+        state.lastError = "gateway_connect_failed";
+        state.status = "reconnect_wait";
+        state.reconnectAttempt += 1;
+        state.reconnectAt = this.now() + boundedReconnectDelay(state.reconnectAttempt, this.random());
+      }
       await this.persistSession(id, state);
       this.log("gateway_connect_failed", { clientId: id, reason: state.lastError });
       return false;
@@ -465,7 +475,14 @@ export class GatewayCoordinatorCore {
       state.status = "reconnect_wait";
       state.reconnectAttempt += 1;
       if (state.reconnectAt === null || state.reconnectAt <= this.now()) {
-        state.reconnectAt = this.now() + boundedReconnectDelay(state.reconnectAttempt, this.random());
+        const baseDelay = decision.rateLimited ? 10_000 : 1_000;
+        const maxDelay = decision.rateLimited ? 120_000 : 60_000;
+        state.reconnectAt = this.now() + boundedReconnectDelay(
+          state.reconnectAttempt,
+          this.random(),
+          baseDelay,
+          maxDelay,
+        );
       }
     }
     await this.persistSession(id, state);
@@ -505,6 +522,24 @@ export class GatewayCoordinatorCore {
       }
       await this.scheduleNextAlarm();
       return this.snapshot();
+    });
+  }
+
+  async resetFatalClient(id) {
+    return this.serialize(async () => {
+      const def = this.getDefinition(id);
+      const state = this.sessions.get(id);
+      if (!def || !state) throw new Error("Unknown Gateway client: " + id);
+      if (this.sockets.has(id)) throw new Error("Close the active Gateway socket before resetting its state");
+      if (state.status !== "fatal") return { reset: false, status: state.status };
+      state.status = def.enabled ? "disconnected" : "disabled";
+      state.lastError = null;
+      state.reconnectAt = null;
+      state.pendingAuthAction = null;
+      state.reconnectAttempt = 0;
+      await this.persistSession(id, state);
+      await this.scheduleNextAlarm();
+      return { reset: true, status: state.status };
     });
   }
 
