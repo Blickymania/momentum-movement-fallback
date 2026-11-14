@@ -82,6 +82,8 @@ test("constructs the durable ownership table with hard-fence evidence fields", (
   ]);
   const claimColumns = env.db.prepare("PRAGMA table_info(coaching_interaction_claims)").all();
   assert.deepEqual(claimColumns.map(x => x.name), ["interaction_id", "source", "claimed_at_ms"]);
+  const claimIndexes = env.db.prepare("PRAGMA index_list(coaching_interaction_claims)").all();
+  assert.ok(claimIndexes.some(x => x.name === "coaching_interaction_claims_claimed_at_idx"));
   env.db.close();
 });
 
