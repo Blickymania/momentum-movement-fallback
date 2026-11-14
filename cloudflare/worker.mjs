@@ -2,9 +2,10 @@ import {
   GatewayLeaseCoordinator,
   GATEWAY_LEASE_SCOPE
 } from "./gateway-lease-coordinator.mjs";
+import { CoachingInteractionIdempotency } from "./coaching-interaction-idempotency.mjs";
 import { createRenderServiceFencer } from "../implementation/render-service-fencer.mjs";
 
-export { GatewayLeaseCoordinator };
+export { GatewayLeaseCoordinator, CoachingInteractionIdempotency };
 
 async function sameSecret(candidate, expected) {
   if (typeof candidate !== "string" || typeof expected !== "string" ||
@@ -33,6 +34,13 @@ function objectStub(env) {
   const namespace = env.GATEWAY_LEASE_COORDINATOR;
   if (!namespace) throw new Error("lease_coordinator_binding_missing");
   const id = namespace.idFromName(GATEWAY_LEASE_SCOPE);
+  return namespace.get(id);
+}
+
+function coachingIdempotencyStub(env) {
+  const namespace = env.COACHING_IDEMPOTENCY_STORE;
+  if (!namespace) throw new Error("coaching_idempotency_binding_missing");
+  const id = namespace.idFromName("momentum-movement:coaching-interaction-idempotency");
   return namespace.get(id);
 }
 
@@ -66,10 +74,10 @@ async function claimCoachingInteraction(request, env) {
     return json({ error: "coaching_claim_invalid" }, 400);
   }
   let stub;
-  try { stub = objectStub(env); }
-  catch { return json({ error: "lease_coordinator_binding_missing" }, 503); }
+  try { stub = coachingIdempotencyStub(env); }
+  catch { return json({ error: "coaching_idempotency_binding_missing" }, 503); }
   try {
-    const response = await stub.fetch(new Request("https://lease.internal/coaching/interaction/claim", {
+    const response = await stub.fetch(new Request("https://coaching-idempotency.internal/claim", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body)
