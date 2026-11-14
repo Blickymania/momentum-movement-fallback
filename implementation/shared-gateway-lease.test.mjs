@@ -151,9 +151,9 @@ test("a hung heartbeat renewal times out and invokes fail-closed handling", asyn
 test("schema bootstrap creates and locks down the private failover schema", async () => {
   const db = fakeDb(() => []);
   await ensureLeaseSchema(db);
-  assert.equal(db.calls.length, 2);
+  assert.equal(db.calls.length, 3);
   assert.match(db.calls[0].sql, /CREATE SCHEMA IF NOT EXISTS failover/);
   assert.match(db.calls[0].sql, /REVOKE ALL ON SCHEMA failover FROM PUBLIC/);
   assert.ok(db.calls[1].sql.includes("CREATE TABLE IF NOT EXISTS failover.gateway_ownership"));
-  assert.ok(db.calls[1].sql.includes("REVOKE ALL ON TABLE failover.gateway_ownership FROM PUBLIC"));
+  assert.ok(db.calls[2].sql.includes("REVOKE ALL ON TABLE failover.gateway_ownership FROM PUBLIC"));
 });
