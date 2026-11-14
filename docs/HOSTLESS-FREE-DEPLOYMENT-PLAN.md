@@ -139,9 +139,10 @@ The V2 process keeps `panelId` in memory after initial publication. Its page/nav
 ### Source-only repair component
 
 - Added `implementation/live-now-panel-recovery.mjs`, a bounded reconciliation helper intended for integration with the existing V2 passive audit.
-- Added `implementation/live-now-panel-recovery.test.mjs`. Focused local Node.js 22.16.0 test run: **11/11 passed**.
+- Added `implementation/live-now-panel-recovery.test.mjs`, `implementation/live-now-panel-repair-adapter.mjs`, and `implementation/live-now-panel-repair-adapter.test.mjs`. Focused local Node.js 22.16.0 test run: **19/19 passed** (11 reconciliation tests + 8 adapter tests).
 - Behavior: leave one correctly tracked V2 dashboard untouched; ask the existing guarded publisher to publish a missing dashboard only when no legacy panel exists; ask the existing publisher to adopt/update a sole V2 dashboard when the in-memory ID is stale; hold if duplicate V2 dashboards or any legacy panel are found; and require a second read scan to verify exactly one V2 panel and no legacy panel.
-- The helper is **not yet integrated into the recovered runtime or any active service**. The existing V2 `passiveAudit` remains read-only. The helper does not itself connect a Gateway, access secrets, send Discord requests, or create a timer.
+- The adapter is ready to be called from the existing V2 `passiveAudit`: it filters messages by the expected bot application ID, recursively checks component buttons, updates the process-local panel ID after a successful publish/adopt, and skips overlapping audit invocations. It creates no interval.
+- The helper and adapter are **not yet integrated into the recovered runtime or any active service**. The existing V2 `passiveAudit` remains read-only. These modules do not themselves connect a Gateway, access secrets, send Discord requests, delete messages, or create a timer.
 - The repository's `npm test` script already includes `implementation/*.test.mjs`. The focused helper tests were run locally; the complete repository test suite and hosted CI have not been verified.
 
 ### Runtime and scheduler boundary
