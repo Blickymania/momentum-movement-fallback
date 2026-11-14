@@ -172,7 +172,7 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 ## Cycle 7 — Cloudflare SQLite Durable Object control-plane candidate (source-only)
 
 ### Implemented
-- Added `cloudflare/gateway-lease-coordinator.mjs`: a single fixed-scope SQLite Durable Object for `momentum-movement:discord-gateway`.
+- Added `cloudflare/gateway-lease-coordinator.mjs`: a single fixed-scope SQLite Durable Object for `momentum-movement:bot-005-gateway`.
 - Added `cloudflare/worker.mjs`: bearer-authenticated HTTP front door with a public liveness route and an allowlist of four lease routes.
 - Added `cloudflare/wrangler.jsonc`: SQLite Durable Object class binding and initial namespace migration.
 - Added `implementation/cloudflare-gateway-lease-client.mjs`: bounded-timeout HTTPS client that rejects Railway/local/IP-literal hosts and maps HTTP 409 to a refused lease.
