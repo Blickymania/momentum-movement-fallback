@@ -28,9 +28,11 @@
 - Added listener LeaseClient with heartbeat, local safety deadline, fail-closed API gating, abort signal on lease loss, and graceful release.
 - Added isolated lease-gated listener build at `failover/listener/index.tsx`; it remains disconnected while standby and does not change the root production snapshot.
 - Added `.env.example` with placeholders only; no credentials committed.
-- Added local tests: 7 lease-state tests, 6 lease-client tests, and 1 static listener-wiring test (14 defined total).
-- Previous checkpoint recorded 13 state/client tests as passing; this session did not independently rerun them.
-- Added event-driven GitHub Actions workflow `.github/workflows/dawn-dotta-failover-tests.yml`. Public verification returned 404 for repository/workflow/commit, consistent with private/inaccessible repository; this does not establish whether the workflow ran. CI status remains unverified.
+- Added tests: 7 lease-state, 6 lease-client, 1 static listener-wiring, and 4 worker security/readiness checks (18 defined total).
+- Previous checkpoint recorded 13 state/client tests as passing; this session did not independently rerun them. Do not claim all 18 passed.
+- Added event-driven GitHub Actions workflow `.github/workflows/dawn-dotta-failover-tests.yml`.
+- Added manual-only Cloudflare deployment workflow `.github/workflows/deploy-dawn-dotta-lease.yml`; it runs all tests before deployment and requires repository Actions secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `LEASE_CONTROL_TOKEN`.
+- Public verification returned 404 for repository/workflow/commit, consistent with private/inaccessible repository; this does not establish whether the workflow ran. CI status remains unverified.
 
 ### Production diagnostics
 - Discord manager audit and identity verification passed.
