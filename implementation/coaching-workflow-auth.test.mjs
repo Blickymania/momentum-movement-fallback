@@ -77,6 +77,6 @@ test("fails closed for unknown sources and malformed authentication fields", asy
   assert.deepEqual(await verifyCoachingRequest({ ...input, timestamp: "not-a-time" }), {
     ok: false, reason: "invalid_request"
   });
-  assert.throws(() => signCoachingRequest({ source: "bad source", secret, timestamp, body }), /coaching_auth_source_invalid/);
-  assert.throws(() => signCoachingRequest({ source: "bot005", secret: "short", timestamp, body }), /coaching_auth_secret_invalid/);
+  await assert.rejects(() => signCoachingRequest({ source: "bad source", secret, timestamp, body }), /coaching_auth_source_invalid/);
+  await assert.rejects(() => signCoachingRequest({ source: "bot005", secret: "short", timestamp, body }), /coaching_auth_secret_invalid/);
 });
