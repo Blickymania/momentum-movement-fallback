@@ -228,3 +228,29 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 - Obtain Northflank account access for read-only Sandbox resource and no-card verification.
 - Identify the existing OAuth database owner/host safely and select a shared provider-independent database path.
 - Resume with isolated preproduction deployment only after those external prerequisites are met; do not cut over production.
+
+
+## Cycle 14 — degraded-readiness signal hardening (2026-11-13 ET / 2026-11-14 UTC)
+
+### Implementation
+- The failover router's own GET /readyz now returns HTTP 503 with status "degraded" when it selected the legacy Railway Manager and that origin does not explicitly report oauthDatabaseVerified=true.
+- The response still includes managerReady=true and discordVerified=true to distinguish an operational Manager origin from a fully verified OAuth data path.
+- The router continues forwarding normal requests to the existing Railway legacy origin; this readiness change does not stop or modify the production service.
+- Northflank deployment runbook now documents this behavior so external monitoring cannot mistake the legacy route's HTTP Manager availability for verified shared OAuth data-plane readiness.
+- Added source-invariant tests for the degraded/503 readiness response.
+
+### Validation
+- Re-ran the direct source-level checks against the exact current branch files: **30 passed, 0 failed**.
+- Checks include the degraded readiness response/status code, DB status propagation, Northflank deployment gate, runtime packaging, auth compatibility, provider order, caching, safe retries, source credential scans, and test/workflow presence.
+- This remains source-level validation in the code execution tool. Node test-suite execution, Bun runtime, Docker build, TypeScript compile, Wrangler dry-run, live OAuth lifecycle, and provider deployment remain unverified.
+
+### Current blocker state
+- GitHub Actions continues to terminate before job creation (startup_failure, zero jobs).
+- Northflank provider account/API is not connected; no account-side free-tier/resource estimator or payment-method state can be inspected.
+- Production OAuth database owner/host is still unknown from the connected Railway API because values are redacted. No safe shared database topology has been selected.
+- Draft PR #2 remains open, unmerged, and in draft review; no production routing is configured.
+
+### Exact next action
+- Fix or obtain account-side access for GitHub Actions runner startup, then execute the committed test workflow.
+- Connect or authorize Northflank account access for read-only Sandbox/resource/billing inspection; do not accept a card or paid upgrade.
+- Establish a shared provider-independent OAuth data plane before attempting isolated Northflank preproduction routing or cutover.
