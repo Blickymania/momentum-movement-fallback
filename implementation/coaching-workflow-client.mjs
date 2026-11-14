@@ -1,3 +1,5 @@
+import { signCoachingRequest } from "./coaching-workflow-auth.mjs";
+
 function validateCoachingEndpoint(raw) {
   if (typeof raw !== "string" || raw.trim() === "") {
     throw new TypeError("coaching_workflow_url_required");
@@ -32,12 +34,18 @@ function validateTimeout(timeoutMs) {
 
 export function createCoachingWorkflowClient({
   endpoint,
+  authSource,
+  authSecret,
   fetchFn = (input, init) => globalThis.fetch(input, init),
   timeoutMs = 5000,
   maxPayloadBytes = 262144
 }) {
   const url = validateCoachingEndpoint(endpoint);
   const timeout = validateTimeout(timeoutMs);
+  if (typeof authSource !== "string" || !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(authSource) ||
+      typeof authSecret !== "string" || authSecret.length < 32 || authSecret.length > 512) {
+    throw new TypeError("coaching_workflow_authentication_required");
+  }
 
   if (typeof fetchFn !== "function") {
     throw new TypeError("coaching_workflow_fetch_function_required");
@@ -93,6 +101,7 @@ export function createCoachingWorkflowClient({
         throw new RangeError("coaching_interaction_payload_too_large");
       }
 
+      const signedHeaders = await signCoachingRequest({ source: authSource, secret: authSecret, body });
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeout);
       try {
@@ -100,7 +109,8 @@ export function createCoachingWorkflowClient({
           method: "POST",
           headers: {
             "content-type": "application/json",
-            accept: "application/json"
+            accept: "application/json",
+            ...signedHeaders
           },
           body,
           signal: controller.signal
@@ -139,6 +149,8 @@ export function createCoachingWorkflowClientFromEnv({
 } = {}) {
   return createCoachingWorkflowClient({
     endpoint: env.COACHING_WORKFLOW_URL,
+    authSource: env.COACHING_WORKFLOW_SOURCE,
+    authSecret: env.COACHING_WORKFLOW_AUTH_SECRET,
     ...options
   });
 }
