@@ -101,7 +101,7 @@ test("heartbeat loss stops future beats and invokes fail-closed callback once", 
 test("lease SQL uses database clock and exposes monotonic fencing epochs", () => {
   assert.match(leaseSqlForTests.ACQUIRE_SQL, /clock_timestamp\(\)/);
   assert.match(leaseSqlForTests.ACQUIRE_SQL, /fencing_epoch \+ 1/);
-  assert.match(leaseSqlForTests.ACQUIRE_SQL, /lease_until > clock_timestamp\\(\\)/);
+  assert.match(leaseSqlForTests.ACQUIRE_SQL, /lease_until > clock_timestamp\(\)/);
   assert.match(leaseSqlForTests.RENEW_SQL, /fencing_epoch = \$3::bigint/);
 });
 
