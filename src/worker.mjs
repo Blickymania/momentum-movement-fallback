@@ -1,6 +1,9 @@
 import { OAuthD1Store } from "./oauth-d1-store.mjs";
 import { createOAuthRoutes } from "./oauth-routes.mjs";
 import { createManagerCore } from "./manager-core.mjs";
+import { GatewayCoordinatorDurableObject } from "./gateway-coordinator-do.mjs";
+
+export { GatewayCoordinatorDurableObject };
 
 const NAME = "Dawn Dotta Discord Manager";
 const GUILD_ID = "1565048205970767992";
