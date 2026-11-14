@@ -1,6 +1,6 @@
 # Execution Checkpoint — Dawn Dotta / Momentum Movement Failover
 
-Updated: 2026-11-13 US Eastern (latest execution through 2026-11-14 03:22 UTC)
+Updated: 2026-11-13 US Eastern (latest execution through 2026-11-14 03:31 UTC)
 
 ## Project and locked architecture
 Dawn Dotta / Momentum Movement — Railway-independent Core Shadow / Bot 005 failover.
@@ -34,8 +34,11 @@ Dawn Dotta / Momentum Movement — Railway-independent Core Shadow / Bot 005 fai
 
 ### Cycle 2 — shared lease primitives (source-only)
 - Added `implementation/shared-gateway-lease.mjs` with atomic PostgreSQL upsert acquisition, database-clock expiry, owner/epoch-scoped renewal and release, monotonic fencing epoch advancement, and fail-closed heartbeat behavior.
-- Added `implementation/shared-gateway-lease.test.mjs` with six tests.
-- Local isolated Node.js v22.16.0 test harness: 6 passed, 0 failed. This is mock-backed SQL/logic testing, not a live PostgreSQL concurrency or physical Gateway-fencing test.
+- Added `implementation/shared-gateway-lease.test.mjs`; the current suite has eight tests.
+- Hardened acquisition so an unexpired lease cannot be reacquired even by a process reusing the same owner ID. Every process start must use a unique owner ID.
+- Added a bounded renewal timeout so a hung database heartbeat triggers the fail-closed callback instead of waiting indefinitely.
+- A test initially exposed that an unreferenced timeout could let a quiet Node process exit before fail-closed handling. Removed `unref()` from the renewal timeout, reran the suite, and verified 8 passed, 0 failed under Node.js v22.16.0.
+- Tests remain mock-backed SQL/logic tests, not live PostgreSQL concurrency or physical Gateway-fencing tests.
 
 ### Cycle 3 — GitHub Actions and Render inspection
 - User confirmed Render workspace `My Workspace`, ID `tea-dbcqe7ss728c73fthlug`.
@@ -54,11 +57,11 @@ Dawn Dotta / Momentum Movement — Railway-independent Core Shadow / Bot 005 fai
 - Updated `package.json` with a Node.js start command and pinned `postgres` driver version `3.4.7`.
 - The service provides read-only `GET /healthz`, `GET /readyz`, and `GET /preflight` endpoints; non-GET requests return 405.
 - Readiness requires `COORDINATION_DATABASE_URL`; it validates a PostgreSQL URL and rejects Railway hostnames and local/private loopback-style hosts. It does not fall back to the legacy generic `DATABASE_URL`.
-- Optional `PRIMARY_HEALTH_URL` probing requires HTTPS and rejects Railway internal hosts and local/private targets. This probe is diagnostic only and does not authorize takeover.
+- Optional `PRIMARY_HEALTH_URL` probing requires HTTPS and rejects all hostnames containing Railway references (including public Railway domains), local hostnames, and literal IPv4/IPv6 addresses. The coordination database URL also rejects Railway hostnames and all IP literals. This probe is diagnostic only and does not authorize takeover.
 - The service uses no Discord client, opens no Gateway, performs no Discord writes, never returns configured URLs/credentials, and has graceful SIGTERM/SIGINT shutdown.
-- Local Node.js v22.16.0 run of the committed implementation/test logic: 8 tests passed, 0 failed. Tests use an injected fake DB driver; they verify endpoint behavior, input validation, and fail-closed readiness, not a real hosted database connection.
+- Local Node.js v22.16.0 run of the committed implementation/test logic: 8 tests passed, 0 failed, including Railway-domain and IPv4/IPv6 literal rejection. Tests use an injected fake DB driver; they verify endpoint behavior, input validation, and fail-closed readiness, not a real hosted database connection.
 - No deploy was triggered and no infrastructure was provisioned. Bot 005 remains untouched.
-- GitHub Actions was configured to run for changes under `implementation/**`, and the commit triggered run `43551272700`. It also ended `startup_failure`; a direct jobs read returned an empty jobs array. This second zero-job startup failure confirms the problem persists independently of the earlier test workflow run. There are still no runner logs or returned root-cause details.
+- GitHub Actions was configured to run for changes under `implementation/**`. Runs `43550719031`, `43551272700`, `43551816064`, `43552064479`, and `43552078940` all ended `startup_failure`; direct jobs reads for the latest three IDs returned empty job arrays. The runner never started, so no job-level logs exist and the exact root cause remains unknown.
 
 ## Render workspace inventory — latest
 Workspace: `My Workspace` (`tea-dbcqe7ss728c73fthlug`).
@@ -72,11 +75,11 @@ Workspace: `My Workspace` (`tea-dbcqe7ss728c73fthlug`).
 The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Momentum maintenance/failover tasks were disabled. No scheduler, cron, reminder, or recurring repair was created or changed. Preserve the user's maximum-one-centralized-maintenance-process rule; do not duplicate existing tasks.
 
 ## Verified state now
-- Lease module committed; mock-backed local tests: 6/6 passed.
-- Independent Node preflight service and tests committed; local Node tests: 8/8 passed.
-- GitHub Actions latest run `43551272700`: startup_failure, zero jobs; cause still unknown. An exact local Git blob comparison confirmed both newly committed preflight source and test files match the versions that passed the local 8-test run.
+- Lease module committed; mock-backed local tests: 8/8 passed after duplicate-owner and hung-heartbeat timeout hardening.
+- Independent Node preflight service and tests committed; current local Node tests: 8/8 passed after expanding Railway hostname and literal-IP rejection.
+- GitHub Actions latest inspected runs `43552064479` and `43552078940`: startup_failure, zero jobs; no runner logs and cause still unknown. Earlier inspected runs `43550719031`, `43551272700`, and `43551816064` failed the same way.
 - Render workspace confirmed; services inventory inconclusive; no Render Postgres or Key Value instances listed.
-- No independent coordination database is connected.
+- No independent coordination database is connected. Supabase Free already has two active OAuth-named projects; Render has no listed Postgres/Key Value store and its service inventory response is inconclusive.
 - No independent standby runtime is deployed.
 - Production Bot 005 remains the sole Gateway owner.
 - No production lease/fencing integration or hard-stop/fencing controller exists yet.
@@ -84,13 +87,13 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 - No paid resource or billing change has been authorized or made.
 
 ## Next execution steps
-1. Read back the new GitHub files and verify committed contents match the locally tested files.
-2. Diagnose the GitHub Actions startup_failure with any supported run/check metadata; do not claim a root cause while there are no runner logs.
-3. Resolve Render service inventory through another supported read-only route; do not infer an empty workspace from a null response.
-4. Select and inspect an external coordination database that is independent of Railway; do not place secrets in source or logs.
-5. Add a versioned lease-table migration and run integration tests against a disposable real PostgreSQL instance before using any production database.
-6. Implement the primary Bot 005 lease adapter and external hard-stop controller. Keep existing Bot 005 untouched until a reviewed, reversible migration can be applied safely.
-7. Implement the standby runtime with Gateway login permanently disabled until the primary and hard-stop path are verified.
+1. Continue diagnosing GitHub Actions startup failure through any supported UI or connector route; no further workflow edits should be made until its environment blocker is understood.
+2. Resolve Render service inventory via another supported read-only route; do not infer an empty workspace from a null response.
+3. Choose the independent coordination database: compare Render paid Postgres against a dedicated Supabase Pro project and present exact costs before any paid provisioning.
+4. Migrate or replace the Bot 005 coaching-workflow Railway-internal dependency and audit the Discord Manager OAuth database host/config before a Railway-independent claim.
+5. Add a versioned lease-table migration only after the database provider is approved, then run integration tests against a disposable real PostgreSQL instance.
+6. Implement the primary Bot 005 lease adapter and an external hard-stop controller. Keep existing Bot 005 untouched until a reviewed, reversible migration can be applied safely.
+7. Implement standby runtime with Gateway login disabled until primary and hard-stop path are verified.
 8. Execute failover/failback, lease expiry, DB outage, split-brain, duplicate-event, process termination, and rollback tests before any live cutover.
 
 ## Explicit gates
@@ -99,3 +102,14 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 - Do not deploy a free sleeping web service as an always-on standby.
 - Do not use Railway DATABASE_URL, Railway PostgreSQL, or Railway internal hostnames for coordination.
 - Do not attempt any Gateway takeover or primary shutdown as part of a test until lease integration and positive physical fencing are proven.
+
+
+### Cycle 5 — database/provider constraints and full dependency scan
+- Read Supabase organization details: organization `Blickymania` is on the Free tier.
+- Listed two active healthy Supabase projects: `discord-oauth-control-plane` and `blickymania-discord-oauth`. The inspected `public` and `private` schemas contained no tables. Both projects were left untouched because they are OAuth-named resources and the organization already uses its two Free active-project slots.
+- Current Supabase pricing states Free is limited to two active projects, and Pro starts at $25/month with additional projects from $10/month. No upgrade or new Supabase project was created. Source: https://supabase.com/pricing.
+- Current Render pricing lists the smallest persistent service/background worker at $7/month and the smallest paid Postgres instance at $6/month. Reference floor is approximately $13/month for one process plus one DB, excluding usage/workspace-specific charges. Render Free Postgres expires after 30 days, has no backups, and may be restarted; it is not suitable for production coordination. Sources: https://render.com/pricing and https://render.com/docs/free.
+- Full-string scan of recovered Bot 005 source found a hard-coded internal dependency: `http://coaching-workflow.railway.internal:3000/interaction`. That coaching service path must be migrated or replaced before the full runtime can be called Railway-independent.
+- Recovered Discord Manager source reads `RAILWAY_SERVICE_KEY` and `OAUTH_DATABASE_URL`; the actual OAuth database host is not in source and remains unverified. Its health payload reports `service: "railway"`, and write-guard messages refer to Railway. This requires configuration/identity cleanup and a credential-free host audit during migration.
+- Recovered Core Shadow source body contains no `.railway.internal` or `DATABASE_URL` reference; it is still read-only and does not open a Gateway.
+- No Render/Supabase resources, services, databases, or credentials were created or changed. No billing or plan upgrade was performed.
