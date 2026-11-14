@@ -562,8 +562,8 @@ async function handle(i){
 }
 Bun.serve({hostname:"0.0.0.0",port:Number(Bun.env.PORT||3000),async fetch(req){
  const url=new URL(req.url);
- if(req.method==="GET"&&url.pathname==="/healthz")return Response.json({status:"ok",service:"Coaching Workflow",ready,lastError});
- if(req.method==="GET"&&url.pathname==="/readyz")return Response.json({ready,lastError},{status:ready?200:503});
+ if(req.method==="GET"&&url.pathname==="/healthz")return Response.json({status:"ok",service:"Coaching Workflow",ready,errorPresent:Boolean(lastError)});
+ if(req.method==="GET"&&url.pathname==="/readyz")return Response.json({ready,errorPresent:Boolean(lastError)},{status:ready?200:503});
  if(req.method==="POST"&&url.pathname==="/interaction"){
   const contentLength=Number(req.headers.get("content-length")||0);
   if(Number.isFinite(contentLength)&&contentLength>262144)return Response.json({error:"payload-too-large"},{status:413});
@@ -585,7 +585,7 @@ Bun.serve({hostname:"0.0.0.0",port:Number(Bun.env.PORT||3000),async fetch(req){
   let i;try{i=JSON.parse(rawBody)}catch{return Response.json({error:"invalid-json"},{status:400})}
   if(!i||typeof i!=="object"||Array.isArray(i)||typeof i.id!=="string"||
      !/^\d{17,22}$/.test(i.id)||!String(i?.data?.custom_id||"").startsWith("coach:"))return Response.json({ignored:true});
-  if(!ready||!coachingIdempotencyEndpoint)return Response.json({error:"not-ready",lastError},{status:503});
+  if(!ready||!coachingIdempotencyEndpoint)return Response.json({error:"not-ready"},{status:503});
   const now=Date.now();for(const [key,ts] of seenInteractions)if(now-ts>900000)seenInteractions.delete(key);
   if(seenInteractions.has(i.id))return Response.json({duplicate:true});
   let claimResponse,claimPayload;
