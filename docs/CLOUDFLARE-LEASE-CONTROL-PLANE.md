@@ -19,7 +19,7 @@ Cloudflare documents Durable Objects as single-threaded, globally unique coordin
 Cloudflare makes SQLite-backed Durable Objects available on Workers Free and Workers Paid. Current Workers Free limits include:
 - Worker inbound requests: 100,000/day.
 - Durable Object requests: 100,000/day.
-- Durable Object SQLite row reads: 5 million/day.
+- Durable Object SQLite row reads: 50 million/day.
 - Durable Object SQLite row writes: 100,000/day.
 - SQLite stored data: 5 GB total.
 - Durable Object compute duration: 13,000 GB-s/day.
@@ -42,7 +42,7 @@ Official documentation:
 ## Components committed
 
 - `cloudflare/gateway-lease-coordinator.mjs`: SQLite-backed Durable Object. It uses a fixed lease scope, 30-second default TTL, 10–120-second accepted TTL range, owner ID, deployment ID, monotonic fencing epoch, expiry and heartbeat timestamp. Acquisition is an atomic UPSERT allowed only when the previous lease has expired. The same active owner ID cannot reacquire its own lease. Renewal and release require the exact owner ID and fencing epoch. Fencing epochs are returned as strings and are checked to stay inside JavaScript's safe-integer range.
-- `cloudflare/worker.mjs`: public `GET /healthz` plus bearer-authenticated lease routes. Only `/lease/state`, `/lease/acquire`, `/lease/renew`, and `/lease/release` are forwarded to the Durable Object. A 32–512-character service secret is required. The secret is read from `LEASE_SERVICE_TOKEN`; do not put it in source or Wrangler config.
+- `cloudflare/worker.mjs`: public `GET /healthz`, bot-authenticated lease routes, one-time operator-only `/lease/bootstrap`, and bot-facing `/fence`. Direct `/lease/fence/confirm` is not public; only the Worker calls it over the internal Durable Object stub. Ordinary lease routes use `LEASE_SERVICE_TOKEN`; bootstrap uses `LEASE_BOOTSTRAP_TOKEN`; fence requests use deployment-scoped tokens from the secret `FENCE_REQUEST_TOKENS_JSON`. Only the Worker holds `RENDER_API_KEY` and `RENDER_SERVICE_IDS_JSON`. Never put Render or bootstrap credentials in either Bot runtime.
 - `cloudflare/wrangler.jsonc`: SQLite Durable Object binding and initial `new_sqlite_classes` migration.
 - `implementation/cloudflare-gateway-lease-client.mjs`: Node-side HTTPS client. It rejects Railway/local/IP-literal endpoints, normalizes trailing-dot hostnames and root Worker URL paths, enforces a 32–512-character service secret, uses a bounded request timeout, maps HTTP 409 to a denied lease (null), and fails closed on timeout/network/server error. The coordinator's state route returns the same `{ ok: true, lease }` envelope as the mutation routes.
 - `implementation/gateway-owner-supervisor.mjs`: accepts either the PostgreSQL lease backend or the generic `leaseStore` interface. When using Cloudflare, the supervisor acquires before login, renews by HTTP, destroys on lease loss, and releases after graceful shutdown.
@@ -126,3 +126,47 @@ A missing, ambiguous, mismatched, or throwing hard-stop result never starts the 
 The prepared owner now exposes markApplicationReady(), markApplicationNotReady(), waitUntilReady(), ready, and gatewayLoginComplete. This prevents successful client.login() completion from being mistaken for a verified application READY state. The app should call markApplicationReady() only after confirming the expected bot identity and target guild, and call markApplicationNotReady() when that state is lost.
 
 Latest full local test suite: **35 passed, 0 failed** (19 Cloudflare/SQLite API, six egress guard, two prepared-owner, eight hard-stop controller). This remains a Node simulation with fake process-control evidence and mocked Discord client; it is not a live provider kill or Cloudflare-hosted failover test.
+
+## Deployment-bound fencing and per-deployment request credentials
+
+The Worker now requires a separate bearer token for each candidate deployment. Store `FENCE_REQUEST_TOKENS_JSON` as a Cloudflare secret JSON object keyed by deployment ID, for example:
+
+`{"primary-deploy":"<unique-primary-token>","standby-deploy":"<unique-standby-token>"}`
+
+Each value must be a random secret of at least 32 characters. Give each Bot runtime only its own token. The Worker checks that the requested owner ID begins with the exact deployment ID plus a colon; `prepareFencedDiscordGatewayOwner` enforces the same format and defaults to a fresh UUID per process. A primary token cannot request a fence for the standby deployment.
+
+The Worker alone owns `RENDER_API_KEY`, `RENDER_SERVICE_IDS_JSON` (mapping deployment IDs to distinct Render service IDs), and the Durable Object namespace binding. The bot does not possess the Render API key or direct hard-fence confirmation authority.
+
+The public Worker surface is `GET /healthz`, `GET /lease/state`, `POST /lease/acquire`, `/lease/renew`, `/lease/release`, operator-only `POST /lease/bootstrap`, and bot-facing `POST /fence`. The Durable Object's `/lease/fence/confirm` method is not publicly routed; the Worker invokes it internally only after the Render stop is verified.
+
+## Render hard-stop semantics and initial migration limitation
+
+The Worker-side fencer uses Render's `POST /v1/services/{serviceId}/suspend` endpoint, which returns HTTP 202 when a suspend request is accepted, then reads `GET /v1/services/{serviceId}` until the service's `suspended` value is exactly `suspended`. An accepted 202 by itself is not treated as stop proof. Render documents the `suspended` and `not_suspended` service states. Sources: https://api-docs.render.com/reference/suspend-service-1 and https://api-docs.render.com/reference/retrieve-service.
+
+**The current production Bot 005 is still hosted on Railway.** Render cannot suspend that Railway service. The automated fencer therefore becomes usable only after both primary and standby have been migrated to distinct Render services. The initial Railway-to-independent cutover requires a separate, verified operator-controlled stop of the old Railway Gateway process followed by the one-time operator bootstrap. Never bootstrap while the legacy Gateway may still be connected. This is a manual migration boundary, not an automated failover claim.
+
+After both deployments are on Render, the Worker can suspend the previous service and verify its suspended state before confirming a transfer. The candidate service must already be running without a Gateway connection. To fail back to a previously suspended service, that candidate must first be resumed through an authorized host workflow; the fencer deliberately refuses a suspended candidate.
+
+Render documents service suspension rate limits; this controller issues one suspend request per promotion and polls only the service record for state readback. Source: https://api-docs.render.com/reference/rate-limiting.
+
+## Current local verification after deployment-binding changes
+
+Latest component-local Node.js 22.16.0 simulations:
+- Render suspension + Durable Object Worker path: 2 passed.
+- Lease store, SQLite coordinator, and Render fencer component batch: 20 passed.
+- Discord event/REST/fetch guard: 7 passed.
+- Prepared Gateway owner adapter with deployment-prefixed owner ID: 5 passed.
+- Provider-neutral hard-stop contract and e2e supervisor batch: 9 passed.
+- **Total: 43 passed, 0 failed across separate local test batches.**
+
+These tests use isolated working copies, simulated Cloudflare context, Node SQLite, fake Discord clients, and mocked Render HTTP responses. They are not a clean repository checkout test run, Cloudflare-hosted integration test, or actual Render service suspension test. GitHub Actions still fails before job creation and has no job logs.
+
+## Remaining gates
+
+- No Cloudflare Worker/DO is deployed; no secrets are configured; Cloudflare account plan/usage remain unverified because dashboard authentication expired.
+- Render workspace service inventory remains inconclusive (`null`); no Render service, database, or Key Value resource has been provisioned in this effort.
+- Render's fencer cannot stop the currently active Railway Bot 005. Initial migration requires a manual, verifiable stop before operator bootstrap.
+- Bot 005 application source has not been integrated with the prepared owner adapter. Compatibility with the exact production Bun/Discord.js runtime has not been verified.
+- The Bot 005 source still calls `http://coaching-workflow.railway.internal:3000/interaction`; the guard rejects Railway calls. That service must be migrated to public HTTPS with state/feature parity before independent hosting.
+- Discord Manager `OAUTH_DATABASE_URL` host remains unknown.
+- No actual Render service suspension, production Discord Gateway login, failover/failback, or rollback has occurred.
