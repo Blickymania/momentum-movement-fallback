@@ -142,3 +142,24 @@ Latest main push run `43563958104` (commit `80f23af4d2a69a05960bb7729e372b24e1da
 ## Production safety state after Cycle 20
 
 No Render, Cloudflare, Railway or Discord production resource was created, changed, stopped, suspended, redeployed or routed. No secret values were generated or provisioned. Bot 005 remains the current Railway primary. Failover remains unproven and is not production-ready.
+
+### Cycle 21 — readiness, quota and CI hardening
+
+- The Workflow candidate now probes the authenticated Worker route GET /coaching/interaction/healthz during startup. The Worker validates COACHING_IDEMPOTENCY_TOKEN and probes the isolated DO's internal /healthz; the Workflow checks service identity and ready:true with a five-second timeout before it can set ready=true.
+- Added a DO health test and Worker healthy/unavailable/unauthorized health-route tests. The focused component harness was updated with the health path and now passes 16/16: HMAC 4/4, isolated DO SQLite/health 6/6, Worker claim/readiness 6/6. The Worker harness still stubs unrelated Render/Gateway imports and is not a full Cloudflare workerd runtime integration.
+- Added a Wrangler config regression test: 2/2 local tests passed against the current two-class v1/v2 SQLite migration structure.
+- GitHub connector source assertions now pass 20/20 across current main files, including distinct DO bindings, HMAC-before-parse, claim-before-dispatch, health-before-ready, reserved-host rejection, credential separation, migration shape, CI paths and production hard-fence regression.
+- Corrected CI path filters so changes under cloudflare/** and candidate/** trigger the test workflow, not just implementation/**.
+- Added a pinned Wrangler 4.161.0 deploy --dry-run bundle step to CI. It compiles without deploying and has not executed because GitHub Actions still creates no jobs.
+- Added docs/CLOUDFLARE-COST-AND-QUOTA-GUARDRAILS.md. At the current 10-second Bot 005 lease heartbeat, one active primary produces approximately 8,640 coordinator renew requests/day, before other calls. Cloudflare documents 100,000 DO requests/day, 100,000 SQLite row writes/day and 5 GB total SQLite storage on Workers Free; Free quota exhaustion rejects operations rather than acting as unlimited overage. Paid-plan spending limits do not cap stored-data charges or guarantee an absolute invoice maximum. The Cloudflare account's active plan and usage remain unverified.
+- Cloudflare documentation confirms that an existing Worker using legacy migrations must append a unique new_sqlite_classes migration when adding a SQLite DO class. The repository's v2 migration preserves that existing model; it does not switch lifecycle systems.
+
+## Latest CI after Cycle 21
+
+- Latest push run 43564233582 on commit 3e528bd18f4ab57c9b2e6c9b3b5979eda1661c8e ended startup_failure (2026-11-14 06:00:50 UTC).
+- Jobs endpoint returned an empty list. The failure happened before a runner/job was created; no Wrangler dry-run or Node test executed in GitHub Actions.
+- The exact Actions startup failure cause is not visible from available run/job data; do not attribute it to source code or billing without evidence.
+
+## No production changes
+
+No Render, Cloudflare, Railway or Discord production resource was created, changed, stopped, suspended, redeployed or routed. No secrets were generated or provisioned. Bot 005 remains the current Railway primary. Failover is still unproven and not production-ready.
