@@ -8,7 +8,7 @@ This project uses one Cloudflare Durable Object as a control-plane lease coordin
 
 The only intended scope is:
 
-`momentum-movement:discord-gateway`
+`momentum-movement:bot-005-gateway`
 
 Do not reuse this Durable Object for another server or combine the five independent communities.
 
