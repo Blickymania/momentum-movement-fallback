@@ -6,7 +6,7 @@ type RouterEnv = {
 };
 
 type Candidate = { name: string; value?: string; timeoutMs: number; allowLegacyReadiness?: boolean };
-type ProbeResult = { name: string; ready: boolean; reason: string };
+type ProbeResult = { name: string; ready: boolean; reason: string; oauthDatabaseVerified: boolean };
 
 const MANAGER_NAME = "Dawn Dotta Discord Manager";
 
@@ -36,7 +36,7 @@ function candidates(env: RouterEnv): Candidate[] {
 
 async function probe(candidate: Candidate): Promise<ProbeResult> {
   const origin = cleanOrigin(candidate.value);
-  if (!origin) return { name: candidate.name, ready: false, reason: "origin_not_configured" };
+  if (!origin) return { name: candidate.name, ready: false, reason: "origin_not_configured", oauthDatabaseVerified: false };
 
   try {
     const response = await fetch(new URL("/readyz", origin), {
@@ -57,24 +57,26 @@ async function probe(candidate: Candidate): Promise<ProbeResult> {
     return {
       name: candidate.name,
       ready,
-      reason: ready ? "ready" : body?.oauthDatabaseVerified === false ? "oauth_database_unverified" : "readiness_rejected"
+      reason: ready ? "ready" : body?.oauthDatabaseVerified === false ? "oauth_database_unverified" : "readiness_rejected",
+      oauthDatabaseVerified: body?.oauthDatabaseVerified === true
     };
   } catch (error) {
     return {
       name: candidate.name,
       ready: false,
-      reason: error instanceof Error && error.name === "TimeoutError" ? "probe_timeout" : "origin_unreachable"
+      reason: error instanceof Error && error.name === "TimeoutError" ? "probe_timeout" : "origin_unreachable",
+      oauthDatabaseVerified: false
     };
   }
 }
 
-async function chooseOrigin(env: RouterEnv, excluded: Set<string> = new Set()): Promise<{ name: string; origin: string } | null> {
+async function chooseOrigin(env: RouterEnv, excluded: Set<string> = new Set()): Promise<{ name: string; origin: string; oauthDatabaseVerified: boolean } | null> {
   for (const candidate of candidates(env)) {
     if (excluded.has(candidate.name)) continue;
     const origin = cleanOrigin(candidate.value);
     if (!origin) continue;
     const status = await probe(candidate);
-    if (status.ready) return { name: candidate.name, origin };
+    if (status.ready) return { name: candidate.name, origin, oauthDatabaseVerified: status.oauthDatabaseVerified };
   }
   return null;
 }
@@ -126,7 +128,7 @@ export default {
         status: "ready",
         manager: MANAGER_NAME,
         discordVerified: true,
-        oauthDatabaseVerified: true,
+        oauthDatabaseVerified: selected.oauthDatabaseVerified,
         selectedOrigin: selected.name
       });
     }
