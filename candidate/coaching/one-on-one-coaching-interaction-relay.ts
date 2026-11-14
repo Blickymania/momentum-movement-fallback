@@ -12,6 +12,9 @@
 
 ---
 const G="1565048205970767992",APP="1565304619838742598",token=()=>Bun.env.DISCORD_BOT_TOKEN||"";
+const coachingAuthSecret=Bun.env.COACHING_WORKFLOW_AUTH_SECRET||"";
+if(Bun.env.COACHING_WORKFLOW_SOURCE!=="coaching-relay"||coachingAuthSecret.length<32||coachingAuthSecret.length>512||coachingAuthSecret===token())
+ throw Error("Coaching Relay sender identity and secret must be unique");
 const { createCoachingWorkflowClientFromEnv } = await import("../../implementation/coaching-workflow-client.mjs");
 const coachingWorkflow = createCoachingWorkflowClientFromEnv({
   env: Bun.env,
