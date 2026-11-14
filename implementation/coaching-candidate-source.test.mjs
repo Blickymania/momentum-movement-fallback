@@ -144,3 +144,13 @@ test("Bot 005 and Coaching Relay candidates bind sender identity and HMAC secret
   assert.match(relay, /COACHING_WORKFLOW_SOURCE!=="coaching-relay"/);
   assert.match(relay, /coachingAuthSecret===token\(\)/);
 });
+
+
+test("candidate Coaching Workflow rejects reserved and non-public idempotency endpoint hostnames", async () => {
+  const source = await readFile(workflowPath, "utf8");
+  assert.match(source, /idempotencyHost\.endsWith\("\.example"\)/);
+  assert.match(source, /idempotencyHost\.endsWith\("\.onion"\)/);
+  assert.match(source, /idempotencyHost\.endsWith\("\.internal"\)/);
+  assert.match(source, /idempotencyHost\.endsWith\("\.test"\)/);
+  assert.match(source, /idempotencyHost\.startsWith\("\["\)/);
+});
