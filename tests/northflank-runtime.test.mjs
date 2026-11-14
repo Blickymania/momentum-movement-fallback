@@ -47,3 +47,10 @@ test("Northflank deployment documentation does not contain runtime credentials",
   assert.doesNotMatch(deployment, /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/);
   assert.doesNotMatch(deployment, /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/);
 });
+
+test("Northflank cannot enter the router before shared OAuth data parity is proven", () => {
+  assert.ok(deployment.includes("Do not configure `NORTHFLANK_MANAGER_ORIGIN` in the router until"));
+  assert.ok(deployment.includes("row-count/digest reconciliation"));
+  assert.ok(deployment.includes("same logical OAuth data plane"));
+  assert.ok(deployment.includes("a rehearsed restore path"));
+});
