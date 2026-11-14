@@ -92,3 +92,11 @@ test("database client lifetime is request-scoped and closed in finally", () => {
   assert.match(source, /managerContext\.run\(\{ env, database \}/);
   assert.match(source, /finally \{[\s\S]*await database\?\.close\(\)/);
 });
+
+test("channel ownership verification has a bounded upstream timeout", () => {
+  assert.match(source, /async function channelGuild[\s\S]*?AbortSignal\.timeout\(12000\)/);
+});
+
+test("Discord API requests use an explicit bounded timeout", () => {
+  assert.match(source, /const init:RequestInit=\{method,headers,signal:AbortSignal\.timeout\(15000\)\}/);
+});
