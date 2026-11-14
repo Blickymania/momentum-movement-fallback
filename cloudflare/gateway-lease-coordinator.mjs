@@ -179,7 +179,8 @@ export class GatewayLeaseCoordinator {
       return json({ status: "ok", service: "momentum-movement-gateway-lease", mode: "control-plane-only" });
     }
 
-    if (request.method === "GET" && url.pathname === "/lease/state") {
+    if (url.pathname === "/lease/state") {
+      if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
       return json({ lease: this.read() });
     }
 
