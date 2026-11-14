@@ -193,6 +193,17 @@ test("fails closed when the provider health payload is missing container evidenc
   await assert.rejects(() => fencer.getServiceHealth(serviceMap["primary-deploy"]), /northflank_service_state_unverified/);
 });
 
+test("fails closed when the provider reports an empty container list", async () => {
+  const fetchFn = async () => Response.json({
+    data: { current: { hasMore: false, containers: [] } }
+  });
+  const fencer = createNorthflankServiceFencer(fencerOptions({ fetchFn }));
+  await assert.rejects(
+    () => fencer.getServiceHealth(serviceMap["primary-deploy"]),
+    /northflank_service_state_unverified/
+  );
+});
+
 test("refuses absent lease state and mismatched owners before provider calls", async () => {
   const northflank = fakeNorthflank();
   const fencer = createNorthflankServiceFencer(fencerOptions({ fetchFn: northflank.fetch }));
