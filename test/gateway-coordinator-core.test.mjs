@@ -311,6 +311,56 @@ test("READY session and subsequent dispatch events persist into isolated per-cli
   assert.equal(beta.sent[0].op, 2);
 });
 
+test("server-requested heartbeat is sent immediately even when a scheduled ACK is pending", async () => {
+  const h = makeHarness();
+  await h.core.initialize();
+  await h.core.start();
+  const socket = h.sockets[0];
+  frame(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+  await h.flush();
+  frame(socket, { op: 0, s: 6, t: "READY", d: { session_id: "session", resume_gateway_url: "wss://resume.example" } });
+  await h.flush();
+
+  const state = h.core.sessions.get("bot-alpha");
+  h.advance(state.heartbeatAt - h.now());
+  await h.core.alarm();
+  assert.equal(state.pendingHeartbeatAcks, 1);
+  const sentBeforeRequest = socket.sent.length;
+
+  frame(socket, { op: 1, d: null });
+  await h.flush();
+  assert.equal(socket.sent.length, sentBeforeRequest + 1);
+  assert.equal(socket.sent.at(-1).op, 1);
+  assert.equal(state.pendingHeartbeatAcks, 2);
+  assert.equal(socket.closed.length, 0);
+
+  frame(socket, { op: 11, d: null });
+  await h.flush();
+  assert.equal(state.pendingHeartbeatAcks, 1);
+  assert.equal(state.awaitingHeartbeatAck, true);
+  frame(socket, { op: 11, d: null });
+  await h.flush();
+  assert.equal(state.pendingHeartbeatAcks, 0);
+  assert.equal(state.awaitingHeartbeatAck, false);
+});
+
+test("dispatch frames without a sequence close safely without advancing durable state", async () => {
+  const h = makeHarness();
+  await h.core.initialize();
+  await h.core.start();
+  const socket = h.sockets[0];
+  frame(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+  await h.flush();
+  frame(socket, { op: 0, s: 10, t: "READY", d: { session_id: "session", resume_gateway_url: "wss://resume.example" } });
+  await h.flush();
+  frame(socket, { op: 0, t: "MESSAGE_CREATE", d: { id: "invalid-sequence" } });
+  await h.flush();
+
+  assert.equal((await h.core.getInbox("bot-alpha").getState()).sequence, 10);
+  assert.equal(h.core.sessions.get("bot-alpha").lastError, "gateway_dispatch_sequence_missing");
+  assert.equal(socket.closed.at(-1).code, 4002);
+});
+
 test("scheduled heartbeat waits for ACK and advances the single shared alarm", async () => {
   const h = makeHarness();
   await h.core.initialize();
