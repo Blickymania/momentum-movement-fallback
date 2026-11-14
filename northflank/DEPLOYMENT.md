@@ -41,17 +41,37 @@ Northflank supports private project networking by default, plus optional public 
 
 ## Database topology decision
 
-A persistent manager process and a ready database do not, by themselves, provide a safe provider failover. Northflank and every fallback Manager origin must reach the **same logical OAuth data plane**. Otherwise tokens, registrations, authorization codes, and refresh-token rotations can diverge when the router changes origins.
+A persistent Manager process and a responsive database do not, by themselves, provide safe provider failover. Northflank and every fallback Manager origin must reach the **same logical OAuth data plane**. Otherwise clients, authorization codes, access tokens, and refresh-token rotations can diverge when the router changes origins.
 
-Northflank PostgreSQL supports external TLS TCP access for supported addons, so another provider can be configured to reach the same addon. However, that database remains in Northflank's fault domain. A Northflank-wide outage would remove both the Manager and its database; it is therefore not a fully independent database layer even if Railway can connect to it.
+A Northflank PostgreSQL addon is private to its project by default and remains in the Northflank fault domain. Railway, Cloudflare, or Render do not automatically share that private network; a Northflank-wide outage could affect both its Manager and attached database. Do not use a provider-local addon as the production OAuth store for a cross-provider failover design.
 
-A separately hosted database is preferable for cross-provider resilience, but it must be selected and costed before provisioning. Neon Free is one test candidate, not a production recommendation: its current free-plan documentation lists 100 CU-hours per project/month, 1 GB storage, 5 GB egress, and scale-to-zero after five minutes. That sleep behavior and its prototype/small-team positioning make it unsuitable as the only always-on production OAuth data plane without an accepted wake-up/availability risk.
+### Neon shared-database candidate
+
+Neon Free is now the preferred candidate to inspect for a shared PostgreSQL data plane because it is external to Northflank, Railway, Cloudflare, and Render. Its current Free plan includes:
+- 100 CU-hours per project per month.
+- 1 GB PostgreSQL storage per project.
+- 5 GB public network transfer per project per month.
+- Up to 2 CU autoscaling.
+- Scale-to-zero after five minutes of inactivity; this setting is fixed on Free.
+- Reactivation after a new query is documented to take a few hundred milliseconds.
+
+At 0.25 CU, 100 CU-hours represents about 400 active compute-hours per month. Actual usage depends on autoscaling, request frequency, and how long the database remains active. When a project's free compute or network-transfer quota is exhausted, Neon documents that its compute is suspended until the next billing period or an upgrade.
+
+Neon requires encrypted SSL/TLS connections; use a pooled connection string where supported and keep `sslmode=require`. A dedicated database role with only the OAuth schema privileges is preferable to an owner credential in each Manager. Neon IP Allow is currently a Scale-plan feature, not a Free-plan security control, so the free endpoint must be protected with strong unique credentials, TLS, secret-manager-only storage, least privilege, and credential rotation. Do not assume IP allowlisting is available on Free.
+
+**Operational caveat:** No periodic ping or keepalive should be added to prevent scale-to-zero. Normal Manager requests can wake the database. The application must tolerate the brief cold-start delay and surface quota exhaustion as a real readiness failure. Monitor CU-hours and network transfer through the Neon account tooling once available; do not keep the database awake with artificial traffic.
+
+Neon is a candidate, not yet an approved production dependency. Before using it, measure the existing OAuth database size and traffic, verify the current account's free-plan quota and project state, create only an isolated staging database, test pooled and unpooled connections from each intended runtime, prove the OAuth lifecycle and backup restore, and confirm acceptable cold-start latency and quota headroom. No production data should be copied until all tests pass.
 
 **Current decision: no independent shared production PostgreSQL provider has been selected or verified.** Do not create a second isolated OAuth database and do not configure `NORTHFLANK_MANAGER_ORIGIN` in the router until the candidate and existing Railway Manager are proven to use the same logical database, with row-count/digest reconciliation, OAuth lifecycle tests, and a rehearsed restore path.
 
 References:
 - Northflank PostgreSQL network access: https://northflank.com/docs/v1/application/databases-and-persistence/access-a-database
-- Neon free-plan limits: https://neon.com/docs/introduction/plans
+- Northflank current Sandbox and compute prices: https://northflank.com/pricing
+- Neon current Free plan quotas: https://neon.com/docs/introduction/plans
+- Neon current scale-to-zero behavior: https://neon.com/docs/introduction/scale-to-zero
+- Neon pooled connection strings and TLS: https://neon.com/docs/connect/connect-from-any-app
+- Neon IP Allow availability: https://neon.com/docs/manage/ip-allow
 
 ## Service configuration
 
@@ -128,7 +148,7 @@ The Manager's `/readyz` must return HTTP 200 and:
 
 Readiness fails closed when the OAuth database is enabled but cannot answer `SELECT 1`, or when the Discord bot/application/guild identity check fails.
 
-The failover router's own `/readyz` is stricter: it returns HTTP 503 with `status: "degraded"` when it selected the legacy Railway origin but that origin does not explicitly report OAuth database verification. The router can still forward requests to the existing Railway Manager; it must not advertise full readiness until the selected origin proves the database check.
+The failover router's own `/readyz` and `/_failover/status` are strict: they return HTTP 503 with `status: "degraded"` when a Manager origin is reachable but no ready origin explicitly verifies the shared OAuth database. The router can still forward requests to the existing Railway Manager; it must not advertise full readiness until the selected origin proves the database check.
 
 After Northflank has a real HTTPS origin and its readiness endpoint passes:
 - Set `NORTHFLANK_MANAGER_ORIGIN` on the Cloudflare failover router.
