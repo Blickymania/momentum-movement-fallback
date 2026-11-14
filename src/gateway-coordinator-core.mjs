@@ -157,6 +157,8 @@ export class GatewayCoordinatorCore {
   async initialize() {
     return this.serialize(async () => {
       if (this.initialized) return this.snapshot();
+      const coordinatorMeta = await this.storage.get(COORDINATOR_META_KEY);
+      this.stopped = coordinatorMeta?.stopped === true;
       for (const def of this.definitions) {
         const inbox = new DurableGatewayInbox(this.storage, {
           ...this.inboxOptions,
@@ -171,19 +173,22 @@ export class GatewayCoordinatorCore {
           : defaults;
         // A Durable Object restart invalidates all in-memory sockets. Keep only
         // resume/heartbeat metadata and let start() acquire a new generation.
-        if (state.status !== "fatal") state.status = def.enabled ? "disconnected" : "disabled";
+        if (state.status !== "fatal") {
+          state.status = !def.enabled ? "disabled" : this.stopped ? "stopped" : "disconnected";
+        }
         state.heartbeatAt = null;
         state.heartbeatAckDeadline = null;
         state.awaitingHeartbeatAck = false;
-        if (!def.enabled) {
+        if (!def.enabled || this.stopped) {
           state.reconnectAt = null;
           state.pendingAuthAction = null;
+        } else if (state.reconnectAt === null) {
+          state.reconnectAt = this.now();
         }
         await this.persistSession(def.id, state);
         this.sessions.set(def.id, state);
       }
       this.initialized = true;
-      this.stopped = false;
       return this.snapshot();
     });
   }
@@ -207,6 +212,7 @@ export class GatewayCoordinatorCore {
     return this.serialize(async () => {
       if (!this.initialized) await this.initializeUnlocked();
       this.stopped = false;
+      await this.storage.put(COORDINATOR_META_KEY, { stopped: false, updatedAt: this.now() });
       for (const def of this.definitions) {
         if (!def.enabled) continue;
         const session = this.sessions.get(def.id);
@@ -222,6 +228,8 @@ export class GatewayCoordinatorCore {
 
   async initializeUnlocked() {
     if (this.initialized) return;
+    const coordinatorMeta = await this.storage.get(COORDINATOR_META_KEY);
+    this.stopped = coordinatorMeta?.stopped === true;
     for (const def of this.definitions) {
       const inbox = new DurableGatewayInbox(this.storage, {
         ...this.inboxOptions,
@@ -233,19 +241,22 @@ export class GatewayCoordinatorCore {
       const state = persisted && persisted.clientId === def.id
         ? { ...initialSession(def.id), ...persisted }
         : initialSession(def.id);
-      if (state.status !== "fatal") state.status = def.enabled ? "disconnected" : "disabled";
+      if (state.status !== "fatal") {
+        state.status = !def.enabled ? "disabled" : this.stopped ? "stopped" : "disconnected";
+      }
       state.heartbeatAt = null;
       state.heartbeatAckDeadline = null;
       state.awaitingHeartbeatAck = false;
-      if (!def.enabled) {
+      if (!def.enabled || this.stopped) {
         state.reconnectAt = null;
         state.pendingAuthAction = null;
+      } else if (state.reconnectAt === null) {
+        state.reconnectAt = this.now();
       }
       await this.persistSession(def.id, state);
       this.sessions.set(def.id, state);
     }
     this.initialized = true;
-    this.stopped = false;
   }
 
   async openSocket(id) {
@@ -610,6 +621,7 @@ export class GatewayCoordinatorCore {
   async stop() {
     return this.serialize(async () => {
       this.stopped = true;
+      await this.storage.put(COORDINATOR_META_KEY, { stopped: true, updatedAt: this.now() });
       for (const socket of this.sockets.values()) {
         try { socket.close(1000, "Coordinator stopped"); } catch {}
       }
