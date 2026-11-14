@@ -116,3 +116,7 @@ test("oversized MCP and OAuth bodies are rejected with HTTP 413", () => {
   assert.match(source, /tooLarge\?413:400/);
   assert.match(source, /mcpOAuthError\("request_body_too_large",413\)/);
 });
+
+test("declared Content-Length is validated as decimal digits", () => {
+  assert.ok(source.includes('!/^\\d+$/.test(declared)'));
+});
