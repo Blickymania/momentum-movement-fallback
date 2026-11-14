@@ -182,6 +182,7 @@ test("HTTP state route is read-only and POST to unsupported methods is rejected"
   try {
     const state = await env.coordinator.fetch(new Request("https://lease.internal/lease/state"));
     assert.equal(state.status, 200);
+    assert.equal((await state.json()).ok, true);
     const post = await env.coordinator.fetch(new Request("https://lease.internal/lease/state", { method: "POST" }));
     assert.equal(post.status, 405);
     const badJson = await env.coordinator.fetch(new Request("https://lease.internal/lease/acquire", {
