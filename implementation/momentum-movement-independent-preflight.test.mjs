@@ -22,6 +22,7 @@ test('rejects Railway and local PostgreSQL URLs', () => {
   assert.throws(() => validateCoordinationDatabaseUrl('postgres://u:p@db.railway.internal:5432/app'), /non_railway/);
   assert.throws(() => validateCoordinationDatabaseUrl('postgres://u:p@monorail.proxy.rlwy.net:5432/app'), /non_railway/);
   assert.throws(() => validateCoordinationDatabaseUrl('postgres://u:p@127.0.0.1:5432/app'), /non_railway/);
+  assert.throws(() => validateCoordinationDatabaseUrl('postgres://u:p@[::1]:5432/app'), /non_railway/);
 });
 
 test('requires a PostgreSQL URL scheme', () => {
@@ -32,6 +33,8 @@ test('only accepts public HTTPS primary health URLs', () => {
   assert.equal(validatePrimaryHealthUrl('https://status.example.com/healthz').hostname, 'status.example.com');
   assert.throws(() => validatePrimaryHealthUrl('http://status.example.com'), /public_https/);
   assert.throws(() => validatePrimaryHealthUrl('https://bot.railway.internal/healthz'), /public_https/);
+  assert.throws(() => validatePrimaryHealthUrl('https://bot.up.railway.app/healthz'), /public_https/);
+  assert.throws(() => validatePrimaryHealthUrl('https://127.0.0.1/healthz'), /public_https/);
   assert.equal(validatePrimaryHealthUrl(undefined), null);
 });
 
