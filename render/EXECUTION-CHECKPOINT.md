@@ -19,7 +19,7 @@ Last updated: 2026-11-14 (UTC)
 - Runtime/build: Docker, root build context, render/Dockerfile, Bun 1.4.4, port 10000
 - Auto deploy: OFF
 - Health check: /healthz (process liveness only; temporary until dependencies are configured)
-- Latest verified deployment: dep-dbs3tik9v7es73bkalu0, status live, commit a18f8a3a216eae65d565eabe9d0f89b9b4f1e0e8
+- Latest verified deployment: dep-dbs3v1qfngtc73blbr90, status live, commit d676decab4bb9536f2233bde467a780be0011272
 - Blueprint: exs-dbs3tfafngtc73bl7li0; autoSync=false; status paused by design because automatic sync is disabled. Last sync observed 2026-11-14T10:58:18Z.
 
 ## Completed objectives and changes
@@ -35,8 +35,9 @@ Last updated: 2026-11-14 (UTC)
    - healthCheckPath: /healthz.
    - WRITES_ENABLED: "false".
 5. Approved the reviewed Blueprint sync; Render read-back confirms service health check path /healthz, plan free, autoDeploy off, and latest deploy live.
-6. Updated render/DEPLOYMENT.md to explain the interim liveness check and DB network constraint.
-7. No Render cron jobs, monitoring pings, or scheduled automation created.
+6. Set non-secret Render variables: APPLICATION_ID, AUTHORIZED_GUILD_ID, DISCORD_OAUTH_REDIRECT_URI, OAUTH_ISSUER_URL, and OAUTH_RESOURCE_URL. The environment update triggered deployment dep-dbs3v1qfngtc73blbr90, now verified live. No secret values were added.
+7. Updated render/DEPLOYMENT.md to explain the interim liveness check and DB network constraint.
+8. No Render cron jobs, monitoring pings, or scheduled automation created.
 
 ## Changes / commits
 - a18f8a3a216eae65d565eabe9d0f89b9b4f1e0e8 — add render.yaml and configure Render Free validation service.
@@ -72,8 +73,8 @@ Populate values through Render Dashboard Environment only; never paste secrets i
 
 ## Tests and verification
 - Container build/deploy: passed; latest deployment status live.
-- /healthz: HTTP 200 observed before latest Blueprint redeploy; Render configuration read-back now confirms /healthz is set.
-- /readyz: HTTP 503 with reason configuration observed before credentials were configured.
+- /healthz: HTTP 200 observed before latest Blueprint redeploy; subsequent Render deployment finished live with /healthz configured as the HTTP health check.
+- /readyz: HTTP 503 with reason configuration observed before bot credentials were configured; expected to remain unavailable until the Discord bot token and identity values are fully active.
 - Post-Blueprint public HTTP recheck was attempted but Browser Use returned an internal error and web opener could not access the service URL. Do not claim a post-sync public HTTP retest.
 - Discord bot identity: not yet tested on Render.
 - OAuth callback/token flows: not yet tested on Render.
