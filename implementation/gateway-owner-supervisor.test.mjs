@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { startGatewayOwner } from "./gateway-owner-supervisor.mjs";
 
 const leaseRow = {
-  lease_scope: "momentum-movement:discord-gateway",
+  lease_scope: "momentum-movement:bot-005-gateway",
   owner_id: "process-unique-001",
   fencing_epoch: "14",
   deployment_id: "candidate-deploy"
