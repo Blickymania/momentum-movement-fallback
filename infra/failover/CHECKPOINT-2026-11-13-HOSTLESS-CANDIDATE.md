@@ -43,8 +43,9 @@ References:
 Assessment:
 - Hostless is a promising *evaluation candidate* for an isolated, low-resource always-on connector process and is more promising than Render Free for process persistence.
 - Official documentation reviewed did not establish static egress IPs, private peering to Railway, or guaranteed outbound SSH/TCP behavior needed by the prepared Railway CLI tunnel. No actual egress test or account provisioning was performed.
+- Hostless's own Proxy and VPN Hosting policy says it may pause proxy, VPN, or tunneling workloads when their use falls outside what the platform permits. The proposed Railway CLI SSH + Cloudflare Tunnel connector is explicitly a tunneling workload. Provider approval for this exact restricted, private-purpose use is therefore a prerequisite; no test deployment should be attempted before written confirmation. Source: https://hostless.cloud/violations/proxy-and-vpn-hosting
 - The legal/privacy pages surfaced in search did not provide sufficient independently verified enterprise/security assurance for placing a production Railway project token or database-connectivity secret there.
-- Do not deploy production credentials, create an account resource, enable billable capacity, or connect the production database to Hostless yet.
+- Do not deploy production credentials, create an account resource, enable billable capacity, or connect the production database to Hostless. Treat Hostless as blocked unless the provider explicitly approves the tunnel use and the network/billing checks pass.
 - If evaluated later, first use a non-production dummy secret and isolated network probe; confirm outbound SSH/TCP, resource accounting, account free allowance, and actual billing safeguards. Only after successful evidence should the host be reconsidered. Do not expose Railway PostgreSQL publicly.
 
 ## Source review
