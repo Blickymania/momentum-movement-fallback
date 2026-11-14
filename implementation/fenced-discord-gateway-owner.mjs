@@ -57,6 +57,8 @@ export function prepareFencedDiscordGatewayOwner({
   let starting = false;
   let closed = false;
   let applicationReady = false;
+  let startPromise = null;
+  const loginAbortController = new AbortController();
   const readinessWaiters = new Set();
 
   function settleReadiness() {
@@ -87,8 +89,9 @@ export function prepareFencedDiscordGatewayOwner({
         throw new Error("gateway_owner_start_state_invalid");
       }
       starting = true;
-      try {
-        supervisor = await startGatewayOwner({
+      const run = (async () => {
+        try {
+          supervisor = await startGatewayOwner({
           leaseStore,
           scope: GATEWAY_LEASE_SCOPE,
           ownerId: processOwner,
@@ -98,7 +101,20 @@ export function prepareFencedDiscordGatewayOwner({
           renewTimeoutMs,
           loginGateway: async ({ assertOwned }) => {
             guards.setAssertOwned(assertOwned);
-            await client.login(botToken);
+            const signal = loginAbortController.signal;
+            if (signal.aborted) throw new Error("gateway_start_aborted");
+            await new Promise((resolve, reject) => {
+              const cleanup = () => signal.removeEventListener("abort", onAbort);
+              const onAbort = () => {
+                cleanup();
+                reject(new Error("gateway_start_aborted"));
+              };
+              signal.addEventListener("abort", onAbort, { once: true });
+              Promise.resolve()
+                .then(() => client.login(botToken))
+                .then(value => { cleanup(); resolve(value); }, error => { cleanup(); reject(error); });
+              if (signal.aborted) onAbort();
+            });
           },
           destroyGateway: async () => {
             applicationReady = false;
@@ -119,13 +135,19 @@ export function prepareFencedDiscordGatewayOwner({
         } else {
           settleReadiness();
         }
-        return supervisor;
-      } catch (error) {
-        guards.revoke();
-        closed = true;
-        rejectReadiness("gateway_start_failed");
-        throw error;
+          return supervisor;
+        } catch (error) {
+          guards.revoke();
+          closed = true;
+          rejectReadiness("gateway_start_failed");
+          throw error;
+        }
+      })();
+      startPromise = run;
+      try {
+        return await run;
       } finally {
+        if (startPromise === run) startPromise = null;
         starting = false;
       }
     },
@@ -159,10 +181,18 @@ export function prepareFencedDiscordGatewayOwner({
     },
 
     async shutdown(reason = "graceful_shutdown") {
-      if (closed && !supervisor) return { released: false, alreadyStopped: true };
+      if (closed && !supervisor && !startPromise) return { released: false, alreadyStopped: true };
       closed = true;
       applicationReady = false;
       rejectReadiness("gateway_owner_shutdown");
+      if (starting && startPromise && !supervisor) {
+        guards.revoke();
+        loginAbortController.abort(reason);
+        await client.destroy().catch(() => {});
+        await startPromise.catch(() => {});
+        const current = await leaseStore.read().catch(() => null);
+        return { released: !current || !(current.lease_active === true || current.lease_active === 1), alreadyStopped: false };
+      }
       if (!supervisor?.ok) {
         guards.revoke();
         return { released: false, alreadyStopped: false };
