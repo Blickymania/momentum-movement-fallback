@@ -13,7 +13,7 @@ const expectedProductionDdl = [
   "CREATE TABLE IF NOT EXISTS mcp_oauth_refresh_tokens (token_hash text PRIMARY KEY, client_id text NOT NULL, user_id text NOT NULL, guild_id text NOT NULL, scope text NOT NULL, resource text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz NOT NULL, revoked_at timestamptz, replaced_by text)"
 ];
 
-const normalize = value => value.replace(/\\s+/g, " ").trim();
+const normalize = value => value.replace(/\s+/g, " ").trim();
 const createTables = source => [...source.matchAll(/["'](CREATE TABLE IF NOT EXISTS [^"']+)["']/g)]
   .map(match => normalize(match[1]))
   .sort();
@@ -29,8 +29,8 @@ test("Cloudflare Worker Manager preserves the audited production OAuth table def
 test("all candidate Managers preserve OAuth transaction and refresh-token rotation safeguards", () => {
   for (const [name, source] of [["Render/Northflank", render], ["Cloudflare Worker", worker]]) {
     assert.equal((source.match(/FOR UPDATE/g) || []).length, 3, name + " must retain row locks for single-use code and refresh-token flows");
-    assert.equal((source.match(/\\.begin\\(async tx/g) || []).length, 4, name + " must retain the four transactional OAuth operations");
-    assert.match(source, /replaced_by=\\$1 WHERE token_hash=\\$2/, name + " must retain refresh-token rotation linkage");
-    assert.equal((source.match(/revoked_at=now\\(\\)/g) || []).length, 3, name + " must retain token/client revocation paths");
+    assert.equal((source.match(/\.begin\(async tx/g) || []).length, 4, name + " must retain the four transactional OAuth operations");
+    assert.match(source, /replaced_by=\$1 WHERE token_hash=\$2/, name + " must retain refresh-token rotation linkage");
+    assert.equal((source.match(/revoked_at=now\(\)/g) || []).length, 3, name + " must retain token/client revocation paths");
   }
 });
