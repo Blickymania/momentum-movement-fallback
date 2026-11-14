@@ -206,6 +206,31 @@ test("Worker separates operator bootstrap and bot fence-request credentials; dir
   assert.equal(forwarded, 1);
 });
 
+test("Worker rejects candidate owners not bound to their declared deployment", async () => {
+  let forwarded = 0;
+  const env = {
+    FENCE_REQUEST_TOKEN: fenceRequestToken,
+    RENDER_API_KEY: "render-test-api-key-123456",
+    RENDER_SERVICE_IDS_JSON: JSON.stringify({
+      "primary-deploy": "srv-primary-12345678",
+      "standby-deploy": "srv-standby-12345678"
+    }),
+    GATEWAY_LEASE_COORDINATOR: {
+      idFromName: () => "id",
+      get: () => ({ fetch: async () => { forwarded++; return jsonResponse({ ok: true, lease }); } })
+    }
+  };
+  for (const candidateOwnerId of ["unbound-owner", "primary-deploy:owner"]) {
+    const response = await worker.fetch(new Request("https://lease.example.com/fence", {
+      method: "POST",
+      headers: { authorization: "Bearer " + fenceRequestToken, "content-type": "application/json" },
+      body: JSON.stringify({ candidateOwnerId, candidateDeploymentId: "standby-deploy" })
+    }), env);
+    assert.equal(response.status, 400);
+  }
+  assert.equal(forwarded, 0);
+});
+
 test("Worker never forwards unapproved route paths", async () => {
   let forwarded = false;
   const response = await worker.fetch(new Request("https://lease.example.com/admin", {
