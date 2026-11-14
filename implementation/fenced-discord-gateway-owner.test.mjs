@@ -217,5 +217,5 @@ test("generated owner ID is unique and prefixed by the deployment identity", () 
     fetchTarget: fakeFetchTarget()
   });
   assert.match(prepared.ownerId, /^standby-deploy:[0-9a-f-]{36}$/i);
-  assert.equal(prepared.scope, "momentum-movement:discord-gateway");
+  assert.equal(prepared.scope, "momentum-movement:bot-005-gateway");
 });
