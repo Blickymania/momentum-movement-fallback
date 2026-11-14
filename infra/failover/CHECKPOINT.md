@@ -365,3 +365,36 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 3. Identify the live Dawn OAuth database host, owner, size, schema, and backups securely.
 4. Evaluate a Neon staging project only after its account quota and network constraints are confirmed; test TLS/pooled connections, cold starts, database quota behavior, OAuth lifecycle, and restore from backup across intended runtimes.
 5. Do not enable Northflank routing or change live Railway until shared data identity, full tests, and rollback are proven.
+
+
+## Cycle 18 — Neon staging account inspection and isolated connectivity test (2026-11-14 UTC)
+
+### Account and production inventory
+- Neon connector is now callable. Listed the account organization: `org-icy-salad-18689157` (Free plan). Before provisioning, the organization had zero projects.
+- Read-only Railway production inventory confirms the project is `Dawn Dotta / Momentum Movement`, environment `production`, with no staged changes. The live `Dawn Dotta Discord Manager` deployment is SUCCESS and has one replica.
+- Production contains two distinct PostgreSQL services: `OAuth PostgreSQL` with a 1GB persistent volume and `Postgres` with a 5GB persistent volume. Manager has OAuth database host/name/user/password configuration variables, but Railway returns values redacted. No assumption was made about which database the Manager references.
+- The existing `OAuth Database Diagnostic Function - Temp` is a live Bun function configured with the same OAUTH_DB_* variable names and its historical logs include successful HTTP 200 requests. Its source executes `SELECT current_database()`; this proves that diagnostic function's configured connection worked at those times, not that its target is the Manager's exact database. Its public Railway domain and unauthenticated request behavior need a separate security review. No changes were made to it.
+- Manager's recent HTTP logs show successful MCP POST requests (HTTP 200) and no upstream errors in the sampled window. This is observational evidence only, not an OAuth lifecycle/failover test.
+
+### Isolated Neon staging resource
+- Created a new Free-plan-only Neon project: `momentum-movement-oauth-failover-staging`, project ID `autumn-moon-71501044`, region `aws-us-west-2`, PostgreSQL 18.
+- Created an empty default branch `staging` (`br-long-rice-bfm97hf6`) with database `momentum_oauth_staging` and role `momentum_oauth_staging`.
+- Compute is constrained to 0.25 CU min/max. First create request attempted to set a 300-second suspend timeout, but Neon returned HTTP 412: modifying the suspend interval is not permitted on this account. The successful project response reported `suspend_timeout_seconds: 0`; do not claim automatic scale-to-zero is configured on this account.
+- To prevent an unattended compute from remaining active, the endpoint was explicitly suspended after provisioning and again after tests. Final endpoint listing reports `current_state: idle`. It may wake on the next SQL/connection operation; explicitly suspend it again after future tests. No keepalive/scheduler was configured.
+- Read-only connectivity test succeeded: `SELECT current_database(), current_user, current_setting('server_version'), 1` returned database `momentum_oauth_staging`, role `momentum_oauth_staging`, PostgreSQL `18.7`, and check value `1`.
+- Schema inspection returned zero user tables. No schema, production rows, OAuth clients, tokens, or user data were imported or created. No connection string or credential was retrieved or stored in Railway/Northflank.
+- The staging database is not yet approved for production. It currently has no verified 300-second autosuspend, no network allowlist, no app-runtime connection test, no pooler validation, no schema parity, no backup/restore exercise, and no OAuth flow test.
+
+### Safety boundary and blockers
+- No Railway service, variable, volume, deployment, database, route, DNS, or production data was modified. No Northflank resource or paid plan was created. No Discord action was taken.
+- Neon Free account's suspend-timeout restriction means a future app connection can wake compute and leave it active until explicitly suspended; account quota/cost monitoring is required. Do not attach it to an app until an approved idle/suspension strategy is proven.
+- The production database target remains unresolved because Manager variable values are redacted and the diagnostic service is not yet proven to target the same DB. Next safe action is to inspect DB service configuration/schema/backup metadata and determine the actual Manager-to-Postgres service reference without exposing secrets, then compare with the diagnostic function's reference.
+- GitHub Actions runner startup failure remains unresolved; 46 prior direct source invariants passed, but no actual Node/TS/Wrangler/Docker CI run has completed.
+- Draft PR #2 remains the only code delivery; do not merge or route Northflank until runtime tests, shared-database identity, and rollback gates pass.
+
+### Next cycle
+1. Read-only inspect both Railway Postgres services' service config, volume/backup metadata, and database schema/size using an approved diagnostic path; never expose credentials or dump user/token rows.
+2. Identify whether Manager's OAUTH_DATABASE_URL and OAUTH_DB_* resolve to the OAuth PostgreSQL service or the other Postgres service. If Railway redaction prevents proof, stop and report the precise missing evidence.
+3. Resolve Neon Free suspend behavior and test a minimal TLS/pooler connection only after safe staging credentials and app-runtime access are established; explicitly suspend after every test.
+4. Restore GitHub Actions runner job creation and run actual unit/build/container tests.
+5. Keep Northflank origin unset and production unchanged until every gate passes.
