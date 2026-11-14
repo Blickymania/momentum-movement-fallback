@@ -39,27 +39,31 @@ function createCoordinator(now = 1_800_000_000_000) {
 
 const input = (ownerId, deploymentId = "test-deploy", extra = {}) => ({
   scope: GATEWAY_LEASE_SCOPE,
-  ownerId,
+  ownerId: ownerId.startsWith(deploymentId + ":") ? ownerId : deploymentId + ":" + ownerId,
   deploymentId,
   ttlSeconds: 30,
   ...extra
 });
 
-function bootstrap(env, ownerId = "primary-instance", deploymentId = "primary-deploy") {
+function bootstrap(env, ownerId = "primary-deploy:primary-instance", deploymentId = "primary-deploy") {
+  const boundOwner = ownerId.startsWith(deploymentId + ":") ? ownerId : deploymentId + ":" + ownerId;
   return env.coordinator.bootstrap({
     scope: GATEWAY_LEASE_SCOPE,
-    ownerId,
+    ownerId: boundOwner,
     deploymentId,
     proofId: "operator-confirmed-old-gateway-stopped"
   });
 }
 
-function confirmFence(env, previous, candidateOwner = "standby-instance", candidateDeployment = "standby-deploy") {
+function confirmFence(env, previous, candidateOwner = "standby-deploy:standby-instance", candidateDeployment = "standby-deploy") {
+  const boundCandidate = candidateOwner.startsWith(candidateDeployment + ":")
+    ? candidateOwner
+    : candidateDeployment + ":" + candidateOwner;
   return env.coordinator.confirmFence({
     scope: GATEWAY_LEASE_SCOPE,
     expectedOwnerId: previous.owner_id,
     expectedFencingEpoch: previous.fencing_epoch,
-    candidateOwnerId: candidateOwner,
+    candidateOwnerId: boundCandidate,
     candidateDeploymentId: candidateDeployment,
     provider: "test-provider",
     proofId: "test-fence-proof-001"
@@ -82,15 +86,15 @@ test("constructs the durable ownership table with hard-fence evidence fields", (
 test("ordinary acquisition is blocked until a separate operator bootstrap exists", () => {
   const env = createCoordinator();
   try {
-    assert.throws(() => env.coordinator.acquire(input("primary-instance", "primary-deploy")), /lease_bootstrap_required/);
+    assert.throws(() => env.coordinator.acquire(input("primary-deploy:primary-instance", "primary-deploy")), /lease_bootstrap_required/);
     const seed = bootstrap(env);
     assert.equal(seed.owner_id, "__bootstrap__");
     assert.equal(seed.fence_provider, "operator_attested");
-    const first = env.coordinator.acquire(input("primary-instance", "primary-deploy"));
-    assert.equal(first.owner_id, "primary-instance");
+    const first = env.coordinator.acquire(input("primary-deploy:primary-instance", "primary-deploy"));
+    assert.equal(first.owner_id, "primary-deploy:primary-instance");
     assert.equal(first.fencing_epoch, "1");
-    assert.equal(env.coordinator.acquire(input("standby-instance", "standby-deploy")), null);
-    assert.equal(env.coordinator.acquire(input("primary-instance", "primary-deploy")), null);
+    assert.equal(env.coordinator.acquire(input("standby-deploy:standby-instance", "standby-deploy")), null);
+    assert.equal(env.coordinator.acquire(input("primary-deploy:primary-instance", "primary-deploy")), null);
     assert.throws(() => bootstrap(env, "second-primary", "another-deploy"), /lease_bootstrap_already_initialized/);
   } finally { env.db.close(); }
 });
@@ -99,14 +103,14 @@ test("renewal requires the exact owner, fencing epoch and active lease", () => {
   const env = createCoordinator();
   try {
     bootstrap(env);
-    const lease = env.coordinator.acquire(input("primary-instance", "primary-deploy"));
-    assert.equal(env.coordinator.renew(input("standby-instance", "standby-deploy", {
+    const lease = env.coordinator.acquire(input("primary-deploy:primary-instance", "primary-deploy"));
+    assert.equal(env.coordinator.renew(input("standby-deploy:standby-instance", "standby-deploy", {
       fencingEpoch: lease.fencing_epoch
     })), null);
-    assert.equal(env.coordinator.renew(input("primary-instance", "primary-deploy", {
+    assert.equal(env.coordinator.renew(input("primary-deploy:primary-instance", "primary-deploy", {
       fencingEpoch: "999"
     })), null);
-    const renewed = env.coordinator.renew(input("primary-instance", "primary-deploy", {
+    const renewed = env.coordinator.renew(input("primary-deploy:primary-instance", "primary-deploy", {
       fencingEpoch: lease.fencing_epoch,
       ttlSeconds: 60
     }));
@@ -119,39 +123,39 @@ test("expired lease cannot transfer until the exact previous owner and epoch are
   const env = createCoordinator();
   try {
     bootstrap(env);
-    const first = env.coordinator.acquire(input("primary-instance", "primary-deploy"));
+    const first = env.coordinator.acquire(input("primary-deploy:primary-instance", "primary-deploy"));
     env.setNow(first.lease_until_ms + 1);
-    assert.throws(() => env.coordinator.acquire(input("standby-instance", "standby-deploy")), /hard_fence_required/);
+    assert.throws(() => env.coordinator.acquire(input("standby-deploy:standby-instance", "standby-deploy")), /hard_fence_required/);
     assert.throws(() => env.coordinator.confirmFence({
       scope: GATEWAY_LEASE_SCOPE,
-      expectedOwnerId: "other-owner",
+      expectedOwnerId: "primary-deploy:other-owner",
       expectedFencingEpoch: first.fencing_epoch,
-      candidateOwnerId: "standby-instance",
+      candidateOwnerId: "standby-deploy:standby-instance",
       candidateDeploymentId: "standby-deploy",
       provider: "test-provider",
-      proofId: "wrong-owner"
+      proofId: "primary-deploy:wrong-owner"
     }), /lease_fence_not_confirmed/);
     assert.throws(() => env.coordinator.confirmFence({
       scope: GATEWAY_LEASE_SCOPE,
       expectedOwnerId: first.owner_id,
       expectedFencingEpoch: "999",
-      candidateOwnerId: "standby-instance",
+      candidateOwnerId: "standby-deploy:standby-instance",
       candidateDeploymentId: "standby-deploy",
       provider: "test-provider",
       proofId: "wrong-epoch"
     }), /lease_fence_not_confirmed/);
     const fenced = confirmFence(env, first);
-    assert.equal(fenced.fenced_owner_id, "primary-instance");
+    assert.equal(fenced.fenced_owner_id, "primary-deploy:primary-instance");
     assert.equal(fenced.fenced_epoch, "1");
-    assert.equal(fenced.fence_target_owner_id, "standby-instance");
+    assert.equal(fenced.fence_target_owner_id, "standby-deploy:standby-instance");
     assert.equal(fenced.fence_target_deployment_id, "standby-deploy");
-    assert.throws(() => confirmFence(env, first, "other-standby", "other-deploy"), /lease_fence_not_confirmed/);
+    assert.throws(() => confirmFence(env, first, "other-deploy:other-standby", "other-deploy"), /lease_fence_not_confirmed/);
     const repeatedFence = confirmFence(env, first);
     assert.equal(repeatedFence.fence_proof_id, fenced.fence_proof_id);
-    const second = env.coordinator.acquire(input("standby-instance", "standby-deploy"));
-    assert.equal(second.owner_id, "standby-instance");
+    const second = env.coordinator.acquire(input("standby-deploy:standby-instance", "standby-deploy"));
+    assert.equal(second.owner_id, "standby-deploy:standby-instance");
     assert.equal(second.fencing_epoch, "2");
-    assert.equal(env.coordinator.renew(input("primary-instance", "primary-deploy", {
+    assert.equal(env.coordinator.renew(input("primary-deploy:primary-instance", "primary-deploy", {
       fencingEpoch: first.fencing_epoch
     })), null);
   } finally { env.db.close(); }
@@ -161,10 +165,10 @@ test("release only expires a matching lease and still requires hard-fence confir
   const env = createCoordinator();
   try {
     bootstrap(env);
-    const first = env.coordinator.acquire(input("primary-instance", "primary-deploy"));
+    const first = env.coordinator.acquire(input("primary-deploy:primary-instance", "primary-deploy"));
     assert.equal(env.coordinator.release({
       scope: GATEWAY_LEASE_SCOPE,
-      ownerId: "wrong-owner",
+      ownerId: "primary-deploy:wrong-owner",
       fencingEpoch: first.fencing_epoch
     }), null);
     assert.equal(env.coordinator.release({
@@ -177,10 +181,10 @@ test("release only expires a matching lease and still requires hard-fence confir
       ownerId: first.owner_id,
       fencingEpoch: first.fencing_epoch
     });
-    assert.equal(released.owner_id, "primary-instance");
-    assert.throws(() => env.coordinator.acquire(input("standby-instance", "standby-deploy")), /hard_fence_required/);
+    assert.equal(released.owner_id, "primary-deploy:primary-instance");
+    assert.throws(() => env.coordinator.acquire(input("standby-deploy:standby-instance", "standby-deploy")), /hard_fence_required/);
     confirmFence(env, first);
-    const next = env.coordinator.acquire(input("standby-instance", "standby-deploy"));
+    const next = env.coordinator.acquire(input("standby-deploy:standby-instance", "standby-deploy"));
     assert.equal(next.fencing_epoch, "2");
   } finally { env.db.close(); }
 });
@@ -190,8 +194,10 @@ test("rejects unsupported scope, invalid TTL, and unsafe fencing epochs", () => 
   try {
     assert.throws(() => env.coordinator.acquire(input("owner", "test-deploy", { scope: "another-guild" })), /lease_scope_invalid/);
     assert.throws(() => env.coordinator.acquire(input("owner", "test-deploy", { ttlSeconds: 2 })), /lease_ttl_seconds/);
+    assert.throws(() => env.coordinator.acquire({ scope: GATEWAY_LEASE_SCOPE, ownerId: "unbound-owner", deploymentId: "test-deploy" }), /owner_id_must_be_bound_to_deployment/);
+    assert.throws(() => env.coordinator.bootstrap({ scope: GATEWAY_LEASE_SCOPE, ownerId: "unbound-owner", deploymentId: "test-deploy", proofId: "manual-proof" }), /owner_id_must_be_bound_to_deployment/);
     bootstrap(env);
-    const lease = env.coordinator.acquire(input("primary-instance", "primary-deploy"));
+    const lease = env.coordinator.acquire(input("primary-deploy:primary-instance", "primary-deploy"));
     assert.throws(() => env.coordinator.renew(input("owner", "test-deploy", {
       fencingEpoch: "9007199254740993"
     })), /fencing_epoch_invalid/);
@@ -207,9 +213,9 @@ test("read exposes current owner, active status and hard-fence audit without los
   const env = createCoordinator();
   try {
     bootstrap(env);
-    const lease = env.coordinator.acquire(input("primary-instance", "primary-deploy"));
+    const lease = env.coordinator.acquire(input("primary-deploy:primary-instance", "primary-deploy"));
     const current = env.coordinator.read();
-    assert.equal(current.owner_id, "primary-instance");
+    assert.equal(current.owner_id, "primary-deploy:primary-instance");
     assert.equal(current.fencing_epoch, "1");
     assert.equal(current.lease_active, 1);
     env.setNow(lease.lease_until_ms + 1);
@@ -224,9 +230,9 @@ test("HTTP refuses acquire without bootstrap, then allows one owner and denies t
     const makeRequest = ownerId => new Request("https://lease.internal/lease/acquire", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(input(ownerId, ownerId === "primary" ? "primary-deploy" : "standby-deploy"))
+      body: JSON.stringify(input(ownerId, ownerId === "primary-deploy:primary" ? "primary-deploy" : "standby-deploy"))
     });
-    const noBootstrap = await env.coordinator.fetch(makeRequest("primary"));
+    const noBootstrap = await env.coordinator.fetch(makeRequest("primary-deploy:primary"));
     assert.equal(noBootstrap.status, 409);
     assert.equal((await noBootstrap.json()).reason, "lease_bootstrap_required");
 
@@ -235,7 +241,7 @@ test("HTTP refuses acquire without bootstrap, then allows one owner and denies t
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         scope: GATEWAY_LEASE_SCOPE,
-        ownerId: "primary",
+        ownerId: "primary-deploy:primary",
         deploymentId: "primary-deploy",
         proofId: "operator-confirmed-old-gateway-stopped"
       })
@@ -243,8 +249,8 @@ test("HTTP refuses acquire without bootstrap, then allows one owner and denies t
     assert.equal(seeded.status, 200);
 
     const statuses = await Promise.all([
-      env.coordinator.fetch(makeRequest("primary")),
-      env.coordinator.fetch(makeRequest("standby"))
+      env.coordinator.fetch(makeRequest("primary-deploy:primary")),
+      env.coordinator.fetch(makeRequest("standby-deploy:standby"))
     ]);
     const codes = statuses.map(x => x.status).sort();
     assert.deepEqual(codes, [200, 409]);
@@ -263,20 +269,20 @@ test("HTTP lease transfer requires a separately confirmed hard fence", async () 
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         scope: GATEWAY_LEASE_SCOPE,
-        ownerId: "primary",
+        ownerId: "primary-deploy:primary",
         deploymentId: "primary-deploy",
         proofId: "operator-confirmed-old-gateway-stopped"
       })
     }));
     const first = await env.coordinator.fetch(new Request("https://lease.internal/lease/acquire", {
       method: "POST",
-      body: JSON.stringify(input("primary", "primary-deploy"))
+      body: JSON.stringify(input("primary-deploy:primary", "primary-deploy"))
     }));
     const lease = (await first.json()).lease;
     env.setNow(lease.lease_until_ms + 1);
     const denied = await env.coordinator.fetch(new Request("https://lease.internal/lease/acquire", {
       method: "POST",
-      body: JSON.stringify(input("standby", "standby-deploy"))
+      body: JSON.stringify(input("standby-deploy:standby", "standby-deploy"))
     }));
     assert.equal(denied.status, 409);
     assert.equal((await denied.json()).reason, "hard_fence_required");
@@ -285,9 +291,9 @@ test("HTTP lease transfer requires a separately confirmed hard fence", async () 
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         scope: GATEWAY_LEASE_SCOPE,
-        expectedOwnerId: "primary",
+        expectedOwnerId: "primary-deploy:primary",
         expectedFencingEpoch: lease.fencing_epoch,
-        candidateOwnerId: "standby",
+        candidateOwnerId: "standby-deploy:standby",
         candidateDeploymentId: "standby-deploy",
         provider: "test-provider",
         proofId: "verified-suspension-123"
@@ -296,7 +302,7 @@ test("HTTP lease transfer requires a separately confirmed hard fence", async () 
     assert.equal(confirmed.status, 200);
     const accepted = await env.coordinator.fetch(new Request("https://lease.internal/lease/acquire", {
       method: "POST",
-      body: JSON.stringify(input("standby", "standby-deploy"))
+      body: JSON.stringify(input("standby-deploy:standby", "standby-deploy"))
     }));
     assert.equal(accepted.status, 200);
     assert.equal((await accepted.json()).lease.fencing_epoch, "2");
