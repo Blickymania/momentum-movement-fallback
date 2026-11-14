@@ -90,3 +90,10 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 ### User-only/external dependency
 - The authenticated Cloudflare tab can be inspected read-only. The available browser connector cannot navigate the user's tab; user can open the Hyperdrive dashboard URL `https://dash.cloudflare.com/7738d94fbc5466ad91eb65045ee746f2/workers/hyperdrive` and Workers Plans URL `https://dash.cloudflare.com/7738d94fbc5466ad91eb65045ee746f2/workers/plans`, then the current tab context can be inspected.
 - Do not ask for passwords, tokens, or secrets in chat. Do not enable paid billing or add a card.
+
+
+## Documentation correction — Hyperdrive driver/lifecycle
+- Follow-up against current official Cloudflare Hyperdrive docs confirms `pg@8.16.3` is the recommended Node.js driver, `nodejs_compat` is the correct flag, and Cloudflare explicitly recommends creating a new `pg.Client` per request. The current package uses `pg ^8.16.3`, and the current Worker does create a request-scoped Client. These parts are aligned with official guidance, not migration defects.
+- Cloudflare also says the edge client is automatically cleaned up at invocation end and does not need `client.end()`; current code calls `client.end()` in finally. Treat removal as a possible simplification, not a verified bug, and test it rather than changing blindly.
+- The module-global OAuth schema promise is a concurrency test target, not yet a proven race: its async work runs in the initiating request's async-local context and the initiating request awaits it before closing its client. Add a concurrent-first-initialization test before deciding whether to redesign it.
+- Confirmed unresolved requirement: the Worker needs an actual `hyperdrive` binding and valid Hyperdrive config ID in Wrangler. Cloudflare's private database options use a Tunnel + Access service auth, or Workers VPC service; neither has been provisioned. A private Railway hostname alone cannot be passed as a public database host.
