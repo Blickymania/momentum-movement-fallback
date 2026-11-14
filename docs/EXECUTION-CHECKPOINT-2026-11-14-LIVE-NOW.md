@@ -89,3 +89,18 @@ The read-only production inventory and Hostless plan now document seven Gateway-
 - Railway, bot roles, and Hostless provisioning remain untouched.
 
 **Next execution step:** use Bun 1.4.4 in an authorized build environment to generate and commit `candidate/live-now-v2/bun.lock` with `bun install --lockfile-only`, run `bun install --frozen-lockfile`, execute the nine static tests with `npm test` or the nested test script, and perform a true no-token Bun standby boot. Keep the activation guard in place. Then add a separate LIVE NOW V2 lease/fence scope and independently verify the old process is physically stopped before any Gateway session can start. Before any activation, implement the V2 workload's independent ownership fencing and prove the old process is physically stopped. Do not restart Railway or create another Gateway session in parallel.
+
+## Additional cutover blocker — V2 requires independent ownership scope
+
+A read-only source inspection found the existing Cloudflare Gateway coordinator is Bot 005-only:
+
+- `GATEWAY_LEASE_SCOPE` is hard-coded to `momentum-movement:bot-005-gateway`; coordinator methods reject any other scope.
+- Worker uses a single `GATEWAY_LEASE_COORDINATOR` Durable Object and a fixed `idFromName(GATEWAY_LEASE_SCOPE)`.
+- The current prepared Discord owner imports that constant and passes it directly; it has no per-workload scope override.
+- Wrangler declares one Gateway lease class (Bot 005) plus the separate coaching idempotency class.
+
+Reusing that lease for LIVE NOW V2 would be unsafe and is prohibited. A future source-only control-plane change needs a separate V2 Durable Object class/namespace and migration, dedicated `/live-now-v2/lease/*` and `/live-now-v2/fence` routes, separate service/bootstrap/fence credentials and deployment/service mapping, plus tests that prove lease isolation across scopes.
+
+The existing Worker hard-stop adapter is Render-specific and cannot stop the current V2 primary while it remains on Railway. With Railway operations prohibited, no physical Gateway stop proof can be produced in this cycle. The V2 activation guard must remain. Do not connect a second V2 Gateway session until there is an independently verified hard stop and the dedicated scope is deployed and tested.
+
+No Worker or Durable Object source was changed during this inspection; no lease was provisioned and no secret was created.
