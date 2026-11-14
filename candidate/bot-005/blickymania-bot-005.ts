@@ -20,6 +20,7 @@ if(Bun.env.AUTHORIZED_GUILD_ID!==G||Bun.env.APPLICATION_ID!==A||!token)
 throw Error("Bot 005: guild/application credentials do not match Momentum Movement");
 
 const { createCoachingWorkflowClientFromEnv } = await import("../../implementation/coaching-workflow-client.mjs");
+const { createRulesAcceptanceHandler, addRulesAcceptanceButton, RULES_ACCEPTANCE_TARGET } = await import("../../implementation/rules-acceptance.mjs");
 const coachingWorkflow = createCoachingWorkflowClientFromEnv({
   env: Bun.env,
   timeoutMs: 5000,
@@ -105,9 +106,43 @@ async function key(){if(!mk)mk=(async()=>{const h=Bun.env.PROFILE_DATA_ENCRYPTIO
 async function seal(v){const iv=crypto.getRandomValues(new Uint8Array(12)),c=await crypto.subtle.encrypt({name:"AES-GCM",iv},await key(),new TextEncoder().encode(JSON.stringify(v)));return"MRV1."+b64(iv)+"."+b64(new Uint8Array(c))}
 async function unseal(s){const p=s.split(".");return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(p[1])},await key(),un64(p[2]))))}
 async function load(){if(ml)return ml;ml=(async()=>{const a=await caseApi("GET","/channels/"+MV+"/messages?limit=100");for(const x of a||[])if(x.author?.id===A&&x.content?.startsWith("MRV1.")){try{const v=await unseal(x.content);mc.set(v.userId,v);mi.set(v.userId,x.id)}catch{}}})();return ml}
-function empty(id){return{userId:id,profile:{about:"",tiktok:"",instagram:"",visibility:"private"},birthday:{date:"",year:"",visibility:"private",post:null},anniversary:{date:"",year:"",visibility:"private",post:null}}}
+function empty(id){return{userId:id,rulesAcceptance:null,profile:{about:"",tiktok:"",instagram:"",visibility:"private"},birthday:{date:"",year:"",visibility:"private",post:null},anniversary:{date:"",year:"",visibility:"private",post:null}}}
 async function get(id){await load();return mc.get(id)||empty(id)}
 async function save(v){await load();const c=await seal(v),old=mi.get(v.userId),x=old?await caseApi("PATCH","/channels/"+MV+"/messages/"+old,{content:c}):await caseApi("POST","/channels/"+MV+"/messages",{content:c});if(!x?.id)throw Error("profile_save");mc.set(v.userId,v);mi.set(v.userId,x.id)}
+let rulesAcceptanceReady=false;
+const handleRulesAcceptance=createRulesAcceptanceHandler({getMemberRecord:get,saveMemberRecord:save});
+async function ensureRulesAcceptanceButton(guild){
+if(MV!==RULES_ACCEPTANCE_TARGET.vaultChannelId)throw Error("member_vault_channel_mismatch");
+if(!/^[a-f0-9]{64}$/i.test(Bun.env.PROFILE_DATA_ENCRYPTION_KEY||""))throw Error("member_vault_encryption_key_missing");
+await key();
+const me=await guild.members.fetchMe();
+const vault=await guild.channels.fetch(MV);
+if(!vault||vault.guildId!==G||Number(vault.type)!==0)throw Error("member_vault_not_found");
+const vaultPermissions=vault.permissionsFor(me);
+if(!vaultPermissions?.has(PermissionFlagsBits.ViewChannel)||!vaultPermissions.has(PermissionFlagsBits.SendMessages)||!vaultPermissions.has(PermissionFlagsBits.ReadMessageHistory))throw Error("member_vault_permissions_missing");
+const rulesChannel=await guild.channels.fetch(RULES_ACCEPTANCE_TARGET.channelId);
+if(!rulesChannel||rulesChannel.guildId!==G||Number(rulesChannel.type)!==0)throw Error("rules_channel_not_found");
+const rulesPermissions=rulesChannel.permissionsFor(me);
+if(!rulesPermissions?.has(PermissionFlagsBits.ViewChannel)||!rulesPermissions.has(PermissionFlagsBits.ReadMessageHistory))throw Error("rules_channel_permissions_missing");
+const route="/channels/"+RULES_ACCEPTANCE_TARGET.channelId+"/messages/"+RULES_ACCEPTANCE_TARGET.messageId;
+const current=await caseApi("GET",route);
+if(String(current.id)!==RULES_ACCEPTANCE_TARGET.messageId||String(current.channel_id)!==RULES_ACCEPTANCE_TARGET.channelId||String(current.author?.id)!==A)throw Error("rules_dashboard_identity_mismatch");
+const updated=addRulesAcceptanceButton(current.components||[]);
+if(updated.changed)await caseApi("PATCH",route,{components:updated.components});
+const verified=await caseApi("GET",route);
+const container=(verified.components||[]).find(component=>component?.type===17);
+const present=container?.components?.some(component=>component?.type===1&&component.components?.some(button=>button?.type===2&&button.custom_id===RULES_ACCEPTANCE_TARGET.customId));
+if(!present||String(verified.author?.id)!==A)throw Error("rules_acceptance_button_verification_failed");
+return true;
+}
+client.on(Events.InteractionCreate,async i=>{
+if(!rulesAcceptanceReady)return;
+try{
+const result=await handleRulesAcceptance(i);
+if(!result)return;
+log("rules_acceptance_recorded",{persisted:result.persisted,changed:result.changed,receiptDmSent:result.notified===true});
+}catch(e){log("rules_acceptance_failed",{kind:e instanceof Error?e.name:"unknown"});}
+});
 function date(s){const a=/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.exec(String(s||""));if(!a)return null;const d=new Date(Date.UTC(2000,+a[1]-1,+a[2]));return d.getUTCMonth()===+a[1]-1&&d.getUTCDate()===+a[2]?a[1]+"-"+a[2]:null}
 async function publish(v,k){const d=v[k],ch=k==="birthday"?MB:MA;if(!/^\d{17,22}$/.test(ch))throw Error("profile_channel");if(d.visibility==="public"&&d.date){const b={content:(k==="birthday"?"🎂 ":"🎉 ")+"<@"+v.userId+"> — "+d.date,allowed_mentions:noPin};if(d.post)await caseApi("PATCH","/channels/"+ch+"/messages/"+d.post,b).catch(()=>{d.post=null});if(!d.post){const x=await caseApi("POST","/channels/"+ch+"/messages",b);if(!x?.id)throw Error("public_post");d.post=x.id}}else if(d.post){await caseApi("DELETE","/channels/"+ch+"/messages/"+d.post);d.post=null}}
 async function form(i,k,t,fs){const m={custom_id:"memberdata:"+k,title:t,components:fs.map(f=>({type:1,components:[{type:4,custom_id:f[0],label:f[1],style:f[2]?2:1,required:f[3],max_length:f[4],placeholder:f[5]}]}))},r=await fetch("https://discord.com/api/v10/interactions/"+i.id+"/"+i.token+"/callback",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type:9,data:m}),signal:AbortSignal.timeout(2200)});if(!r.ok)throw Error("modal_ack")}
@@ -555,6 +590,13 @@ try{
 if(client.user?.id!==A)throw Error("Discord bot/application mismatch");
 const guild=await client.guilds.fetch(G);
 if(guild.id!==G)throw Error("Wrong authorized guild");
+try{
+rulesAcceptanceReady=await ensureRulesAcceptanceButton(guild);
+log("rules_acceptance_ready",{messageId:RULES_ACCEPTANCE_TARGET.messageId,vaultConfigured:true,buttonVerified:rulesAcceptanceReady});
+}catch(e){
+rulesAcceptanceReady=false;
+log("rules_acceptance_not_ready",{kind:e instanceof Error?e.message:"unknown"});
+}
 guildVerified=true;ready=true;preparedGatewayOwner.markApplicationReady();log("gateway_verified",{app:A,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",handlerCount:SAFE.size,commandRegistryManagedElsewhere:true});
 }catch(err){lastError=err instanceof Error?err.name:"identity_failed";ready=false;guildVerified=false;log("identity_failed",{kind:lastError});await preparedGatewayOwner.shutdown("identity_verification_failed");}
 });
@@ -1287,7 +1329,7 @@ else unexpected++;
 }
 return Response.json({guild:G,verified:unexpected===0,asOf:new Date().toISOString(),...values,unexpected,presences:[...g.presences.cache.values()].filter(x=>["online","idle","dnd"].includes(x.status)).map(x=>({id:x.userId,status:x.status}))},{headers:{"cache-control":"no-store"}});
 }
-if(path==="/healthz")return Response.json({service:"Blickymania Bot 005",community:"Momentum Movement",gatewayReady:ready,guildVerified,readOnly,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",commandRegistryExecutor:true,supportedRecoveredCommands:SAFE.size,originalFeatureParity:false,commandsResponded,uptimeSeconds:Math.floor((Date.now()-started)/1000),errorKind:lastError},{status:ready&&guildVerified?200:503});
+if(path==="/healthz")return Response.json({service:"Blickymania Bot 005",community:"Momentum Movement",gatewayReady:ready,guildVerified,readOnly,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",commandRegistryExecutor:true,rulesAcceptanceReady,supportedRecoveredCommands:SAFE.size,originalFeatureParity:false,commandsResponded,uptimeSeconds:Math.floor((Date.now()-started)/1000),errorKind:lastError},{status:ready&&guildVerified?200:503});
 return Response.json({error:"not-found"},{status:404});
 };
 Bun.serve({hostname:"0.0.0.0",port:Number(Bun.env.PORT||8080),fetch:momentumHttpHandler});
