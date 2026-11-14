@@ -68,3 +68,11 @@ Do not set these in the live production Worker until the provider account, hosti
 5. If a permitted test project is available, run an isolated service-level pause/health-readback exercise using non-production processes only.
 6. For production, select a suitable non-sleeping host plan with appropriate operational terms. The free Sandbox is not assumed to be production eligible.
 7. Preserve Bot 005 as the sole live primary until an independently hosted primary/standby, provider hard-stop, coaching workflow/relay parity, rollback, and the one-time Railway-to-independent cutover procedure are verified.
+
+## Initial Railway-to-Northflank cutover is a separate gate
+
+The current live Bot 005 primary is a Railway Function deployment, not a Northflank service. This Northflank adapter can only pause and inspect services that belong to the configured Northflank project. It cannot stop the current Railway deployment, and a Railway deployment ID must never be submitted to the Northflank API.
+
+The first Railway-to-independent move therefore requires a separate Railway-native teardown mechanism or an operator-controlled cutover. Any Railway removal adapter must target the exact active deployment, verify the associated project/service/environment, and wait for Railway's authoritative terminal `REMOVED` state before allowing the new Gateway owner to connect. Do not use a simple HTTP 200 pause/stop response as proof. Railway documents that removal proceeds through teardown and reaches `REMOVED` only after all replicas have been terminated; this removes the deployment from history and must be treated as a deliberate operational action.
+
+The live Bot 005 source currently calls the Railway-private coaching URL. The candidate uses a configurable external HTTPS workflow URL. Both Bot 005 and the separate Coaching Interaction Relay must be accounted for when migrating this workflow. Also, the live and candidate source expose the same 36 command names, but the candidate itself reports `originalFeatureParity:false`; command-name equality is not proof of full behavior parity.
