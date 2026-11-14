@@ -73,6 +73,7 @@ test("applies the original 5+3+2 scoring rules and stores no raw message text", 
   const reply = await ledger.award(makeMessage({
     id: "1569000000000000101",
     channel_id: CHANNEL_B,
+    content: "Our different discussion adds insight for the whole community.",
     message_reference: { message_id: "1569000000000000999" },
     timestamp: new Date(now).toISOString(),
   }), { channelResolver: publicChannel(CHANNEL_B) });
@@ -83,6 +84,7 @@ test("applies the original 5+3+2 scoring rules and stores no raw message text", 
   now += 60_001;
   const sameChannel = await ledger.award(makeMessage({
     id: "1569000000000000102",
+    content: "One more meaningful reply to keep our community discussion moving.",
     timestamp: new Date(now).toISOString(),
     message_reference: { message_id: "1569000000000000998" },
   }), { channelResolver: publicChannel(CHANNEL_A) });
