@@ -101,10 +101,16 @@ export function prepareFencedDiscordGatewayOwner({
             await client.login(botToken);
           },
           destroyGateway: async () => {
+            applicationReady = false;
+            rejectReadiness("gateway_lease_lost");
             guards.revoke();
             await client.destroy();
           },
-          onLeaseLost
+          onLeaseLost: async reason => {
+            applicationReady = false;
+            rejectReadiness("gateway_lease_lost");
+            if (typeof onLeaseLost === "function") await onLeaseLost(reason);
+          }
         });
         if (!supervisor.ok) {
           guards.revoke();
