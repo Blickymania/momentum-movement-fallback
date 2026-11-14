@@ -46,11 +46,11 @@ Before using it, add these three repository Actions secrets to the private recov
 
 - `CLOUDFLARE_API_TOKEN` — scoped Cloudflare API token authorized to deploy Workers and manage the SQLite Durable Object binding
 - `CLOUDFLARE_ACCOUNT_ID` — the account ID for the Free-plan account
-- `LEASE_CONTROL_TOKEN` — a newly generated high-entropy secret used only by this lease coordinator and both listener hosts
+- `LEASE_CONTROL_TOKEN` — a newly generated high-entropy secret used only by this lease coordinator and both listener hosts (generate a 64-character hex value, e.g. `openssl rand -hex 32`)
 
 For the first deployment, Cloudflare currently requires a Workers **Admin** role scoped to the Workers product to create a new Worker; do not grant platform-wide or Zone/R2 permissions. After the Worker exists, rotate the API token to Workers **Editor** scoped to this specific Worker for subsequent deploys and secret updates. See [Cloudflare's Workers authorization guide](https://developers.cloudflare.com/workers/authorization/).
 
-Then open GitHub Actions → **Deploy Momentum Movement lease coordinator** → **Run workflow** and select the recovery branch. The workflow installs Wrangler, sets the Worker secret without printing it, and deploys the coordinator. Do not add these secrets to source files, issue comments, build logs, or the Discord bot.
+Then open GitHub Actions → **Deploy Momentum Movement lease coordinator** → **Run workflow** and select the recovery branch. The workflow runs the 18 tests, installs Wrangler, writes the secret to a mode-0600 temporary file on the ephemeral GitHub runner, deploys code and secret together with `--secrets-file`, then removes the temporary file. The secret is never committed or echoed. Do not add these secrets to source files, issue comments, build logs, or the Discord bot.
 
 After deployment, capture the Worker HTTPS `workers.dev` URL from the deployment output and set it as `LISTENER_LEASE_URL` on both listener hosts. Set the same `LEASE_CONTROL_TOKEN` as `LISTENER_LEASE_TOKEN` on both. The GitHub workflow does not provision Botkeep/Silly Development accounts and does not perform production cutover.
 
