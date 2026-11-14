@@ -168,3 +168,25 @@ test("nonmatching interactions are ignored without acknowledgement or storage ac
   assert.equal(await handler(interaction({ customId: "dcp:rules:0:std26c" })), false);
   assert.equal(reads, 0);
 });
+
+test("simultaneous clicks for one member are serialized without duplicate vault writes", async () => {
+  let releaseRead;
+  const readGate = new Promise(resolve => { releaseRead = resolve; });
+  let reads = 0;
+  let saves = 0;
+  const handler = createRulesAcceptanceHandler({
+    getMemberRecord: async id => { reads++; await readGate; return { userId: id }; },
+    saveMemberRecord: async () => { saves++; },
+    notifyMember: async () => {},
+    clock: () => new Date("2026-11-14T23:00:00.000Z")
+  });
+  const first = handler(interaction());
+  await new Promise(resolve => setImmediate(resolve));
+  const second = await handler(interaction());
+  assert.equal(second.busy, true);
+  assert.equal(reads, 1);
+  releaseRead();
+  const firstResult = await first;
+  assert.equal(firstResult.persisted, true);
+  assert.equal(saves, 1);
+});
