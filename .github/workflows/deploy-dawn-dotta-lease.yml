@@ -33,6 +33,8 @@ jobs:
               exit 1
             fi
           done
+      - name: Run failover unit and wiring tests
+        run: node --test failover/tests/*.test.mjs
       - name: Install Wrangler
         run: npm install --global wrangler@4
       - name: Configure coordinator secret
