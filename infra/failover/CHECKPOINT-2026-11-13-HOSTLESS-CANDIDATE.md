@@ -24,6 +24,7 @@ Latest environment status call:
 - Workflow YAML read-back remains a simple push/PR workflow with one Ubuntu job, checkout, Node 22 setup, npm install, and npm check.
 - The run therefore still has no runner or step evidence. Do not claim CI passed or rewrite application code to compensate for a pre-job failure.
 - GitHub's current documentation confirms push workflows can run from non-default branches when the workflow exists on the pushed ref. Thus, merely keeping this workflow on the feature branch is not sufficient to explain the failure. No repository settings or workflow mutation was made.
+- Read-only lookup of the same workflow path on `main` returned 404, so the workflow currently exists only on the feature branch. This is not an explanation for the observed push-event failures, because GitHub resolves push workflows from the pushed ref; it is a separate consideration for pull-request event availability and required-check behavior. No merge or default-branch change was made.
 - GitHub Actions remains an external/control-plane blocker until the run metadata changes or the repository Actions settings/diagnostic are inspected.
 
 ## New hosting candidate reviewed: Hostless
