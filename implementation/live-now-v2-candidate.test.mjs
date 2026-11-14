@@ -2,11 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const sourceUrl = new URL("../candidate/live-now-v2-shadow-engine.ts", import.meta.url);
+const sourceUrl = new URL("../candidate/live-now-v2/index.ts", import.meta.url);
+const packageUrl = new URL("../candidate/live-now-v2/package.json", import.meta.url);
+const dockerUrl = new URL("../candidate/live-now-v2/Dockerfile", import.meta.url);
+const readmeUrl = new URL("../candidate/live-now-v2/README.md", import.meta.url);
+const packageJson = JSON.parse(await readFile(packageUrl, "utf8"));
+const dockerfile = await readFile(dockerUrl, "utf8");
+const readme = await readFile(readmeUrl, "utf8");
 const source = await readFile(sourceUrl, "utf8");
 
 test("candidate imports the reusable panel repair adapter", () => {
-  assert.match(source, /import \{ createLiveNowPanelRepairAudit \} from "\.\.\/implementation\/live-now-panel-repair-adapter\.mjs"/);
+  assert.match(source, /import \{ createLiveNowPanelRepairAudit \} from "\.\.\/\.\.\/implementation\/live-now-panel-repair-adapter\.mjs"/);
 });
 
 test("candidate binds the adapter to the existing scanner and guarded publisher", () => {
@@ -39,6 +45,29 @@ test("recovered production snapshot is not imported as a mutable runtime target"
   assert.doesNotMatch(source, /recovered\/railway\/live-now-v2-shadow-engine/);
   assert.match(source, /Source-only LIVE NOW V2 migration candidate/);
   assert.match(source, /ownership lease\/fence/);
+});
+
+test("candidate package pins all external dependencies exactly", () => {
+  assert.deepEqual(packageJson.dependencies, {
+    "discord.js": "14.27.0",
+    "sharp": "0.34.5",
+    "tiktok-live-connector": "2.5.0",
+  });
+  assert.match(source, /from "discord\.js"/);
+  assert.match(source, /from "tiktok-live-connector"/);
+  assert.match(source, /from "sharp"/);
+  assert.doesNotMatch(source, /from "(?:discord\.js|tiktok-live-connector|sharp)@/);
+});
+
+test("candidate Dockerfile refuses an unlocked dependency install", () => {
+  assert.match(dockerfile, /bun install --production --frozen-lockfile/);
+  assert.match(dockerfile, /oven\/bun:1\.4\.4/);
+});
+
+test("candidate release notes record the TikTok dependency's license and provider dependency", () => {
+  assert.match(readme, /AGPL-3\.0-only/);
+  assert.match(readme, /Euler Stream/);
+  assert.match(readme, /not an official TikTok API client/);
 });
 
 test("candidate contains no literal bot token assignment", () => {
