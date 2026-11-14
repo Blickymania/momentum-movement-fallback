@@ -68,6 +68,44 @@ export function createMomentumManagerWorker({fetchImpl=fetch,cryptoImpl=globalTh
         }
       }
 
+      const gatewayControlRoutes = {
+        "/internal/gateway/status": { path: "/status", method: "GET" },
+        "/internal/gateway/start": { path: "/start", method: "POST" },
+        "/internal/gateway/stop": { path: "/stop", method: "POST" },
+        "/internal/gateway/reset-fatal": { path: "/reset-fatal", method: "POST" },
+      };
+      const gatewayControl = gatewayControlRoutes[url.pathname];
+      if (gatewayControl) {
+        const secret = env.MCP_INTERNAL_BEARER_TOKEN;
+        if (typeof secret !== "string" || secret.length < 32 ||
+            request.headers.get("authorization") !== "Bearer " + secret) {
+          return json({ error: "Unauthorized" }, 401);
+        }
+        if (request.method !== gatewayControl.method) return json({ error: "Method not allowed" }, 405);
+        if (!env.GATEWAY_COORDINATOR ||
+            typeof env.GATEWAY_COORDINATOR.idFromName !== "function" ||
+            typeof env.GATEWAY_COORDINATOR.get !== "function") {
+          return json({ error: "Gateway coordinator binding is unavailable" }, 503);
+        }
+        let body;
+        if (gatewayControl.method === "POST" && url.pathname.endsWith("/reset-fatal")) {
+          const length = Number(request.headers.get("content-length") || "0");
+          if (Number.isFinite(length) && length > 4096) return json({ error: "Request body too large" }, 413);
+          body = await request.text();
+          if (body.length > 4096) return json({ error: "Request body too large" }, 413);
+        }
+        const id = env.GATEWAY_COORDINATOR.idFromName("momentum-movement");
+        const stub = env.GATEWAY_COORDINATOR.get(id);
+        return stub.fetch(new Request("https://gateway.internal" + gatewayControl.path, {
+          method: gatewayControl.method,
+          headers: {
+            authorization: "Bearer " + secret,
+            ...(body !== undefined ? { "content-type": "application/json" } : {}),
+          },
+          ...(body !== undefined ? { body } : {}),
+        }));
+      }
+
       if(url.pathname!=="/mcp"||request.method!=="POST") {
         return json({error:"Not found"},404);
       }
