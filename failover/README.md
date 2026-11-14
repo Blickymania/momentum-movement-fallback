@@ -71,4 +71,4 @@ Run from the repository root:
 node --test failover/tests/*.test.mjs
 ```
 
-The tests cover lease state transitions, local lease-client safety, listener wiring, and static coordinator security/readiness configuration. Eighteen test cases are currently defined; do not treat them as passing until an authenticated GitHub Actions run or local Node test run confirms the result. They do not replace a live Cloudflare Durable Object integration test.
+The tests cover lease state transitions, local lease-client safety, listener wiring, and static coordinator security/readiness configuration. Nineteen test cases are currently defined; do not treat them as passing until an authenticated GitHub Actions run or local Node test run confirms the result. They do not replace a live Cloudflare Durable Object integration test.
