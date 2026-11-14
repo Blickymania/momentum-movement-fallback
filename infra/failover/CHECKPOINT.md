@@ -97,3 +97,9 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 - Cloudflare also says the edge client is automatically cleaned up at invocation end and does not need `client.end()`; current code calls `client.end()` in finally. Treat removal as a possible simplification, not a verified bug, and test it rather than changing blindly.
 - The module-global OAuth schema promise is a concurrency test target, not yet a proven race: its async work runs in the initiating request's async-local context and the initiating request awaits it before closing its client. Add a concurrent-first-initialization test before deciding whether to redesign it.
 - Confirmed unresolved requirement: the Worker needs an actual `hyperdrive` binding and valid Hyperdrive config ID in Wrangler. Cloudflare's private database options use a Tunnel + Access service auth, or Workers VPC service; neither has been provisioned. A private Railway hostname alone cannot be passed as a public database host.
+
+
+## Database network inspection — 2026-11-13
+- Read-only Railway inspection of the Dawn Dotta OAuth Postgres service (service `3e71f6b5-a248-40b6-b185-a748a5f5b436`, production environment `c72ea3d9-2c1c-4651-a265-79723e317fa5`) returned `proxies: []`: no public TCP proxy is configured.
+- No TCP proxy was created. Do not expose the production OAuth database publicly as a shortcut. Investigate a Cloudflare Tunnel/private-database route or another least-privilege network path; if Railway cannot run a connector due billing/resource limits, document that external blocker rather than opening broad ingress.
+- Official Cloudflare guidance confirms `pg` is recommended and request-scoped Clients are correct. Hyperdrive binding/config and reachable private DB path remain the gating dependencies.
