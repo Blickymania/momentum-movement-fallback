@@ -458,3 +458,16 @@ Continue investigating the GitHub Actions pre-job startup failure and a genuine 
 
 ### Next execution step
 Inspect and test the connector's Railway CLI invocation against documented semantics without exposing credentials; then continue searching for a trustworthy persistent host under the no-card/no-paid constraint. If no such host exists, preserve the connector as ready-to-deploy code and keep the production Manager unchanged.
+
+
+## Connector hardening and mocked lifecycle retest
+
+- Added required-command checks for `railway`, `cloudflared`, and `nc`; added numeric port validation constrained to 1–65535.
+- After the Railway SSH tunnel is established, the parent process unsets `RAILWAY_TOKEN` before launching cloudflared. The Railway process retains its own inherited token; cloudflared does not inherit the Railway project token.
+- README now documents the minimum cloudflared version (2025.4.0+) required for `--token-file`.
+- Script hardening commit: `56866d1c92e29e48e3e832d6f9970e91ce8b682e`; README commit: `48c2cb520219232e5997376fde5b67d77e2f66aa`.
+- Retested with shell `sh -n` and mocked commands: lifecycle start/stop passed; Railway CLI credential output did not reach logs; Cloudflare token file mode was 600; Cloudflare process did not inherit RAILWAY_TOKEN; invalid port 70000 was rejected; temporary files/directories were removed.
+- This does not test real Railway authentication or SSH connectivity, nor real Cloudflare Tunnel connectivity.
+
+### Next execution step
+Keep the connector prepared and isolated. Continue the provider/host feasibility review; do not place the Railway project token or Cloudflare tunnel token on an untrusted or short-lived host. No production tunnel or VPC resources should be created until a trustworthy persistent host is available.
