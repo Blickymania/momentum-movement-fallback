@@ -417,17 +417,16 @@ async function mcpOAuthHandle(request,u){
    if(grant==="authorization_code"){
     const code=form.get("code")||"",redirect=form.get("redirect_uri")||"",verifier=form.get("code_verifier")||"";
     if(!code||!clientId||!redirect||verifier.length<43||verifier.length>128)return mcpOAuthError("invalid_grant");
+    const access=mcpOAuthRandom(32),refresh=mcpOAuthRandom(48);
     const context=await mcpOAuthDb().begin(async tx=>{
      const rows=await mcpOAuthQuery(tx,"SELECT * FROM mcp_oauth_authorization_codes WHERE code_hash=$1 AND expires_at>now() AND consumed_at IS NULL FOR UPDATE",await mcpOAuthHash(code));
      if(!rows.length)throw new Error("invalid_grant");const row=rows[0];
      if(row.client_id!==clientId||row.redirect_uri!==redirect||await mcpOAuthPkce(verifier)!==row.code_challenge)throw new Error("invalid_grant");
      const resource=form.get("resource");if(resource&&resource!==row.resource)throw new Error("invalid_target");
-     await mcpOAuthQuery(tx,"UPDATE mcp_oauth_authorization_codes SET consumed_at=now() WHERE code_hash=$1",row.code_hash);return row;
-    });
-    const access=mcpOAuthRandom(32),refresh=mcpOAuthRandom(48);
-    await mcpOAuthDb().begin(async tx=>{
-     await mcpOAuthQuery(tx,"INSERT INTO mcp_oauth_access_tokens (token_hash,client_id,user_id,guild_id,scope,resource,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7)",await mcpOAuthHash(access),context.client_id,context.user_id,context.guild_id,context.scope,context.resource,new Date(Date.now()+3600000));
-     await mcpOAuthQuery(tx,"INSERT INTO mcp_oauth_refresh_tokens (token_hash,client_id,user_id,guild_id,scope,resource,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7)",await mcpOAuthHash(refresh),context.client_id,context.user_id,context.guild_id,context.scope,context.resource,new Date(Date.now()+2592000000));
+     await mcpOAuthQuery(tx,"UPDATE mcp_oauth_authorization_codes SET consumed_at=now() WHERE code_hash=$1",row.code_hash);
+     await mcpOAuthQuery(tx,"INSERT INTO mcp_oauth_access_tokens (token_hash,client_id,user_id,guild_id,scope,resource,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7)",await mcpOAuthHash(access),row.client_id,row.user_id,row.guild_id,row.scope,row.resource,new Date(Date.now()+3600000));
+     await mcpOAuthQuery(tx,"INSERT INTO mcp_oauth_refresh_tokens (token_hash,client_id,user_id,guild_id,scope,resource,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7)",await mcpOAuthHash(refresh),row.client_id,row.user_id,row.guild_id,row.scope,row.resource,new Date(Date.now()+2592000000));
+     return row;
     });
     return mcpOAuthJson({access_token:access,token_type:"Bearer",expires_in:3600,refresh_token:refresh,scope:context.scope,resource:context.resource});
    }
