@@ -189,3 +189,33 @@ test("graceful shutdown aborts a pending Gateway login and releases the acquired
   assert.equal(leaseTransport.calls.filter(x => x.path === "/lease/acquire").length, 1);
   assert.equal(leaseTransport.calls.filter(x => x.path === "/lease/release").length, 1);
 });
+
+
+test("prepared owner rejects an owner ID that is not namespaced to its deployment", () => {
+  const client = fakeClient();
+  assert.throws(() => prepareFencedDiscordGatewayOwner({
+    client,
+    botToken: "fake-bot-token-1234567890",
+    deploymentId: "standby-deploy",
+    ownerId: "primary-deploy:wrong-owner",
+    leaseCoordinatorUrl: "https://lease.example.com",
+    leaseServiceToken: "x".repeat(48),
+    fetchFn: makeLeaseTransport().fetch,
+    fetchTarget: fakeFetchTarget()
+  }), /owner_id_must_be_bound_to_deployment/);
+});
+
+test("generated owner ID is unique and prefixed by the deployment identity", () => {
+  const client = fakeClient();
+  const prepared = prepareFencedDiscordGatewayOwner({
+    client,
+    botToken: "fake-bot-token-1234567890",
+    deploymentId: "standby-deploy",
+    leaseCoordinatorUrl: "https://lease.example.com",
+    leaseServiceToken: "x".repeat(48),
+    fetchFn: makeLeaseTransport().fetch,
+    fetchTarget: fakeFetchTarget()
+  });
+  assert.match(prepared.ownerId, /^standby-deploy:[0-9a-f-]{36}$/i);
+  assert.equal(prepared.scope, "momentum-movement:discord-gateway");
+});
