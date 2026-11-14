@@ -155,8 +155,7 @@ export class GatewayLeaseCoordinator {
     const normalizedScope = requiredString(scope, "scope");
     if (normalizedScope !== LEASE_SCOPE) throw new TypeError("lease_scope_invalid");
     const owner = requiredString(ownerId, "owner_id");
-    const epoch = String(fencingEpoch ?? "");
-    if (!/^\\d{1,20}$/.test(epoch)) throw new TypeError("fencing_epoch_invalid");
+    const epoch = requiredEpoch(fencingEpoch);
     const now = this.now();
     return first(this.sql.exec(
       RELEASE_SQL,
