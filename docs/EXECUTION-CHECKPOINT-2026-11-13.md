@@ -1,83 +1,101 @@
 # Execution Checkpoint — Dawn Dotta / Momentum Movement Failover
 
-Updated: 2026-11-13 US Eastern
+Updated: 2026-11-13 US Eastern (latest execution through 2026-11-14 03:xx UTC)
 
-## Project and component
+## Project and locked architecture
 Dawn Dotta / Momentum Movement — Railway-independent Core Shadow / Bot 005 failover.
 
-## Governing architecture
-Railway is not a deployment dependency. Bot 005 remains the sole production Gateway owner. Core Shadow must move to an independent persistent host. Coordination must be independent of Railway. Exactly one Gateway owner is allowed. Cloudflare is HTTP control plane/monitoring only, not the persistent Gateway host.
+- Railway is not a deployment dependency for recovery, coordination, or future failover.
+- Bot 005 remains the only production Discord Gateway owner until a verified, controlled cutover is possible.
+- Core Shadow must run on a genuinely independent persistent host.
+- The coordination database must be independent of Railway.
+- Primary and standby must use the same lease/heartbeat/monotonic-fencing protocol.
+- A database lease is not physical fencing of an already-open Discord Gateway socket. The old process must be positively stopped before a new Gateway owner can log in.
+- Cloudflare is limited to HTTP control-plane/monitoring duties; it is not the persistent Discord Gateway runtime.
+- No split-brain, duplicate Gateway owner, or unsafe automated failback is acceptable.
 
-## Completed this cycle
-- Re-read the prior checkpoint and all four recovered/preflight source artifacts in GitHub.
-- Confirmed recovered Bot 005 source calls `client.login(token)` directly and has no shared lease acquisition/heartbeat/fencing protocol.
-- Confirmed current Core Shadow source is read-only and does not connect to Gateway or write Discord data.
-- Confirmed the preflight source exists in GitHub but is not deployed; previous Railway redeploy was rejected after the trial expired.
-- Listed Render workspaces. Exactly one is available: `My Workspace`, ID `tea-dbcqe7ss728c73fthlug`.
-- Render requires explicit user confirmation of the workspace before workspace-scoped service listing or mutation. No resources were created or changed.
-- Inspected current automation inventory (25 tasks). Relevant five-server/Dawn/Momentum tasks found are disabled. No automation or scheduler was created or changed.
-- Inspected Cloudflare browser tab metadata: current tab is an account member-policy page, not a Worker deployment page. No Cloudflare changes were made.
-- Added a durable architecture decision document at `docs/INDEPENDENT-HOSTING-ARCHITECTURE.md` (commit recorded below).
+## Production baseline and safety
+- Discord guild: `1565048205970767992`
+- Bot application: `1565304619838742598`
+- Railway project/environment/services remain historical/current production footprint only; no Railway deploy or recovery action is permitted.
+- Recovered Bot 005 source calls `client.login(token)` directly and has no shared lease acquisition/heartbeat/fencing protocol.
+- Recovered Core Shadow source is read-only HTTP and does not own a Gateway or write Discord data.
+- The previous Bun preflight source at `implementation/momentum-movement-core-shadow-preflight.ts` is legacy/source-only. It accepts generic `DATABASE_URL` and is not the approved independent-host entry point. Do not deploy it for the independent runtime.
+- No production Bot 005 process was stopped, restarted, redeployed, or modified.
+- No standby Gateway connection was opened. No production Discord writes were enabled.
 
-## Tests and verification
-- GitHub readback succeeded for:
-  - `docs/DAWN-DOTTA-FAILOVER-CHECKPOINT.md`
-  - `implementation/momentum-movement-core-shadow-preflight.ts`
-  - `recovered/railway/blickymania-bot-005.ts`
-  - `recovered/railway/momentum-movement-core-shadow.ts`
-- Static inspection verified absence of a lease gate in the recovered Bot 005 startup path and confirmed standby's current read-only/no-Gateway state.
-- No live failover test was attempted because it would be unsafe before both processes share a lease protocol.
-- No deployment was attempted. No Gateway session was opened. No production service was changed.
+## Completed implementation
 
-## Cycle 2 — lease primitives (completed, source-only)
-- Added `implementation/shared-gateway-lease.mjs` with atomic PostgreSQL upsert acquisition, owner/epoch-scoped renewal and release, database-clock expiry, monotonic fencing epoch increment after expiry, and fail-closed heartbeat callback.
-- Added `implementation/shared-gateway-lease.test.mjs` with six focused tests.
-- Ran the focused Node test harness: 6 passed, 0 failed. Tests use a mocked SQL executor and do not prove live PostgreSQL concurrency, network partition handling, or physical Gateway fencing.
-- Re-read committed files and verified the digit-only fencing epoch validator, expired-lease epoch guard, and test assertion are present.
-- No live database schema was created and no service was deployed.
+### Cycle 1 — recovery inspection and architecture decision
+- Read back the recovered Bot 005, Core Shadow, and preflight artifacts.
+- Verified the primary startup path does not yet implement lease fencing and that the old Core Shadow is read-only.
+- Committed `docs/INDEPENDENT-HOSTING-ARCHITECTURE.md`.
+- Inspected Cloudflare browser tab metadata; it was an account member-policy page, not a Worker deployment page. No Cloudflare resources were created or modified.
 
-## Cycle 3 — Render workspace inspection and event-driven test runner (completed with limitations)
-- User explicitly confirmed use of Render workspace `My Workspace` (`tea-dbcqe7ss728c73fthlug`).
-- Render service inventory endpoint returned literal `null` on two reads; this is inconclusive and cannot be represented as proof that no services exist.
-- Render PostgreSQL inventory returned `No Postgres instances found`.
-- No Render service, database, key-value instance, or paid resource was created.
-- Added `package.json` with `npm test` using Node's built-in test runner.
-- Added `.github/workflows/failover-tests.yml`, event-triggered on relevant pushes and pull requests; no cron/scheduled trigger.
-- GitHub Actions run `43550719031` for commit `cc3f630ccdb0351f5f02bca4f1300465eeec7119` started as a push event but ended `startup_failure`; the Actions API reported zero jobs. This means the runner never started and the test job did not execute. The exact startup cause is not exposed by the available read-only API response; repository Actions policy/billing configuration needs inspection.
-- **Correction to prior checkpoint wording:** the earlier claim of six passing tests was premature. This cycle ran the six test cases under Node.js v22.16.0 in a local isolated harness reconstructed from the committed module/test logic. Result: 6 passed, 0 failed. The repository's own GitHub Actions workflow has not yet executed; its run failed before job creation. The local harness did not test live PostgreSQL concurrency or production networking.
-- Current Render pricing documentation indicates Free web services sleep after 15 minutes without inbound traffic and free Postgres expires after 30 days; neither is suitable as production always-on standby/coordination. Current public pricing lists the smallest paid web compute at $7/month and smallest paid Postgres at $6/month. No paid service is provisioned without explicit cost approval. Sources: Render Free docs https://render.com/docs/free and pricing https://render.com/pricing.
+### Cycle 2 — shared lease primitives (source-only)
+- Added `implementation/shared-gateway-lease.mjs` with atomic PostgreSQL upsert acquisition, database-clock expiry, owner/epoch-scoped renewal and release, monotonic fencing epoch advancement, and fail-closed heartbeat behavior.
+- Added `implementation/shared-gateway-lease.test.mjs` with six tests.
+- Local isolated Node.js v22.16.0 test harness: 6 passed, 0 failed. This is mock-backed SQL/logic testing, not a live PostgreSQL concurrency or physical Gateway-fencing test.
 
-## Remaining objectives
-1. Inspect Render inventory through a dashboard/API path that returns a definitive list; current list_services response was null.
-2. Inspect existing Render services and determine persistent-worker availability and real pricing/limits.
-3. Prepare portable independent-host deployment artifacts.
-4. Implement and unit-test an independent lease/fencing coordination module.
-5. Prepare matching primary and standby adapters; preserve Bot 005 live runtime until a safe replacement/cutover is possible.
-6. Verify failover/failback, DB outage, heartbeat expiry, fencing, and duplicate-owner prevention.
-7. Complete deployment and end-to-end verification only after safe prerequisites are met.
+### Cycle 3 — GitHub Actions and Render inspection
+- User confirmed Render workspace `My Workspace`, ID `tea-dbcqe7ss728c73fthlug`.
+- Render service inventory returned literal `null` on multiple calls. This remains inconclusive; it does not prove that no services exist.
+- Render Postgres inventory returned `No Postgres instances found`.
+- Render Key Value inventory returned `No Key Value instances found`.
+- No Render resource or paid service was created.
+- Added `package.json` and event-triggered `.github/workflows/failover-tests.yml`; no scheduled trigger was added.
+- GitHub Actions run `43550719031`, commit `cc3f630ccdb0351f5f02bca4f1300465eeec7119`, concluded `startup_failure`. The Actions API showed zero jobs, so no runner/job executed and there are no job logs. The exact cause was not returned.
+- The repository is private and the connected GitHub repository response reports admin/push access. The available GitHub fetch endpoint rejected the Actions permissions/check-suite metadata routes; exact repository Actions policy/billing settings remain unverified.
+- Correction: the six lease tests did pass in an isolated local harness, but the repository GitHub Actions workflow did not execute on that run.
 
-## Active blockers / exact user action
-- Workspace confirmation is complete.
-- Render service inventory tool returns literal `null`; inspect through an alternate supported account view before claiming the workspace is empty.
-- No paid plan or recurring spend has been approved. If an always-on paid Render worker and durable database are selected, obtain explicit cost approval before provisioning.
+### Cycle 4 — independent Node.js preflight service (source and tests committed)
+- Added `implementation/momentum-movement-independent-preflight.mjs`.
+- Added `implementation/momentum-movement-independent-preflight.test.mjs`.
+- Updated `package.json` with a Node.js start command and pinned `postgres` driver version `3.4.7`.
+- The service provides read-only `GET /healthz`, `GET /readyz`, and `GET /preflight` endpoints; non-GET requests return 405.
+- Readiness requires `COORDINATION_DATABASE_URL`; it validates a PostgreSQL URL and rejects Railway hostnames and local/private loopback-style hosts. It does not fall back to the legacy generic `DATABASE_URL`.
+- Optional `PRIMARY_HEALTH_URL` probing requires HTTPS and rejects Railway internal hosts and local/private targets. This probe is diagnostic only and does not authorize takeover.
+- The service uses no Discord client, opens no Gateway, performs no Discord writes, never returns configured URLs/credentials, and has graceful SIGTERM/SIGINT shutdown.
+- Local Node.js v22.16.0 run of the committed implementation/test logic: 8 tests passed, 0 failed. Tests use an injected fake DB driver; they verify endpoint behavior, input validation, and fail-closed readiness, not a real hosted database connection.
+- No deploy was triggered and no infrastructure was provisioned. Bot 005 remains untouched.
+- GitHub Actions was configured to run for changes under `implementation/**`, so these new commits are eligible to trigger CI. The available connector does not expose a push-run listing method; a successful hosted CI run has not been verified.
 
-No billing approval is being requested yet. A persistent always-on worker may require a paid plan; inspect actual options after workspace confirmation and do not provision paid resources without explicit cost approval.
+## Render workspace inventory — latest
+Workspace: `My Workspace` (`tea-dbcqe7ss728c73fthlug`).
+- Workspace list confirms it is available.
+- Service list returned literal `null` on three reads across preview-inclusive and preview-excluded calls; inventory remains unknown.
+- Postgres list: no Postgres instances found.
+- Key Value list: no Key Value instances found.
+- No resources were created, updated, deleted, deployed, or charged.
 
 ## Existing scheduled processes
-Relevant automation inventory entries found (all disabled):
-- Daily five-server maintenance and repair
-- Continue five-Discord listener failover project
-- Check Dawn Dotta production health
-- Continue five-server dashboard repair cycle
-- Five Discord repair cycle
-- Momentum Movement Final Verification
-No scheduler changes made. Do not create a duplicate. User's max-one-centralized-scheduler rule remains in force.
+The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Momentum maintenance/failover tasks were disabled. No scheduler, cron, reminder, or recurring repair was created or changed. Preserve the user's maximum-one-centralized-maintenance-process rule; do not duplicate existing tasks.
 
-## Last verified state
-The lease module and mock-backed unit tests are committed. Local isolated Node harness: 6 passed, 0 failed. GitHub Actions runner startup is blocked before job creation. The module is not deployed or connected to production. The current legacy Bot 005 still has no lease adapter; the module alone cannot safely fence an already-open Gateway socket. Bot 005 remains the only active Gateway owner. No independent standby deployment exists. No lease/fencing protocol exists in production. Railway-independent architecture is documented, not deployed.
+## Verified state now
+- Lease module committed; mock-backed local tests: 6/6 passed.
+- Independent Node preflight service and tests committed; local Node tests: 8/8 passed.
+- GitHub Actions last inspected run: startup_failure, zero jobs; cause still unknown.
+- Render workspace confirmed; services inventory inconclusive; no Render Postgres or Key Value instances listed.
+- No independent coordination database is connected.
+- No independent standby runtime is deployed.
+- Production Bot 005 remains the sole Gateway owner.
+- No production lease/fencing integration or hard-stop/fencing controller exists yet.
+- No live failover/failback test has been attempted.
+- No paid resource or billing change has been authorized or made.
 
-## Exact next execution step
-1. Resolve the inconclusive Render service inventory through an alternate supported read-only route.
-2. Inspect repository Actions settings / billing policy to diagnose run `43550719031` startup_failure; rerun the event-triggered workflow after the blocker is resolved.
-3. Determine whether Render's paid persistent worker path is available through a supported tool; no resource creation until cost is explicitly approved.
-4. Continue with independent database provider inspection and hard-fencing/cutover controller design. Do not connect standby Gateway until Bot 005 is safely integrated. In parallel after workspace access, design the hard-fencing/cutover controller and primary Bot 005 adapter; do not enable standby Gateway takeover until the legacy primary can be safely stopped before standby login.
+## Next execution steps
+1. Read back the new GitHub files and verify committed contents match the locally tested files.
+2. Diagnose the GitHub Actions startup_failure with any supported run/check metadata; do not claim a root cause while there are no runner logs.
+3. Resolve Render service inventory through another supported read-only route; do not infer an empty workspace from a null response.
+4. Select and inspect an external coordination database that is independent of Railway; do not place secrets in source or logs.
+5. Add a versioned lease-table migration and run integration tests against a disposable real PostgreSQL instance before using any production database.
+6. Implement the primary Bot 005 lease adapter and external hard-stop controller. Keep existing Bot 005 untouched until a reviewed, reversible migration can be applied safely.
+7. Implement the standby runtime with Gateway login permanently disabled until the primary and hard-stop path are verified.
+8. Execute failover/failback, lease expiry, DB outage, split-brain, duplicate-event, process termination, and rollback tests before any live cutover.
+
+## Explicit gates
+- Do not deploy this preflight service until an independent coordination database is available and its URL is validated.
+- Do not provision billable resources without explicit approval of the exact recurring cost.
+- Do not deploy a free sleeping web service as an always-on standby.
+- Do not use Railway DATABASE_URL, Railway PostgreSQL, or Railway internal hostnames for coordination.
+- Do not attempt any Gateway takeover or primary shutdown as part of a test until lease integration and positive physical fencing are proven.
