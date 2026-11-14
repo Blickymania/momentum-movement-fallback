@@ -7,7 +7,8 @@ export { GatewayLeaseCoordinator };
 
 async function sameSecret(candidate, expected) {
   if (typeof candidate !== "string" || typeof expected !== "string" ||
-      candidate.length === 0 || expected.length === 0) return false;
+      candidate.length < 32 || candidate.length > 512 ||
+      expected.length < 32 || expected.length > 512) return false;
   const encoder = new TextEncoder();
   const [left, right] = await Promise.all([
     crypto.subtle.digest("SHA-256", encoder.encode(candidate)),
@@ -36,7 +37,7 @@ export default {
     }
 
     const token = env.LEASE_SERVICE_TOKEN || "";
-    if (!token) {
+    if (typeof token !== "string" || token.length < 32 || token.length > 512) {
       return Response.json({ error: "lease_service_not_configured" }, { status: 503 });
     }
     const authorization = request.headers.get("authorization") || "";
