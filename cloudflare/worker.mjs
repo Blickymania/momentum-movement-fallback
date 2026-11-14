@@ -81,7 +81,12 @@ async function fenceCandidate(request, env) {
     return json({ error: "invalid_json" }, 400);
   }
   if (!body || typeof body !== "object" || Array.isArray(body) ||
-      Object.keys(body).sort().join(",") !== "candidateDeploymentId,candidateOwnerId") {
+      Object.keys(body).sort().join(",") !== "candidateDeploymentId,candidateOwnerId" ||
+      typeof body.candidateDeploymentId !== "string" ||
+      typeof body.candidateOwnerId !== "string" ||
+      body.candidateDeploymentId.length > 100 ||
+      body.candidateOwnerId.length > 200 ||
+      !body.candidateOwnerId.startsWith(body.candidateDeploymentId + ":")) {
     return json({ error: "fence_request_invalid" }, 400);
   }
 
