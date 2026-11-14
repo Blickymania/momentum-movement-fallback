@@ -45,7 +45,9 @@ Official documentation:
 - `cloudflare/worker.mjs`: public `GET /healthz` plus bearer-authenticated lease routes. Only `/lease/state`, `/lease/acquire`, `/lease/renew`, and `/lease/release` are forwarded to the Durable Object. A 32–512-character service secret is required. The secret is read from `LEASE_SERVICE_TOKEN`; do not put it in source or Wrangler config.
 - `cloudflare/wrangler.jsonc`: SQLite Durable Object binding and initial `new_sqlite_classes` migration.
 - `implementation/cloudflare-gateway-lease-client.mjs`: Node-side HTTPS client. It rejects Railway/local/IP-literal endpoints, normalizes trailing-dot hostnames and root Worker URL paths, enforces a 32–512-character service secret, uses a bounded request timeout, maps HTTP 409 to a denied lease (null), and fails closed on timeout/network/server error. The coordinator's state route returns the same `{ ok: true, lease }` envelope as the mutation routes.
-- `implementation/gateway-owner-supervisor.mjs`: now accepts either the PostgreSQL lease backend or the new generic `leaseStore` interface. When using Cloudflare, the same supervisor acquires before login, renews by HTTP, destroys on lease loss, and releases after graceful shutdown.
+- `implementation/gateway-owner-supervisor.mjs`: accepts either the PostgreSQL lease backend or the generic `leaseStore` interface. When using Cloudflare, the supervisor acquires before login, renews by HTTP, destroys on lease loss, and releases after graceful shutdown.
+- `implementation/discord-gateway-ownership-guards.mjs`: wraps Discord client login, event listeners, Discord REST requests, and global outbound fetch. It fails closed without an active lease and rejects Railway hostnames unconditionally.
+- `implementation/fenced-discord-gateway-owner.mjs`: candidate preparation adapter. It must be called immediately after constructing the Discord client and before registering event listeners. It prepares the Cloudflare lease client, installs guards, and only then allows the supervisor to call login. A denied lease leaves the client disconnected. The adapter is not yet integrated into recovered Bot 005 source.
 - Tests cover the Durable Object's actual SQLite statement behavior under a Node SQLite simulation, Worker authorization/routing, API client validation/timeouts, and an end-to-end local path from supervisor through Worker/client to the Durable Object.
 
 ## Verified test scope
@@ -54,9 +56,11 @@ Local Node.js v22.16.0 tests run in an isolated folder using Node's built-in `no
 - Durable Object and HTTP API tests: 9 passed.
 - Worker/client tests: 9 passed.
 - Supervisor-to-Worker-to-Durable-Object local end-to-end ownership test: 1 passed.
-- **Total for this Cloudflare control-plane suite: 19 passed, 0 failed.**
+- Gateway ownership-guard tests: 6 passed.
+- Prepared Discord owner adapter tests: 2 passed.
+- **Combined Cloudflare control-plane + Bot 005 fencing adapter suite: 27 passed, 0 failed.**
 
-This simulates SQLite semantics and the Worker/client path locally. The tests also cover the authenticated state-read route, successful state response envelope, root Worker URL path composition, trailing-dot localhost rejection, and minimum service-secret length. It is not a Cloudflare preview/runtime integration test and does not validate actual Cloudflare account configuration, Durable Object migrations, secret deployment, account-specific quota usage, or network outages at the edge.
+This simulates SQLite semantics and the Worker/client path locally. The tests also cover the authenticated state-read route, successful state response envelope, root Worker URL path composition, trailing-dot localhost rejection, minimum service-secret length, denial of direct client.login before ownership, guarded event callbacks, guarded Discord REST calls, blocked direct Railway HTTP, and clean shutdown. It is not a Cloudflare preview/runtime integration test and does not validate actual Cloudflare account configuration, Durable Object migrations, secret deployment, account-specific quota usage, true Discord.js compatibility, process-kill fencing, or network outages at the edge. The guard blocks new REST/fetch requests after lease loss; it cannot cancel a request that was already sent and accepted remotely.
 
 The GitHub Actions workflow still fails before job creation with `startup_failure`; these tests have not run in GitHub-hosted Actions. Do not report hosted CI as passing.
 
@@ -85,3 +89,22 @@ To deploy later, after account plan and ownership are verified:
 ## Decision status
 
 **Recommended control-plane candidate: Cloudflare SQLite Durable Object.** It avoids adding a separate Postgres database solely for one lease, and the documented Free-tier quotas appear sufficient for a low-volume single-guild heartbeat/status pattern. This is an architecture recommendation, not an account deployment or production approval. A persistent independent runtime and hard-stop controller remain separate requirements.
+
+
+## Bot 005 outbound side-effect guard — source-only
+
+The candidate guard components are now committed:
+- implementation/discord-gateway-ownership-guards.mjs wraps client.login(), client.on(), client.once(), client.rest.request(), and the configured process fetch target.
+- Only the Cloudflare lease coordinator origin is exempt from the global fetch ownership check. The Cloudflare client must be constructed first so it captures the original fetch transport.
+- Every other outbound fetch requires the active ownership assertion. Any hostname containing "railway" or ending in .rlwy.net is rejected regardless of lease status.
+- Event listeners registered after guard installation are skipped without an active lease. One-time event listeners remain registered if an event arrives before ownership is granted.
+- implementation/fenced-discord-gateway-owner.mjs prepares the coordinator client and guard, then calls the Gateway supervisor. It is designed to be created immediately after the Discord Client and before any application event listeners are registered.
+- If lease acquisition is denied, the adapter never calls client.login(). Graceful shutdown revokes local egress, destroys the client, and releases the owner/epoch lease.
+
+The expanded local Node.js v22.16.0 suite now totals **27 passed, 0 failed**: the previous 19 Cloudflare tests plus six ownership-guard tests and two prepared-owner integration tests.
+
+Important limits:
+- These are mocked Discord client/REST objects; actual discord.js instance method mutability and version compatibility are not yet verified against the recovered Bot 005 runtime. If the client.rest.request hook cannot be installed, setup throws before login.
+- The helper must be installed before the source registers any event listeners. The recovered Bot 005 source has not yet been patched to call this helper.
+- A REST request already transmitted before ownership loss cannot be recalled. Per-effect epoch checks, idempotency receipts, and external hard-stop/process termination remain required.
+- The guard blocks the existing hard-coded Railway coaching URL. That coaching workflow must be migrated to a public HTTPS service endpoint and configured explicitly before coaching handlers can function on an independent host. There is no silent fallback to Railway.
