@@ -29,7 +29,7 @@ ON CONFLICT (lease_scope) DO UPDATE SET
   heartbeat_at_ms = excluded.heartbeat_at_ms,
   deployment_id = excluded.deployment_id
 WHERE gateway_ownership.lease_until_ms <= ?
-RETURNING lease_scope, owner_id, fencing_epoch, lease_until_ms,
+RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch, lease_until_ms,
           heartbeat_at_ms, deployment_id`;
 
 const RENEW_SQL = `
@@ -41,7 +41,7 @@ WHERE lease_scope = ?
   AND owner_id = ?
   AND fencing_epoch = ?
   AND lease_until_ms > ?
-RETURNING lease_scope, owner_id, fencing_epoch, lease_until_ms,
+RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch, lease_until_ms,
           heartbeat_at_ms, deployment_id`;
 
 const RELEASE_SQL = `
@@ -51,7 +51,7 @@ SET lease_until_ms = ?,
 WHERE lease_scope = ?
   AND owner_id = ?
   AND fencing_epoch = ?
-RETURNING lease_scope, owner_id, fencing_epoch, lease_until_ms,
+RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch, lease_until_ms,
           heartbeat_at_ms, deployment_id`;
 
 const READ_SQL = `
