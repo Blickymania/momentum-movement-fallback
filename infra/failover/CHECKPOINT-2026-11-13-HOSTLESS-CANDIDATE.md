@@ -57,6 +57,31 @@ Assessment:
 - No source code change was justified in this cycle. No untested speculative security patch was committed.
 - Previous test evidence remains: 33/33 isolated V8 source-invariant harness assertions and 3/3 native Node connector-script tests. These are not a full TypeScript/Wrangler/DB/runtime test suite.
 
+## Expanded no-card host screening
+
+Three additional candidates were screened against the actual connector requirement (persistent process, outbound Railway SSH tunnel, Cloudflare Tunnel client, no card, and no unapproved production-secret placement):
+
+- **Deplexo:** advertises a no-card, always-on free container but its published free tier is only 128 MB RAM / 0.25 CPU, one app, and one region. More importantly, its Terms explicitly prohibit proxy/VPN servers and tunnels that relay general internet traffic, including private/password-protected services. Its FAQ clarifies that routing app requests to specific APIs can be allowed, but does not explicitly approve this Railway SSH + Cloudflare tunnel pattern. No deployment or secret was attempted. Treat as unsuitable until the provider gives written approval and confirms the workload fits resource limits. Sources: https://deplexo.com/free-hosting ; https://deplexo.com/terms ; https://docs.deplexo.com/getting-started/faq/
+- **dockxo:** no-card beta, but it is a deployment/control panel for servers the customer already owns or rents; it does not supply the compute host. Not a free host for this project. Sources: https://dockxo.com/pricing ; https://dockxo.com/get-started
+- **Kubeara Cloud:** free tier includes one connected server, but the documentation explicitly says workloads run on the user's connected hosts and are not moved onto Kubeara-owned shared cloud. It is a server-management panel, not the missing always-on compute host. Source: https://kubeara.dev/docs/getting-started/
+- **SnapDeploy:** free containers sleep after 15 minutes idle and wake only on browser traffic; its always-on option is paid. It cannot hold the persistent connector on the free tier. Sources: https://snapdeploy.dev/docs/free-tier ; https://snapdeploy.dev/free-container-hosting
+
+Conclusion: no new host passes the required checks. Keep the connector isolated; do not put production Railway credentials on these services.
+
+## Local build validation attempt
+
+- Execution environment has Node.js 22.16.0, npm 10.9.2, and global TypeScript 5.8.3. Wrangler is not installed.
+- Attempted a read-only npm registry metadata lookup for the project's pinned Wrangler version; DNS resolution failed with `EAI_AGAIN registry.npmjs.org`.
+- The project package currently declares TypeScript `^5.9.3`, Wrangler `^4.45.0`, pg `^8.16.3`, and @types dependencies; no lockfile was present in the repository tree inspected.
+- Therefore a faithful project typecheck and Wrangler dry-run cannot be executed offline with the current dependency set. Do not substitute global TypeScript 5.8.3 and claim it validates the project dependency graph. No package files or workflow were changed.
+
+## GitHub repository and CI diagnostic
+
+- Read-only repository metadata confirms the repository is private, active, default branch `main`, and current integration has admin/push permission.
+- Latest inspected workflow file is present on the feature branch; its blob SHA was read back. The workflow still has a single Ubuntu job, checkout/setup-node, npm install, then project checks.
+- Workflow run `43543501851` still returns an empty job array. The connector does not expose the Actions settings page or the workflow-run/check-suite pre-job diagnostic payload. Repository admin access through this connector does not provide those missing settings/diagnostic endpoints.
+- No workflow rerun, repository setting change, branch merge, permission change, or speculative YAML rewrite was made.
+
 ## Additional source-level security invariant pass
 
 - Re-fetched the current Worker and router blobs from the branch and evaluated 12 targeted source invariants against those exact blobs.
