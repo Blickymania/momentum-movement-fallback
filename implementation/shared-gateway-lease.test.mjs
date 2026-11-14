@@ -154,6 +154,6 @@ test("schema bootstrap creates and locks down the private failover schema", asyn
   assert.equal(db.calls.length, 2);
   assert.match(db.calls[0].sql, /CREATE SCHEMA IF NOT EXISTS failover/);
   assert.match(db.calls[0].sql, /REVOKE ALL ON SCHEMA failover FROM PUBLIC/);
-  assert.match(db.calls[1].sql, /CREATE TABLE IF NOT EXISTS failover\\.gateway_ownership/);
-  assert.match(db.calls[1].sql, /REVOKE ALL ON TABLE failover\\.gateway_ownership FROM PUBLIC/);
+  assert.ok(db.calls[1].sql.includes("CREATE TABLE IF NOT EXISTS failover.gateway_ownership"));
+  assert.ok(db.calls[1].sql.includes("REVOKE ALL ON TABLE failover.gateway_ownership FROM PUBLIC"));
 });
