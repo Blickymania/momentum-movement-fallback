@@ -17,6 +17,8 @@ function validateCoachingEndpoint(raw) {
       host === "localhost" || host.endsWith(".localhost") ||
       host.endsWith(".local") || host.endsWith(".internal") ||
       host.endsWith(".lan") || host.endsWith(".home") ||
+      host.endsWith(".test") || host.endsWith(".invalid") ||
+      host.endsWith(".example") || host.endsWith(".onion") || !host.includes(".") ||
       ipV4 || ipV6 || url.username || url.password ||
       url.search || url.hash || url.pathname !== "/interaction") {
     throw new TypeError("coaching_workflow_url_must_be_public_https_interaction");
