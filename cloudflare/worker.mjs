@@ -21,39 +21,65 @@ async function sameSecret(candidate, expected) {
   return difference === 0;
 }
 
+function json(data, status = 200) {
+  return Response.json(data, {
+    status,
+    headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" }
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/healthz") {
-      return Response.json({
+    const path = url.pathname;
+
+    if (request.method === "GET" && path === "/healthz") {
+      return json({
         status: "ok",
         service: "momentum-movement-gateway-lease",
         mode: "control-plane-only"
-      }, { headers: { "cache-control": "no-store" } });
+      });
     }
 
-    if (!["GET", "POST"].includes(request.method)) {
-      return Response.json({ error: "method_not_allowed" }, { status: 405 });
+    const standardRoutes = new Set([
+      "/lease/state", "/lease/acquire", "/lease/renew", "/lease/release"
+    ]);
+    const bootstrapRoute = path === "/lease/bootstrap";
+    const fenceRoute = path === "/lease/fence/confirm";
+
+    if (!standardRoutes.has(path) && !bootstrapRoute && !fenceRoute) {
+      return json({ error: "not_found" }, 404);
     }
 
-    const token = env.LEASE_SERVICE_TOKEN || "";
+    if (path === "/lease/state" && request.method !== "GET") {
+      return json({ error: "method_not_allowed" }, 405);
+    }
+    if (path !== "/lease/state" && request.method !== "POST") {
+      return json({ error: "method_not_allowed" }, 405);
+    }
+
+    // Bootstrap and hard-fence confirmation use different credentials from
+    // ordinary lease operations. Candidate bot processes must never possess them.
+    const token = bootstrapRoute
+      ? env.LEASE_BOOTSTRAP_TOKEN || ""
+      : fenceRoute
+        ? env.FENCE_CONTROLLER_TOKEN || ""
+        : env.LEASE_SERVICE_TOKEN || "";
+
     if (typeof token !== "string" || token.length < 32 || token.length > 512) {
-      return Response.json({ error: "lease_service_not_configured" }, { status: 503 });
+      return json({ error: "lease_route_not_configured" }, 503);
     }
+
     const authorization = request.headers.get("authorization") || "";
     const prefix = "Bearer ";
     const candidate = authorization.startsWith(prefix) ? authorization.slice(prefix.length) : "";
     if (!await sameSecret(candidate, token)) {
-      return Response.json({ error: "unauthorized" }, { status: 401 });
-    }
-
-    if (!["/lease/state", "/lease/acquire", "/lease/renew", "/lease/release"].includes(url.pathname)) {
-      return Response.json({ error: "not_found" }, { status: 404 });
+      return json({ error: "unauthorized" }, 401);
     }
 
     const namespace = env.GATEWAY_LEASE_COORDINATOR;
     if (!namespace) {
-      return Response.json({ error: "lease_coordinator_binding_missing" }, { status: 503 });
+      return json({ error: "lease_coordinator_binding_missing" }, 503);
     }
 
     const id = namespace.idFromName(GATEWAY_LEASE_SCOPE);
