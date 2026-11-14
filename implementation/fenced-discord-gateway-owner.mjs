@@ -56,6 +56,26 @@ export function prepareFencedDiscordGatewayOwner({
   let supervisor = null;
   let starting = false;
   let closed = false;
+  let applicationReady = false;
+  const readinessWaiters = new Set();
+
+  function settleReadiness() {
+    if (supervisor?.ready && applicationReady && !closed) {
+      for (const waiter of readinessWaiters) {
+        clearTimeout(waiter.timer);
+        readinessWaiters.delete(waiter);
+        waiter.resolve(true);
+      }
+    }
+  }
+
+  function rejectReadiness(reason) {
+    for (const waiter of readinessWaiters) {
+      clearTimeout(waiter.timer);
+      readinessWaiters.delete(waiter);
+      waiter.reject(new Error(reason));
+    }
+  }
 
   return Object.freeze({
     guards,
@@ -89,20 +109,54 @@ export function prepareFencedDiscordGatewayOwner({
         if (!supervisor.ok) {
           guards.revoke();
           closed = true;
+          rejectReadiness("gateway_lease_not_acquired");
+        } else {
+          settleReadiness();
         }
         return supervisor;
       } catch (error) {
         guards.revoke();
         closed = true;
+        rejectReadiness("gateway_start_failed");
         throw error;
       } finally {
         starting = false;
       }
     },
 
+    markApplicationReady() {
+      if (closed) throw new Error("gateway_owner_closed");
+      applicationReady = true;
+      settleReadiness();
+    },
+
+    markApplicationNotReady() {
+      applicationReady = false;
+      rejectReadiness("gateway_application_not_ready");
+    },
+
+    waitUntilReady(timeoutMs = 30000) {
+      if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 120000) {
+        throw new RangeError("application_ready_timeout_invalid");
+      }
+      if (Boolean(supervisor?.ready) && applicationReady && !closed) return Promise.resolve(true);
+      if (closed) return Promise.reject(new Error("gateway_owner_closed"));
+      return new Promise((resolve, reject) => {
+        const waiter = { resolve, reject, timer: null };
+        waiter.timer = setTimeout(() => {
+          readinessWaiters.delete(waiter);
+          reject(new Error("gateway_application_ready_timeout"));
+        }, timeoutMs);
+        readinessWaiters.add(waiter);
+        settleReadiness();
+      });
+    },
+
     async shutdown(reason = "graceful_shutdown") {
       if (closed && !supervisor) return { released: false, alreadyStopped: true };
       closed = true;
+      applicationReady = false;
+      rejectReadiness("gateway_owner_shutdown");
       if (!supervisor?.ok) {
         guards.revoke();
         return { released: false, alreadyStopped: false };
@@ -113,6 +167,9 @@ export function prepareFencedDiscordGatewayOwner({
     },
 
     get ready() {
+      return Boolean(supervisor?.ready) && applicationReady && !closed;
+    },
+    get gatewayLoginComplete() {
       return Boolean(supervisor?.ready) && !closed;
     },
     get leaseLost() {
