@@ -225,6 +225,7 @@ test("stores interaction tokens only as authenticated AES-GCM ciphertext", async
 });
 
 test("refuses to start until client definitions are configured", async () => {
+  FakeWebSocket.instances = [];
   const storage = new MemoryDOStorage();
   const object = makeObject(storage, { GATEWAY_CLIENT_DEFINITIONS: "" });
   const result = await object.fetch(control("/start", "POST"));
