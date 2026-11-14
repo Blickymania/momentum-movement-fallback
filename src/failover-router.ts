@@ -147,8 +147,10 @@ export default {
 
     if (url.pathname === "/_failover/status" && request.method === "GET") {
       const results = await inspectOrigins(env);
-      const ready = results.some(x => x.ready);
-      return json({ status: ready ? "ready" : "not_ready", origins: results }, ready ? 200 : 503);
+      const managerAvailable = results.some(x => x.ready);
+      const fullyReady = results.some(x => x.ready && x.oauthDatabaseVerified);
+      const status = fullyReady ? "ready" : managerAvailable ? "degraded" : "not_ready";
+      return json({ status, managerAvailable, oauthDatabaseVerified: fullyReady, origins: results }, fullyReady ? 200 : 503);
     }
 
     const selected = await chooseOrigin(env);
