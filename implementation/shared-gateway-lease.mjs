@@ -19,7 +19,9 @@ CREATE TABLE IF NOT EXISTS failover.gateway_ownership (
   lease_until timestamptz NOT NULL,
   heartbeat_at timestamptz NOT NULL,
   deployment_id text NOT NULL CHECK (length(deployment_id) BETWEEN 1 AND 200)
-);
+)`;
+
+const TABLE_REVOKE_SQL = `
 REVOKE ALL ON TABLE failover.gateway_ownership FROM PUBLIC`;
 
 const ACQUIRE_SQL = `
@@ -89,6 +91,7 @@ function first(rows) {
 export async function ensureLeaseSchema(db) {
   await db.unsafe(SCHEMA_SQL);
   await db.unsafe(TABLE_SQL);
+  await db.unsafe(TABLE_REVOKE_SQL);
 }
 
 export async function acquireGatewayLease(db, {
@@ -210,6 +213,7 @@ export function startLeaseHeartbeat({
 export const leaseSqlForTests = Object.freeze({
   SCHEMA_SQL,
   TABLE_SQL,
+  TABLE_REVOKE_SQL,
   ACQUIRE_SQL,
   RENEW_SQL,
   RELEASE_SQL,
