@@ -6,6 +6,7 @@ const GUILD_ID = "1565048205970767992";
 const APP_ID = "1565304619838742598";
 const TOKEN = "non-production-test-token-not-a-real-credential";
 const INTERNAL = "gateway-control-test-secret-with-at-least-32-chars";
+const TOKEN_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const DEFINITIONS = JSON.stringify([{
   id: "bot-alpha",
   guildId: GUILD_ID,
@@ -130,6 +131,7 @@ function makeObject(storage, overrides = {}) {
     GATEWAY_CLIENT_DEFINITIONS: DEFINITIONS,
     GATEWAY_HANDLER_MANIFEST: HANDLER_MANIFEST,
     BOT_ALPHA_TOKEN: TOKEN,
+    GATEWAY_INTERACTION_ENCRYPTION_KEY: TOKEN_ENCRYPTION_KEY,
     MCP_INTERNAL_BEARER_TOKEN: INTERNAL,
     ...overrides,
   };
@@ -176,6 +178,50 @@ test("refuses to start when the handler manifest is missing or mismatched", asyn
   const mismatched = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: mismatchedManifest });
   const mismatchResponse = await mismatched.fetch(control("/start", "POST"));
   assert.equal(mismatchResponse.status, 503);
+});
+
+test("refuses to start if the interaction-token encryption secret is unavailable", async () => {
+  const object = makeObject(new MemoryDOStorage(), { GATEWAY_INTERACTION_ENCRYPTION_KEY: "" });
+  const response = await object.fetch(control("/start", "POST"));
+  assert.equal(response.status, 503);
+  assert.equal(FakeWebSocket.instances.length, 0);
+});
+
+test("stores interaction tokens only as authenticated AES-GCM ciphertext", async () => {
+  await withRuntime({}, async ({ sockets }) => {
+    const storage = new MemoryDOStorage();
+    const object = makeObject(storage);
+    const started = await object.fetch(control("/start", "POST"));
+    assert.equal(started.status, 202);
+    const socket = sockets[0];
+    dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise;
+    await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: { session_id: "session", resume_gateway_url: "wss://resume.example" } });
+    await core.serial;
+
+    const interactionToken = "test-webhook-token-never-store-this-in-cleartext";
+    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+      id: "1569000000000000001",
+      application_id: APP_ID,
+      guild_id: GUILD_ID,
+      channel_id: "1565643996624199760",
+      token: interactionToken,
+      type: 3,
+      data: { component_type: 2, custom_id: "ddxp:my" },
+      member: { user: { id: "1569000000000000002" } },
+    }});
+    await core.serial;
+
+    const pending = await core.getInbox("bot-alpha").listPending();
+    assert.equal(pending.length, 1);
+    assert.equal(Object.prototype.hasOwnProperty.call(pending[0].payload, "token"), false);
+    assert.equal(typeof pending[0].payload.interaction_token.ciphertext, "string");
+    assert.equal(JSON.stringify(pending).includes(interactionToken), false);
+    assert.equal(JSON.stringify([...storage.values.values()]).includes(interactionToken), false);
+    const restored = await object.tokenVault.decryptPayload(pending[0].payload);
+    assert.equal(restored.token, interactionToken);
+  });
 });
 
 test("refuses to start until client definitions are configured", async () => {
