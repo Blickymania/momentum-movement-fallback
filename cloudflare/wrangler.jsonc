@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "momentum-movement-gateway-lease",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-11-13",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "GATEWAY_LEASE_COORDINATOR",
+        "class_name": "GatewayLeaseCoordinator"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["GatewayLeaseCoordinator"]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
