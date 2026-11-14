@@ -14,6 +14,19 @@ const DEFINITIONS = JSON.stringify([{
   enabled: true,
   tokenRef: "BOT_ALPHA_TOKEN",
 }]);
+const HANDLER_MANIFEST = JSON.stringify({
+  guildId: GUILD_ID,
+  applicationId: APP_ID,
+  liveChannelId: "1565048207178862763",
+  livePublisher: "none",
+  enabledHandlers: [
+    "bot005",
+    "social-owner-console",
+    "fan-club-level-up",
+    "discord-engagement-engine",
+    "gift-assist",
+  ],
+});
 
 class MemoryDOStorage {
   constructor() {
@@ -115,6 +128,7 @@ function makeObject(storage, overrides = {}) {
   const env = {
     GATEWAY_COORDINATOR_ENABLED: "true",
     GATEWAY_CLIENT_DEFINITIONS: DEFINITIONS,
+    GATEWAY_HANDLER_MANIFEST: HANDLER_MANIFEST,
     BOT_ALPHA_TOKEN: TOKEN,
     MCP_INTERNAL_BEARER_TOKEN: INTERNAL,
     ...overrides,
@@ -145,6 +159,23 @@ test("requires internal bearer authentication and keeps the feature flag off by 
   assert.equal(disabled.status, 200);
   assert.equal((await disabled.json()).reason, "feature_flag_off");
   assert.equal(FakeWebSocket.instances.length, 0);
+});
+
+test("refuses to start when the handler manifest is missing or mismatched", async () => {
+  const missing = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: "" });
+  const missingResponse = await missing.fetch(control("/start", "POST"));
+  assert.equal(missingResponse.status, 503);
+
+  const mismatchedManifest = JSON.stringify({
+    guildId: "1565048205970767993",
+    applicationId: APP_ID,
+    liveChannelId: "1565048207178862763",
+    livePublisher: "none",
+    enabledHandlers: ["bot005"],
+  });
+  const mismatched = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: mismatchedManifest });
+  const mismatchResponse = await mismatched.fetch(control("/start", "POST"));
+  assert.equal(mismatchResponse.status, 503);
 });
 
 test("refuses to start until client definitions are configured", async () => {
