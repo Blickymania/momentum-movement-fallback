@@ -1,0 +1,21 @@
+{
+  "name": "dawn-dotta-discord-manager-edge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dry-run": "wrangler deploy --dry-run",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.14",
+    "@types/pg": "^8.15.5",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.45.0"
+  }
+}
