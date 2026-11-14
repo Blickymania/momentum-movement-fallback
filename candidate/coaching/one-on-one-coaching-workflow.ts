@@ -400,7 +400,10 @@ async function continueRequestForm(i,id){
 async function bootstrap(){
  try{
   const botAuthSecret=Bun.env.COACHING_BOT005_AUTH_SECRET||"",relayAuthSecret=Bun.env.COACHING_RELAY_AUTH_SECRET||"";
-  if(botAuthSecret.length<32||botAuthSecret.length>512||relayAuthSecret.length<32||relayAuthSecret.length>512||botAuthSecret===relayAuthSecret)throw Error("Distinct Bot 005 and Relay authentication secrets are required");
+  if(botAuthSecret.length<32||botAuthSecret.length>512||relayAuthSecret.length<32||relayAuthSecret.length>512||
+     botAuthSecret===relayAuthSecret||botAuthSecret===token()||relayAuthSecret===token()) {
+   throw Error("Coaching sender credentials must be distinct from each other and the Discord bot token");
+  }
   const idempotencyToken=Bun.env.COACHING_IDEMPOTENCY_TOKEN||"";
   let idempotencyUrl;
   try{idempotencyUrl=new URL(Bun.env.COACHING_IDEMPOTENCY_URL||"")}catch{throw Error("Durable coaching idempotency endpoint is invalid")}
@@ -415,6 +418,9 @@ async function bootstrap(){
      !idempotencyHost.includes(".")||idempotencyHost.includes("railway")||idempotencyHost.endsWith(".rlwy.net")||
      /^\d{1,3}(\.\d{1,3}){3}$/.test(idempotencyHost)||idempotencyHost.startsWith("[")) {
    throw Error("Public HTTPS durable coaching idempotency endpoint and token are required");
+  }
+  if(idempotencyToken===botAuthSecret||idempotencyToken===relayAuthSecret||idempotencyToken===token()) {
+   throw Error("Coaching idempotency credential must be unique");
   }
   coachingIdempotencyEndpoint=idempotencyUrl.href;
   if(Bun.env.AUTHORIZED_GUILD_ID!==G||Bun.env.APPLICATION_ID!==APP||!token()||Bun.env.WRITES_ENABLED!=="true")throw Error("Guild, application, token, or write authorization mismatch");
