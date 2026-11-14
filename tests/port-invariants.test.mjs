@@ -251,3 +251,12 @@ test("router readiness reports the selected origin actual database verification 
 });
 
 
+
+test("aggregate failover status reports degraded until a ready origin also verifies OAuth database", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /const managerAvailable = results\.some\(x => x\.ready\)/);
+  assert.match(router, /const fullyReady = results\.some\(x => x\.ready && x\.oauthDatabaseVerified\)/);
+  assert.match(router, /const status = fullyReady \? "ready" : managerAvailable \? "degraded" : "not_ready"/);
+  assert.match(router, /oauthDatabaseVerified: fullyReady/);
+  assert.match(router, /fullyReady \? 200 : 503/);
+});
