@@ -160,8 +160,11 @@ export function createRenderServiceFencer({
     // must be running without a Gateway so it can receive the lease and log in.
     await assertServiceRunning(candidateServiceId);
     const stopProof = await ensureSuspended(previousServiceId);
+    // Deterministic for this exact former owner/epoch and candidate so a
+    // retried confirmation is idempotent after an HTTP response is lost.
     const proofId = "render-suspend:" + oldDeployment + ":" +
-      stopProof.serviceId + ":" + Date.now() + ":" + crypto.randomUUID();
+      current.owner_id + ":" + current.fencing_epoch + ":" +
+      candidateDeployment + ":" + candidateOwner + ":" + stopProof.serviceId;
 
     const confirmed = await confirmFence({
       scope: current.lease_scope,
