@@ -58,7 +58,7 @@ Dawn Dotta / Momentum Movement — Railway-independent Core Shadow / Bot 005 fai
 - The service uses no Discord client, opens no Gateway, performs no Discord writes, never returns configured URLs/credentials, and has graceful SIGTERM/SIGINT shutdown.
 - Local Node.js v22.16.0 run of the committed implementation/test logic: 8 tests passed, 0 failed. Tests use an injected fake DB driver; they verify endpoint behavior, input validation, and fail-closed readiness, not a real hosted database connection.
 - No deploy was triggered and no infrastructure was provisioned. Bot 005 remains untouched.
-- GitHub Actions was configured to run for changes under `implementation/**`, so these new commits are eligible to trigger CI. The available connector does not expose a push-run listing method; a successful hosted CI run has not been verified.
+- GitHub Actions was configured to run for changes under `implementation/**`, and the commit triggered run `43551272700`. It also ended `startup_failure`; a direct jobs read returned an empty jobs array. This second zero-job startup failure confirms the problem persists independently of the earlier test workflow run. There are still no runner logs or returned root-cause details.
 
 ## Render workspace inventory — latest
 Workspace: `My Workspace` (`tea-dbcqe7ss728c73fthlug`).
@@ -74,7 +74,7 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 ## Verified state now
 - Lease module committed; mock-backed local tests: 6/6 passed.
 - Independent Node preflight service and tests committed; local Node tests: 8/8 passed.
-- GitHub Actions latest run \`43551272700\`: startup_failure, zero jobs; cause still unknown. An exact local Git blob comparison confirmed both newly committed preflight source and test files match the versions that passed the local 8-test run.
+- GitHub Actions latest run `43551272700`: startup_failure, zero jobs; cause still unknown. An exact local Git blob comparison confirmed both newly committed preflight source and test files match the versions that passed the local 8-test run.
 - Render workspace confirmed; services inventory inconclusive; no Render Postgres or Key Value instances listed.
 - No independent coordination database is connected.
 - No independent standby runtime is deployed.
