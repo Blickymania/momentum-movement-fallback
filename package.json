@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node implementation/momentum-movement-independent-preflight.mjs",
     "test": "node --test implementation/*.test.mjs",
-    "start:listener": "bun run index.tsx"
+    "start:listener": "bun run index.tsx",
+    "start:bot005": "bun run candidate/bot-005/blickymania-bot-005.ts"
   },
   "dependencies": {
     "postgres": "3.4.7",
