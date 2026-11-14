@@ -92,7 +92,7 @@ const text=(value,isError=false)=>({content:[{type:"text",text:typeof value==="s
 const fail=(message)=>text({error:message},true);
 const config=()=>({token:runtimeEnv().DISCORD_BOT_TOKEN,guild:runtimeEnv().AUTHORIZED_GUILD_ID,writes:runtimeEnv().WRITES_ENABLED==="true",app:runtimeEnv().APPLICATION_ID});
 const validRoute=(route)=>{if(typeof route!=="string"||!route.startsWith("/")||route.startsWith("//")||/[\\?#]/.test(route)||/%(?:2e|2f|5c)/i.test(route))return false;let decoded;try{decoded=decodeURIComponent(route)}catch{return false}if(decoded.includes("%")||/[\\?#]/.test(decoded)||decoded.includes("//")||decoded.split("/").some(p=>p==="."||p===".."))return false;return new URL(API+route).pathname===new URL(API).pathname+route;};
-async function channelGuild(id,token){const r=await fetch(API+"/channels/"+encodeURIComponent(id),{headers:{authorization:"Bot "+token,"user-agent":"DiscordManager/1.0"}});if(!r.ok)return {status:r.status};const c=await r.json();return {guildId:c.guild_id};}
+async function channelGuild(id,token){const r=await fetch(API+"/channels/"+encodeURIComponent(id),{headers:{authorization:"Bot "+token,"user-agent":"DiscordManager/1.0"},signal:AbortSignal.timeout(12000)});if(!r.ok)return {status:r.status};const c=await r.json();return {guildId:c.guild_id};}
 async function managerStandardAudit(c){
  if(!c.token||!/^\d{15,22}$/.test(c.guild||"")||!/^\d{15,22}$/.test(c.app||""))return fail("Discord manager identity is not configured.");
  const headers={authorization:"Bot "+c.token,"user-agent":"IndependentDiscordManagerAudit"};
@@ -253,7 +253,7 @@ async function invoke(name,args){
  const url=new URL(API+route);
  for(const [k,v] of Object.entries(args.query||{})){if(!/^[a-zA-Z0-9_-]{1,80}$/.test(k))return fail("Invalid query parameter.");url.searchParams.set(k,String(v));}
  const headers={authorization:"Bot "+c.token,"user-agent":"DiscordManager/1.0"};
- const init={method,headers};if(args.body!==undefined){headers["content-type"]="application/json";let sendBody;try{sendBody=quietManagedMessage(method,route,args.body,args.notification_mode)}catch(e){return fail(String(e.message||e))}init.body=JSON.stringify(sendBody);}
+ const init:RequestInit={method,headers,signal:AbortSignal.timeout(15000)};if(args.body!==undefined){headers["content-type"]="application/json";let sendBody;try{sendBody=quietManagedMessage(method,route,args.body,args.notification_mode)}catch(e){return fail(String(e.message||e))}init.body=JSON.stringify(sendBody);}
  const r=await fetch(url,init);const raw=await r.text();let value;try{value=raw?JSON.parse(raw):null;}catch{value={message:raw.slice(0,2000)};}
  console.log(JSON.stringify({event:"discord_api_call",manager:NAME,method,route,status:r.status,changed:method!=="GET"}));
  return r.ok?text(value):text({status:r.status,discord:value,retryAfter:r.headers.get("retry-after")},true);
