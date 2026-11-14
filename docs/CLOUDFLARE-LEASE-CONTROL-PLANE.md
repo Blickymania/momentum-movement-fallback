@@ -44,7 +44,7 @@ Official documentation:
 - `cloudflare/gateway-lease-coordinator.mjs`: SQLite-backed Durable Object. It uses a fixed lease scope, 30-second default TTL, 10–120-second accepted TTL range, owner ID, deployment ID, monotonic fencing epoch, expiry and heartbeat timestamp. Acquisition is an atomic UPSERT allowed only when the previous lease has expired. The same active owner ID cannot reacquire its own lease. Renewal and release require the exact owner ID and fencing epoch. Fencing epochs are returned as strings and are checked to stay inside JavaScript's safe-integer range.
 - `cloudflare/worker.mjs`: public `GET /healthz` plus bearer-authenticated lease routes. Only `/lease/state`, `/lease/acquire`, `/lease/renew`, and `/lease/release` are forwarded to the Durable Object. A 32–512-character service secret is required. The secret is read from `LEASE_SERVICE_TOKEN`; do not put it in source or Wrangler config.
 - `cloudflare/wrangler.jsonc`: SQLite Durable Object binding and initial `new_sqlite_classes` migration.
-- `implementation/cloudflare-gateway-lease-client.mjs`: Node-side HTTPS client. It rejects Railway/local/IP-literal endpoints, uses a bounded request timeout, maps HTTP 409 to a denied lease (null), and fails closed on timeout/network/server error.
+- `implementation/cloudflare-gateway-lease-client.mjs`: Node-side HTTPS client. It rejects Railway/local/IP-literal endpoints, normalizes trailing-dot hostnames and root Worker URL paths, enforces a 32–512-character service secret, uses a bounded request timeout, maps HTTP 409 to a denied lease (null), and fails closed on timeout/network/server error. The coordinator's state route returns the same `{ ok: true, lease }` envelope as the mutation routes.
 - `implementation/gateway-owner-supervisor.mjs`: now accepts either the PostgreSQL lease backend or the new generic `leaseStore` interface. When using Cloudflare, the same supervisor acquires before login, renews by HTTP, destroys on lease loss, and releases after graceful shutdown.
 - Tests cover the Durable Object's actual SQLite statement behavior under a Node SQLite simulation, Worker authorization/routing, API client validation/timeouts, and an end-to-end local path from supervisor through Worker/client to the Durable Object.
 
@@ -52,11 +52,11 @@ Official documentation:
 
 Local Node.js v22.16.0 tests run in an isolated folder using Node's built-in `node:sqlite` and simulated Cloudflare Durable Object context/namespace:
 - Durable Object and HTTP API tests: 9 passed.
-- Worker/client tests: 8 passed.
+- Worker/client tests: 9 passed.
 - Supervisor-to-Worker-to-Durable-Object local end-to-end ownership test: 1 passed.
-- **Total for this Cloudflare control-plane suite: 18 passed, 0 failed.**
+- **Total for this Cloudflare control-plane suite: 19 passed, 0 failed.**
 
-This simulates SQLite semantics and the Worker/client path locally. It is not a Cloudflare preview/runtime integration test and does not validate actual Cloudflare account configuration, Durable Object migrations, secret deployment, account-specific quota usage, or network outages at the edge.
+This simulates SQLite semantics and the Worker/client path locally. The tests also cover the authenticated state-read route, successful state response envelope, root Worker URL path composition, trailing-dot localhost rejection, and minimum service-secret length. It is not a Cloudflare preview/runtime integration test and does not validate actual Cloudflare account configuration, Durable Object migrations, secret deployment, account-specific quota usage, or network outages at the edge.
 
 The GitHub Actions workflow still fails before job creation with `startup_failure`; these tests have not run in GitHub-hosted Actions. Do not report hosted CI as passing.
 
