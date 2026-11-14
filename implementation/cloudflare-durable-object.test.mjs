@@ -198,6 +198,24 @@ test("rejects unsupported scope, invalid TTL, and unsafe fencing epochs", () => 
     assert.throws(() => env.coordinator.bootstrap({ scope: GATEWAY_LEASE_SCOPE, ownerId: "unbound-owner", deploymentId: "test-deploy", proofId: "manual-proof" }), /owner_id_must_be_bound_to_deployment/);
     bootstrap(env);
     const lease = env.coordinator.acquire(input("primary-deploy:primary-instance", "primary-deploy"));
+    assert.throws(() => env.coordinator.confirmFence({
+      scope: GATEWAY_LEASE_SCOPE,
+      expectedOwnerId: lease.owner_id,
+      expectedFencingEpoch: lease.fencing_epoch,
+      candidateOwnerId: "unbound-candidate",
+      candidateDeploymentId: "standby-deploy",
+      provider: "test-provider",
+      proofId: "invalid-candidate-owner"
+    }), /candidate_owner_id_must_be_bound_to_deployment/);
+    assert.throws(() => env.coordinator.confirmFence({
+      scope: GATEWAY_LEASE_SCOPE,
+      expectedOwnerId: "unbound-previous",
+      expectedFencingEpoch: lease.fencing_epoch,
+      candidateOwnerId: "standby-deploy:standby-instance",
+      candidateDeploymentId: "standby-deploy",
+      provider: "test-provider",
+      proofId: "invalid-previous-owner"
+    }), /expected_owner_id_must_be_bound_to_deployment/);
     assert.throws(() => env.coordinator.renew(input("owner", "test-deploy", {
       fencingEpoch: "9007199254740993"
     })), /fencing_epoch_invalid/);
