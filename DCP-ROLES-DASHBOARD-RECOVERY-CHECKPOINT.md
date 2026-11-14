@@ -72,3 +72,26 @@ Run:
 `node --test recovered-functions/tests/blickymania-bot-005-roles-dashboard.test.mjs`
 
 Then stage the patched Bot 005 source on the authorized non-Railway replacement runtime when credentials/configuration and production readiness are available. Do not cut over until health checks and live clicks on all four buttons pass.
+
+## Hostless deployment preparation checkpoint — 2026-11-14
+
+- Correct deployment target confirmed from the recovered source: **Hostless App**, not a standalone Worker. Bot 005 exposes an HTTP health endpoint on `PORT` and `0.0.0.0`, including `/healthz`, while maintaining the Discord Gateway connection.
+- Prepared separate deployment branch: `deploy/hostless-bot005-app`.
+- Added a Bun package manifest, Hostless configuration, and deployment guide on that branch.
+- Added a safe activation gate: `BOT_GATEWAY_ACTIVE=false` keeps the HTTP app in standby, returns 200 from `/healthz`, and does not log into Discord. The Gateway only starts when the flag is explicitly `true`.
+- Hostless settings staged: one replica; 0.1–0.2 vCPU; 256–384 MB RAM; HTTP health check `/healthz`; no persistent volume requested. The current browser tab shows the Hostless New App form at Step 2; no Hostless app has been created.
+- Current Hostless page showed free capacity remaining of 0.4 vCPU, 768 MB RAM and 0.5 GB storage. The staged ceiling is within those observed free limits; recheck before creation.
+- Static source checks passed: role routing for all four buttons; acknowledgement-before-edit; standby gate; health behavior; Gateway login gate; HTTP bind and PORT; package manifest; Hostless YAML; test file and deployment guide present.
+- Node's `node --test` command has not been run in a Node runtime. The in-session equivalent source/config assertions passed.
+- No deployment was started and no secrets were read or committed.
+
+### Remaining deployment blockers
+
+1. Confirm the old Railway Bot 005 Gateway process is stopped before enabling the Hostless Gateway. Its current state could not be verified because Railway is billing-blocked and the open Railway browser context was unavailable.
+2. Add `DISCORD_BOT_TOKEN` directly as a Hostless secret; never place it in Git or ChatGPT.
+3. Recover the existing `PROFILE_DATA_ENCRYPTION_KEY` and profile channel IDs from the authorized secret store before claiming full profile-feature parity. Do not generate a replacement encryption key for existing encrypted records.
+4. Deploy in standby, verify `/healthz` returns 200, then—only after the old process is confirmed stopped—set `BOT_GATEWAY_ACTIVE=true` and test all four buttons live.
+
+### Exact next execution step
+
+Continue in Hostless using repository `Blickymania/momentum-movement-fallback`, branch `deploy/hostless-bot005-app`, Bun runtime, auto build, and the committed `hostless.yaml`. Create the app in standby with `AUTHORIZED_GUILD_ID=1565048205970767992`, `APPLICATION_ID=1565304619838742598`, and `BOT_GATEWAY_ACTIVE=false`; do not activate the Gateway until the old Railway process is known stopped.
