@@ -247,3 +247,20 @@ test("lease client composes the path correctly when the Worker base URL has no p
   assert.deepEqual(await store.acquire({}), lease);
   assert.equal(capturedUrl, "https://lease.example.com/lease/acquire");
 });
+
+
+test("lease client reads authenticated state including an empty lease", async () => {
+  let captured;
+  const store = createCloudflareGatewayLeaseStore({
+    baseUrl: "https://lease.example.com",
+    serviceToken: token,
+    fetchFn: async (url, init) => {
+      captured = { url: String(url), init };
+      return jsonResponse({ ok: true, lease: null });
+    }
+  });
+  assert.equal(await store.read(), null);
+  assert.equal(captured.url, "https://lease.example.com/lease/state");
+  assert.equal(captured.init.method, "GET");
+  assert.equal(captured.init.body, undefined);
+});
