@@ -4,13 +4,13 @@ Updated: 2026-11-13 US Eastern
 
 ## Purpose and boundary
 
-This project uses one Cloudflare Durable Object as a control-plane lease coordinator for the Momentum Movement Discord Gateway owner. It is not a Discord bot runtime. The Durable Object and its Worker do not open a Discord Gateway, send Discord messages, mutate guild content, or store Discord OAuth credentials.
+This project uses one Cloudflare Durable Object as a control-plane lease coordinator for the Bot 005 Gateway workload only. It is not a Discord bot runtime and does not coordinate every Gateway-connected service in the Railway project. The Durable Object and its Worker do not open a Discord Gateway, send Discord messages, mutate guild content, or store Discord OAuth credentials.
 
 The only intended scope is:
 
 `momentum-movement:bot-005-gateway`
 
-Do not reuse this Durable Object for another server or combine the five independent communities.
+Do not reuse the Bot 005 lease scope for another workload or combine the five independent communities. Each separate Gateway workload requires its own scope and stop/recovery plan.
 
 ## Why Durable Objects are a candidate
 
@@ -203,3 +203,14 @@ Latest observed GitHub Actions run is `43556643815`, commit `3d06db570263be426a6
 The bot-facing fence requester now defaults to 30 seconds (the maximum supported by its validator). The Worker fencer allows up to 15 seconds of suspension-state polling, with each Render service-state request independently bounded to 5 seconds. This gives the caller room for the candidate-state read, prior-state read, suspend acknowledgement, state readback/poll, and Durable Object confirmation. The operation remains fail-closed on any timeout or unavailable response; it never treats the Render HTTP 202 acknowledgement alone as proof of a stopped Gateway host.
 
 After this timeout adjustment, the full selected local Node.js 22.16.0 component run still returned 65 tests passed and 0 failed.
+
+
+## Scope correction — Bot 005 workload only
+
+The production environment audit confirmed six live Gateway-connected workloads: Bot 005, Social Owner Console, LIVE NOW V2 Shadow Engine, Discord Engagement Engine, Fan Club Level-Up Management, and the 1-on-1 Coaching Interaction Relay. See docs/MOMENTUM-MOVEMENT-GATEWAY-WORKLOAD-INVENTORY.md for source and service IDs.
+
+The current lease scope is specifically `momentum-movement:bot-005-gateway`. It is the ownership lock for Bot 005's primary/standby pair only. It is not a global lock for every Gateway client in the Momentum Movement Railway project. The other five live Gateway-connected services remain outside this failover rollout and must not acquire, renew or be fenced through the Bot 005 lease. Any later HA work for them requires service-specific workload scopes, primary/standby identities, hard-stop mechanisms, side-effect idempotency and rollback.
+
+The current Bot 005 and other services all expose a `DISCORD_BOT_TOKEN` variable name, but Railway redacts variable values, so identical token values are not established. Four of the recovered sources include the Momentum Movement guild/application identifiers; LIVE NOW V2 and Fan Club Level-Up use environment-supplied identity values that could not be inspected.
+
+This scope correction supersedes earlier broad references to a single Momentum Movement Gateway owner.
