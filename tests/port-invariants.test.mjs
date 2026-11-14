@@ -169,7 +169,7 @@ test("router rewrites only the upstream origin and strips URL credentials", asyn
 
 test("router readiness reports verified upstream Discord identity", async () => {
   const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
-  assert.match(router, /oauthDatabaseVerified: true/);
+  assert.match(router, /oauthDatabaseVerified: selected\\.oauthDatabaseVerified/);
   assert.match(router, /status: "ready"/);
   assert.match(router, /manager: MANAGER_NAME/);
   assert.match(router, /discordVerified: true/);
@@ -231,4 +231,19 @@ test("Manager readiness checks PostgreSQL when OAuth is enabled", () => {
 
 test("Manager supports provider-neutral internal bearer auth with legacy compatibility", () => {
   assert.match(source, /MCP_INTERNAL_BEARER_TOKEN\|\|runtimeEnv\(\)\.RAILWAY_SERVICE_KEY/);
+});
+
+test("router caches short-lived health checks and coalesces concurrent probes", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /PROBE_CACHE_TTL_MS = 5000/);
+  assert.match(router, /probeCache = new Map/);
+  assert.match(router, /probeInFlight = new Map/);
+  assert.match(router, /if \(pending\) return pending/);
+  assert.match(router, /cachedProbe\(candidate\)/);
+});
+test("router readiness reports the selected origin actual database verification state", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /oauthDatabaseVerified: status\.oauthDatabaseVerified/);
+  assert.match(router, /oauthDatabaseVerified: selected\.oauthDatabaseVerified/);
+  assert.match(router, /oauthDatabaseVerified: body\?\.oauthDatabaseVerified === true/);
 });
