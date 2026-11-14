@@ -83,7 +83,7 @@ const definitions = [
   { id: "bot-disabled", guildId: "1565304619838742500", applicationId: "1565304619838742501", intents: 1, enabled: false, tokenRef: "BOT_DISABLED_TOKEN" },
 ];
 
-function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken, clientDefinitions = definitions } = {}) {
+function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken, clientDefinitions = definitions, handlerRegistry } = {}) {
   const storage = new MemoryDOStorage();
   const sockets = [];
   const tokens = new Map([
@@ -112,6 +112,7 @@ function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, f
     random,
     verifyIdentity,
     ...(fingerprintToken ? { fingerprintToken } : {}),
+    ...(handlerRegistry ? { handlerRegistry } : {}),
     log: (event, metadata) => logs.push({ event, metadata }),
   });
   let clock = 1_800_000_000_000;
@@ -323,6 +324,36 @@ test("READY session and subsequent dispatch events persist into isolated per-cli
   assert.deepEqual((await betaInbox.listPending()).map((item) => item.payload.id), ["beta-message"]);
   assert.equal(alpha.sent[0].op, 2);
   assert.equal(beta.sent[0].op, 2);
+});
+
+test("handler registry drops irrelevant events while atomically advancing the Resume sequence", async () => {
+  const handlerRegistry = {
+    route: ({ eventType, payload }) => {
+      if (eventType === "MESSAGE_CREATE" && payload.guild_id === GUILD_A) {
+        return { status: "routed", handlers: ["discord-engagement-engine"] };
+      }
+      return { status: "ignored", reason: "event_not_consumed" };
+    },
+  };
+  const h = makeHarness({ handlerRegistry });
+  await h.core.initialize();
+  await h.core.start();
+  const socket = h.sockets[0];
+  frame(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+  await h.flush();
+  frame(socket, { op: 0, s: 10, t: "READY", d: { session_id: "session", resume_gateway_url: "wss://resume.example" } });
+  await h.flush();
+
+  frame(socket, { op: 0, s: 11, t: "PRESENCE_UPDATE", d: { user: { id: "100000000000000001" } } });
+  await h.flush();
+  assert.equal((await h.core.getInbox("bot-alpha").getState()).sequence, 11);
+  assert.equal((await h.core.getInbox("bot-alpha").listPending()).length, 0);
+
+  frame(socket, { op: 0, s: 12, t: "MESSAGE_CREATE", d: { guild_id: GUILD_A, id: "message-12" } });
+  await h.flush();
+  assert.equal((await h.core.getInbox("bot-alpha").getState()).sequence, 12);
+  assert.equal((await h.core.getInbox("bot-alpha").listPending()).length, 1);
+  assert.equal((await h.core.getInbox("bot-alpha").listPending())[0].eventType, "MESSAGE_CREATE");
 });
 
 test("server-requested heartbeat is sent immediately even when a scheduled ACK is pending", async () => {
