@@ -10,7 +10,7 @@ Railway is not a deployment dependency for recovery or future operations. Existi
 
 - Discord guild: `1565048205970767992`
 - Bot application: `1565304619838742598`
-- Bot 005 remains the only currently verified production Discord Gateway owner.
+- Bot 005 remains the primary Gateway process for its own workload, but the Railway project also has five other live Gateway-connected workloads. See docs/MOMENTUM-MOVEMENT-GATEWAY-WORKLOAD-INVENTORY.md.
 - Recovered Bot 005 source calls `await client.login(token)`; no shared lease acquisition/heartbeat/fencing protocol is present.
 - Recovered Core Shadow is a read-only HTTP process; it does not connect to Discord Gateway or write Discord data.
 - An old Railway PostgreSQL service exists, but it is not an independent coordination dependency and must never be treated as the failover control plane.
@@ -18,7 +18,7 @@ Railway is not a deployment dependency for recovery or future operations. Existi
 
 ## Target architecture
 
-1. **Primary:** Keep the existing Bot 005 runtime untouched until a reviewed replacement/cutover path exists. It remains the sole Gateway owner.
+1. **Primary:** Keep the existing Bot 005 runtime untouched until a reviewed replacement/cutover path exists. The lease covers only the Bot 005 workload; it does not coordinate the five other live Gateway workloads.
 2. **Independent standby runtime:** Host Core Shadow successor on a persistent process platform independent of Railway. It must support long-lived outbound Discord Gateway WebSocket connections, persistent process execution, health endpoints, graceful shutdown, and an authorized secret store. A sleeping/free web tier is not suitable as an always-on Gateway standby.
 3. **Independent coordination store:** Use separately hosted PostgreSQL-compatible storage or another strongly consistent lease store. Do not rely on Railway PostgreSQL for takeover availability.
 4. **Lease and fencing protocol:** Both primary and standby participate in one shared ownership protocol before either can own the Gateway. Lease records include owner ID, monotonically increasing fencing epoch, expiry, heartbeat, and deployment identity. Acquisition is atomic. A stale owner must stop processing and close its Gateway session when renewal fails. Side effects must be guarded by current lease epoch and idempotency receipts.
@@ -307,3 +307,14 @@ A read-only source/config audit found six live Gateway-connected services in the
 This invalidates any earlier assumption that Bot 005 is the only Gateway-connected process in the project. It remains the primary Gateway owner for its own workload only. The Cloudflare lease has been narrowed to `momentum-movement:bot-005-gateway`; it does not attempt to stop or fence the other five services.
 
 Other Gateway services are deliberately out of this rollout. Do not force them to share Bot 005's lease. Each would need its own workload-specific scope, service pair, stop proof and feature-specific idempotency/recovery plan. The Bot 005 / coaching migration needs to include the separate Coaching Interaction Relay too, since both services currently forward coaching interactions to the same Railway-internal workflow.
+
+
+## Verified Bot 005 workload scope
+
+The Cloudflare lease constant and its test fixtures now use the exact scope momentum-movement:bot-005-gateway. This is a Bot 005 primary/standby lock only.
+
+A separate read-only production audit found six live Gateway-connected services in Railway: Bot 005, Dawn Dotta Social Owner Console, LIVE NOW V2 Shadow Engine, Discord Engagement Engine, Fan Club Level-Up Management and the 1-on-1 Coaching Interaction Relay. Their service IDs, responsibilities and deployment statuses are listed in docs/MOMENTUM-MOVEMENT-GATEWAY-WORKLOAD-INVENTORY.md.
+
+The other five services are deliberately not fenced by the Bot 005 lease and must not be configured to use its workload scope. They are distinct applications/handlers, not interchangeable Bot 005 replicas. Future failover for them requires separate service-scoped leases, hard-stop proofs, idempotency and rollback.
+
+The Coaching Interaction Relay is a separate Gateway client but shares the Bot 005 coaching feature's private workflow. A migration of coaching interaction ingress must account for both callers: Bot 005 direct forwarding and the Relay's raw INTERACTION_CREATE forwarding.
