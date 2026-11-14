@@ -431,3 +431,30 @@ Re-run the full source harness and final secret/config/diff audit after this tra
 
 ### Exact next execution step
 Continue investigating the GitHub Actions pre-job startup failure and a genuine local build environment. In parallel, resume the infrastructure dependency track for a persistent private Railway-to-Cloudflare database connector. Keep production online and unchanged.
+
+
+## Prepared Railway SSH + Cloudflare Tunnel connector cycle
+
+### New isolated artifacts
+- Added `infra/connector/railway-cloudflare-tunnel.sh` and `infra/connector/README.md`.
+- The prepared design uses Railway's documented `railway connect --tunnel-only` SSH tunnel path, then runs `cloudflared` to connect the local forwarded TCP port to a Cloudflare Tunnel. This avoids creating a public Railway TCP proxy.
+- Railway CLI documentation confirms `--tunnel-only` opens a local SSH tunnel and holds it open; `railway link` supports explicit project, environment, and service IDs. Sources: https://docs.railway.com/cli/connect and https://docs.railway.com/cli/link
+- Cloudflare supports `cloudflared tunnel run --token-file` for remotely managed tunnels. Source: https://developers.cloudflare.com/tunnel/reference/run-parameters/
+- Connector expects project-scoped `RAILWAY_TOKEN`, Dawn project/environment/database service IDs, and a Cloudflare tunnel token. No secrets or IDs are embedded in the script.
+- The Railway CLI's `--tunnel-only` output includes database connection details, so script stdout/stderr is suppressed. Cloudflare token is written with restrictive permissions to a temporary file, then removed on exit.
+- Script/readme commits: `621fe01e83a5baf38a072b6b3ee2b4e264f169da` and `f9b41661a4519f2a534d16ebfdd0ac6963746800`.
+
+### Tests
+- `sh -n` syntax validation passed.
+- Mocked process lifecycle passed: Railway link/startup, local port readiness, Cloudflare token file mode 600, Railway credential output suppression, tunnel process shutdown, and temporary directory cleanup.
+- This is a mocked host-side test only. It does not prove Railway project-token access, Railway SSH tunnel connectivity, Cloudflare Tunnel connectivity, or Hyperdrive-to-PostgreSQL connectivity.
+
+### Hosting investigation
+- Railway's connector-tunnel inventory tool failed internally on two read-only attempts. Railway beta feature inventory did not list CONNECTOR_TUNNELS as an available toggle; no beta feature was changed.
+- Railway CLI SSH tunneling is a viable technical alternative, but it still requires a trusted always-on host.
+- Render Free sleeps and is unsuitable for a persistent database connector.
+- VPSFree.io advertises a renewable free VPS, but its published Terms of Service page is blank; that is not an acceptable trust basis for production database credentials. Sources: https://vpsfree.io/ and https://vpsfree.io/terms
+- No host was provisioned, no Railway token was created, no Cloudflare Tunnel was created, and no VPC Service or Hyperdrive config was created.
+
+### Next execution step
+Inspect and test the connector's Railway CLI invocation against documented semantics without exposing credentials; then continue searching for a trustworthy persistent host under the no-card/no-paid constraint. If no such host exists, preserve the connector as ready-to-deploy code and keep the production Manager unchanged.
