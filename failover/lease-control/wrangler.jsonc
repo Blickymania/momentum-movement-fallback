@@ -4,6 +4,7 @@
   "main": "worker.js",
   "compatibility_date": "2026-11-13",
   "observability": { "enabled": true },
+  "secrets": { "required": ["LEASE_CONTROL_TOKEN"] },
   "durable_objects": {
     "bindings": [
       { "name": "LEASE_COORDINATOR", "class_name": "MomentumMovementLease" }
