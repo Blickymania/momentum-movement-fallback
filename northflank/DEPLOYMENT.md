@@ -17,14 +17,14 @@
 
 Northflank currently advertises a free Sandbox with no credit card required, two services, two jobs, one database, and up to $20/month of resource usage. Workloads are always on and do not sleep.
 
-Published container compute examples:
-- `nf-compute-20`: 0.2 shared vCPU / 512 MB — $5.40/month.
-- `nf-compute-50`: 0.5 shared vCPU / 1 GB — $12.00/month.
-- `nf-compute-100-1`: 1 dedicated vCPU / 1 GB — $18.00/month.
+Currently displayed compute plans on Northflank's public pricing page:
+- nf-compute-50: 0.5 vCPU / 1 GB — $12.00/month.
+- nf-compute-100-2: 1 vCPU / 2 GB — $24.00/month.
+- nf-compute-200: 2 vCPU / 4 GB — $48.00/month.
 
-The $20 allowance applies to the combined managed resources; it is not $20 per workload. PostgreSQL compute, persistent disk, backups, build storage, logging, and network egress can consume the same allowance or create additional usage. The Northflank pricing calculator's example PostgreSQL database (10 GB disk) is $13.17/month. Therefore a $12 Manager plus that database exceeds the advertised $20 allowance.
+The $20 Sandbox resource allowance is shared across Northflank Cloud resources; it is not $20 per workload. The displayed 10 GB PostgreSQL calculator example is $13.17/month, so nf-compute-50 ($12) plus that database example totals $25.17/month and exceeds the Sandbox allowance before additional build storage, backups, logs, or network egress. The larger listed compute plans exceed the allowance before a database is added.
 
-A theoretical lower-cost configuration could combine a $12 Manager with a small PostgreSQL plan and minimal disk, but the exact available database plan, disk minimum, and live resource estimate must be verified in the account before any resource is created. Do not select Pay as You Go, upgrade, attach a payment card, or accept any charge. Stop if the actual Sandbox estimate exceeds the free allowance.
+A smaller database plan or disk allocation might change the estimate, but its Sandbox eligibility, minimum compute, disk, backups, and actual allowance consumption are not yet verified in the account. Do not assume the full Manager + database stack fits for free. Inspect the account calculator first; do not select Pay as You Go, upgrade, attach a payment card, or accept any charge. Stop if the actual Sandbox estimate exceeds the free allowance.
 
 ## Recommended project layout
 
