@@ -5,7 +5,7 @@ import worker from "../cloudflare/worker.mjs";
 const token = "coaching-idempotency-test-secret-at-least-32";
 const route = "https://control.example.com/coaching/interaction/claim";
 
-function makeNamespace() {
+function makeNamespace({ denyHealth = false } = {}) {
   const claims = new Set();
   const calls = [];
   return {
@@ -18,6 +18,14 @@ function makeNamespace() {
         async fetch(request) {
           const url = new URL(request.url);
           calls.push(url.pathname);
+          if (url.pathname === "/healthz") {
+            if (denyHealth) return Response.json({ error: "not_ready" }, { status: 503 });
+            return Response.json({
+              status: "ok",
+              service: "coaching-interaction-idempotency",
+              ready: true
+            });
+          }
           if (url.pathname !== "/claim") {
             return Response.json({ error: "not_found" }, { status: 404 });
           }
@@ -88,4 +96,39 @@ test("durable claim route fails closed when its token or DO binding is missing",
     interactionId: "42345678901234567", source: "bot005"
   }), { COACHING_IDEMPOTENCY_TOKEN: token });
   assert.equal(missingBinding.status, 503);
+});
+
+
+test("durable coaching health route requires its token and verifies the separate object", async () => {
+  const namespace = makeNamespace();
+  const env = { COACHING_IDEMPOTENCY_STORE: namespace, COACHING_IDEMPOTENCY_TOKEN: token };
+  const unauthorized = await worker.fetch(new Request(
+    "https://control.example.com/coaching/interaction/healthz",
+    { method: "GET" }
+  ), env);
+  assert.equal(unauthorized.status, 401);
+
+  const healthy = await worker.fetch(new Request(
+    "https://control.example.com/coaching/interaction/healthz",
+    { method: "GET", headers: { authorization: "Bearer " + token } }
+  ), env);
+  assert.equal(healthy.status, 200);
+  assert.deepEqual(await healthy.json(), {
+    status: "ok",
+    service: "coaching-interaction-idempotency",
+    ready: true
+  });
+  assert.deepEqual(namespace.calls, ["/healthz"]);
+});
+
+test("durable coaching health route fails closed when the isolated store is not ready", async () => {
+  const namespace = makeNamespace({ denyHealth: true });
+  const response = await worker.fetch(new Request(
+    "https://control.example.com/coaching/interaction/healthz",
+    { method: "GET", headers: { authorization: "Bearer " + token } }
+  ), {
+    COACHING_IDEMPOTENCY_STORE: namespace,
+    COACHING_IDEMPOTENCY_TOKEN: token
+  });
+  assert.equal(response.status, 503);
 });
