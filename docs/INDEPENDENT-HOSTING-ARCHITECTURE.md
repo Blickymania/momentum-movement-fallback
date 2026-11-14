@@ -240,6 +240,10 @@ Each Bot deployment receives only its own `FENCE_REQUEST_TOKENS_JSON` credential
 
 ## Updated verification and blockers
 
-Component-local Node.js 22.16.0 simulations during this cycle: Render suspension + Durable Object Worker 2/2; lease store/SQLite coordinator/Render fencer batch 20/20; ownership guard 7/7; prepared owner adapter 5/5; provider-neutral hard-stop and e2e supervisor batch 9/9. **43/43 component tests passed across separate local harnesses.** These use simulated Cloudflare storage, fake Discord clients, and mocked Render HTTP responses; they are not a clean repository checkout, real Render service action, or Cloudflare edge test.
+Component-local Node.js 22.16.0 simulations during this cycle: Render suspension + Durable Object Worker 2/2; lease store/SQLite coordinator/Render fencer batch 18/18; ownership guard 7/7; prepared owner adapter 5/5; provider-neutral hard-stop and e2e supervisor batch 9/9. **41/41 component tests passed across separate local harnesses.** These use simulated Cloudflare storage, fake Discord clients, and mocked Render HTTP responses; they are not a clean repository checkout, real Render service action, or Cloudflare edge test.
 
 Cloudflare Worker/DO remain undeployed; account plan and usage are unavailable due expired dashboard authentication. Render service inventory remains inconclusive. No paid resources, secrets, routes, or billing settings have changed. The current Railway primary, the Railway-internal coaching workflow dependency, unknown Discord Manager OAuth DB host, actual Bun/Discord.js method compatibility, production handler fencing/idempotency, and rollback remain outstanding.
+
+## Render credential isolation correction
+
+The unused helper that could combine a PostgreSQL/Cloudflare lease store with the Render API adapter inside a Bot process has been removed. The Render service fencer is now intentionally consumed only by cloudflare/worker.mjs. Bot-side code uses only cloudflare-fence-request-client.mjs, which sends candidate identity and a deployment-specific request token to the Worker; it never imports a Render API client or receives the Render API key. The current component suite no longer includes the two removed helper-wrapper tests. The Render fencer suite is 7/7, and the Worker-to-Render-to-Durable-Object flow remains separately simulated.
