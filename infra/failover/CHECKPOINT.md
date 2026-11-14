@@ -470,3 +470,22 @@ Continue read-only inspection of the two Railway PostgreSQL services and their v
 5. Restrict or retire the public temporary diagnostic endpoint after an authenticated replacement is established; do not break a relied-upon monitor without confirming dependencies.
 
 No production service, variable, DB, volume, route, credential, schedule, Discord configuration, or client endpoint was changed in this cycle.
+
+
+## Cycle 23 — production OAuth schema compatibility and regression tests (2026-11-14 UTC)
+
+### Exact schema comparison
+- Compared the full deployed production Manager source against the branch's `render/manager.ts` and `src/index.ts` using extracted SQL statements.
+- Production and Render/Northflank sources have exactly the same five `CREATE TABLE IF NOT EXISTS` definitions and all 24 unique OAuth SQL statements. Table definitions cover clients, login requests, authorization codes, access tokens, and refresh tokens (including consumed/revoked/replaced metadata).
+- Cloudflare Worker source contains the exact same five table definitions and all 24 production SQL statements, plus two compatible expiry indexes on login requests and authorization codes. It retains the same data-path/transaction behavior.
+- All three source implementations have three `FOR UPDATE` row-lock statements, four transaction callbacks, refresh-token rotation linkage through `replaced_by`, and three token/client revocation update paths.
+
+### Regression guard added
+- Added `tests/oauth-schema-compat.test.mjs` to freeze the five audited production DDL definitions and check both candidates' table parity and transactional refresh/revocation safeguards.
+- Executed the exact assertions against retrieved live candidate sources through the available JS execution tool: **10 checks passed, 0 failed** (five checks on Render/Northflank and five on Cloudflare Worker).
+- This is direct source-assertion validation only. The actual `node --test` suite and TypeScript/Wrangler builds remain unexecuted because GitHub Actions runs continue to fail with zero jobs; do not report the new test as CI-passed.
+
+### Scope and next step
+- No production service, database, schema, OAuth data, credential, Railway variable, route, or DNS change occurred.
+- The schema parity finding removes one compatibility uncertainty, but it does not prove the production Manager's `OAUTH_DATABASE_URL` target or database backup/restore coverage.
+- Next: obtain an owner-visible safe confirmation of the Manager's `OAUTH_DATABASE_URL` service reference; then verify backups and an isolated restore for that exact service. Keep Neon staging disabled and Northflank routing inactive until these gates and real tests pass.
