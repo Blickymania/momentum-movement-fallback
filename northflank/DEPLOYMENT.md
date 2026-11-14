@@ -128,6 +128,8 @@ The Manager's `/readyz` must return HTTP 200 and:
 
 Readiness fails closed when the OAuth database is enabled but cannot answer `SELECT 1`, or when the Discord bot/application/guild identity check fails.
 
+The failover router's own `/readyz` is stricter: it returns HTTP 503 with `status: "degraded"` when it selected the legacy Railway origin but that origin does not explicitly report OAuth database verification. The router can still forward requests to the existing Railway Manager; it must not advertise full readiness until the selected origin proves the database check.
+
 After Northflank has a real HTTPS origin and its readiness endpoint passes:
 - Set `NORTHFLANK_MANAGER_ORIGIN` on the Cloudflare failover router.
 - Keep the verified Railway origin as the legacy secondary.
