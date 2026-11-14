@@ -69,3 +69,9 @@ The automation inventory contains 25 tasks. Relevant five-server/Dawn/Momentum m
 - Production source has no shared lease protocol.
 - No infrastructure resources were created in this cycle.
 - Exact external action needed to proceed with Render inspection: user confirmation to use Render workspace `My Workspace` (`tea-dbcqe7ss728c73fthlug`).
+
+## Lease implementation status — source-only
+
+A reusable PostgreSQL lease module is now committed at `implementation/shared-gateway-lease.mjs`, with tests at `implementation/shared-gateway-lease.test.mjs`. It provides atomic lease acquisition, owner/epoch-guarded renewal and release, database-clock expiry, monotonic fencing epoch advancement after expiry, and fail-closed heartbeat callback behavior. It does not open a Discord Gateway or provision a database. The tests use a mocked SQL executor; they verify SQL shape and local heartbeat behavior, not live PostgreSQL transaction behavior or network-partition safety.
+
+**Critical remaining safety gap:** a PostgreSQL lease cannot physically fence an already-open Discord Gateway socket on the legacy Bot 005 process. Do not activate standby takeover until Bot 005 itself participates in the protocol and a deployment/orchestration control can stop the old process before standby login. A lease module alone is not proof of single-owner safety.
