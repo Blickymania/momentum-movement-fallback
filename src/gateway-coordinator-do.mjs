@@ -1,4 +1,5 @@
 import { GatewayCoordinatorCore } from "./gateway-coordinator-core.mjs";
+import { createGatewayHandlerRegistry } from "./gateway-handler-registry.mjs";
 
 const CONTROL_SECRET_MIN_LENGTH = 32;
 const DEFINITIONS_MAX_BYTES = 12 * 1024;
@@ -38,6 +39,24 @@ function readDefinitions(raw) {
   return definitions;
 }
 
+function readHandlerRegistry(raw, definitions) {
+  if (typeof raw !== "string" || raw.length === 0 ||
+      new TextEncoder().encode(raw).byteLength > DEFINITIONS_MAX_BYTES) {
+    throw new TypeError("Gateway handler manifest is not configured or exceeds the size limit");
+  }
+  let manifest;
+  try { manifest = JSON.parse(raw); }
+  catch { throw new TypeError("Gateway handler manifest must be valid JSON"); }
+  const registry = createGatewayHandlerRegistry(manifest);
+  if (definitions.some((definition) =>
+    definition.guildId !== registry.manifest.guildId ||
+    definition.applicationId !== registry.manifest.applicationId
+  )) {
+    throw new TypeError("Gateway handler manifest identity does not match its client definitions");
+  }
+  return registry;
+}
+
 /**
  * One SQLite-backed Durable Object for all verified Discord Gateway identities.
  *
@@ -58,9 +77,11 @@ export class GatewayCoordinatorDurableObject {
 
   async createCore() {
     const definitions = readDefinitions(this.env.GATEWAY_CLIENT_DEFINITIONS);
+    const handlerRegistry = readHandlerRegistry(this.env.GATEWAY_HANDLER_MANIFEST, definitions);
     const core = new GatewayCoordinatorCore({
       storage: this.state.storage,
       definitions,
+      handlerRegistry,
       tokenProvider: async (reference) => this.env[reference],
       fingerprintToken: async (token) => {
         const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
