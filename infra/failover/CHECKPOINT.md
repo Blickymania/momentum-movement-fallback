@@ -411,3 +411,21 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 
 ### Next safe action
 Continue read-only inspection of the two Railway PostgreSQL services and their volume/backup metadata to identify the Manager's actual OAuth DB reference. Do not expose secret values, read token/user payloads, or change DB contents. If service references remain hidden by Railway's OAuth redaction, stop and request an approved safe diagnostic route rather than guessing. Keep the Neon staging endpoint disabled until the next explicitly controlled test window.
+
+
+## Cycle 20 — trace PostgreSQL service traffic and backup coverage (2026-11-14 UTC)
+
+### Confirmed private-network paths
+- Railway network-flow records from the temporary OAuth diagnostic function show repeated egress TCP connections to private IPv6 address `fd12:b37c:13be:1:d000:203:e58b:311:5432`. Matching ingress/egress records on the `OAuth PostgreSQL` service show that exact address as the PostgreSQL source/listener, confirming the diagnostic function reaches the `OAuth PostgreSQL` service (not the separate `Postgres` service).
+- The existing `Postgres Daily Backup` service's network-flow record shows TCP egress from its private address `10.176.109.24` to `10.234.136.250:5432`. Matching records on the separate `Postgres` service show `10.234.136.250` as its PostgreSQL address. Thus the existing daily backup worker targets the separate `Postgres` service, not the `OAuth PostgreSQL` service.
+- Backup worker logs show three consecutive successful backup outputs on Nov 11, 12, and 13 (each 31,806 bytes), with a custom-format pg_dump, pg_restore --list validation, remote object-size comparison, and SHA-256 metadata. This verifies archive creation/transfer/listability, not a full restore rehearsal.
+- No traffic from the existing daily backup worker to `OAuth PostgreSQL` was observed. No other OAuth PostgreSQL backup/restore mechanism has been verified. Treat OAuth DB backup coverage as an unresolved critical gap until proven otherwise.
+
+### Remaining identity question
+- The diagnostic function is proven to reach `OAuth PostgreSQL`; it uses `OAUTH_DB_HOST/NAME/USER/PASSWORD`. The Manager has variables with those same names plus `OAUTH_DATABASE_URL`, but Railway OAuth redacts values and they are not shared-variable names. Therefore identical Manager-to-diagnostic database targeting remains unproven. Do not equate same variable names with same values.
+- Manager network-flow sample did not establish a TCP 5432 peer. It is not evidence that the Manager is disconnected; the sample may not include an OAuth transaction. Need an authorized, read-only runtime diagnostic from the Manager process or a Railway-supported secure variable-reference inspection.
+
+### Safety and next step
+- No service, backup schedule, volume, database, credential, or production configuration was changed. Existing daily backup schedule remains as-is; no new schedule was created.
+- Before selecting Neon or Northflank for OAuth failover, first prove Manager's actual DB target and ensure that exact database has tested backups and a restore path. If OAuth PostgreSQL is the live target, the existing daily backup worker is currently not shown to cover it.
+- Neon staging remains empty, endpoint idle and disabled; no app connection or credential configured.
