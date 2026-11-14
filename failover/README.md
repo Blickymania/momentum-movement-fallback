@@ -58,7 +58,7 @@ After deployment, capture the Worker HTTPS `workers.dev` URL from the deployment
 
 - Keep the existing Railway listener online and unchanged throughout build and isolated testing.
 - The existing Railway listener is not lease-aware. Never activate either new host while that old Railway listener is still connected.
-- At cutover, stop/disable the old Railway listener first, then activate the Botkeep primary and Silly Development standby with the same coordinator. Verify exactly one lease holder and a healthy Gateway before declaring cutover complete.
+- At cutover, stop/disable the old Railway listener first. Activate Botkeep and verify it acquires the lease and opens the single healthy Gateway; only then activate Silly Development and verify it remains disconnected in standby. Verify exactly one lease holder before declaring cutover complete.
 - For rollback, stop both new hosts before restarting the old Railway listener. Never run the old unleased listener alongside a new lease-aware owner.
 - If the old Railway listener cannot be stopped safely, do not perform live cutover; keep the new builds in standby.
 - This foundation is not a completed failover deployment. It still requires Cloudflare deployment, secret configuration, primary/standby provisioning, and two-instance takeover tests.
