@@ -17,7 +17,7 @@ This is a Dawn Dotta-only deployment guide for the isolated listener. It does no
 3. Set the project root/directory to `failover/listener`.
 4. Select the Bun runtime and use the package start script: `bun run start`.
 5. Configure the environment variables below in the provider's secret/environment settings, with `LISTENER_RUNTIME_ACTIVE=false` during preparation.
-6. Deploy and verify build/health without connecting to Discord. Do not enable runtime leadership while the existing Railway listener is online.
+6. Deploy and verify the build plus the read-only `/preflight` endpoint without connecting to Discord. Do not enable runtime leadership while the existing Railway listener is online.
 
 Botkeep describes its Free runtime as continuous without manual renewal, but its beta has no uptime SLA.
 
@@ -27,7 +27,7 @@ Botkeep describes its Free runtime as continuous without manual renewal, but its
 2. Upload or connect the same private repository source; use `failover/listener` as the working directory.
 3. Select Bun and start with `bun run start`.
 4. Configure the same environment variable names below, using the same Dawn Dotta bot token and lease coordinator, with `LISTENER_RUNTIME_ACTIVE=false` during preparation.
-5. Deploy and verify build/health without connecting to Discord. After the old Railway listener is stopped, set `LISTENER_RUNTIME_ACTIVE=true` on both hosts; the standby must remain disconnected while the primary owns the lease.
+5. Deploy and verify the build plus the read-only `/preflight` endpoint without connecting to Discord. After the old Railway listener is stopped, set `LISTENER_RUNTIME_ACTIVE=true` on both hosts; the standby must remain disconnected while the primary owns the lease.
 
 Silly Development's acceptable-use policy prohibits file storage, media-server, and CDN workloads. Use it only for the small listener process, never for the original media vault or backup storage. Its free service has no uptime guarantee.
 
