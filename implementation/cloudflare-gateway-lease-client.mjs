@@ -6,7 +6,11 @@ function validateBaseUrl(raw) {
   if (url.protocol !== "https:" || !host || host.includes("railway") ||
       host.endsWith(".rlwy.net") || host === "localhost" ||
       host.endsWith(".localhost") || host.endsWith(".local") ||
-      /^\[|\]$/.test(host) || /^\d{1,3}(\.\d{1,3}){3}$/.test(host) ||
+      host.endsWith(".internal") || host.endsWith(".lan") ||
+      host.endsWith(".home") || host.endsWith(".test") ||
+      host.endsWith(".invalid") || !host.includes(".") ||
+      host.startsWith("[") && host.endsWith("]") ||
+      /^\d{1,3}(\.\d{1,3}){3}$/.test(host) ||
       url.username || url.password || url.search || url.hash) {
     throw new TypeError("lease_coordinator_url_must_be_public_https");
   }
