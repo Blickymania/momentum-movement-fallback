@@ -58,7 +58,15 @@ export function prepareFencedDiscordGatewayOwner({
   let closed = false;
   let applicationReady = false;
   let startPromise = null;
+  let destroyPromise = null;
   const loginAbortController = new AbortController();
+
+  function destroyClientOnce() {
+    if (!destroyPromise) {
+      destroyPromise = Promise.resolve().then(() => client.destroy());
+    }
+    return destroyPromise;
+  }
   const readinessWaiters = new Set();
 
   function settleReadiness() {
@@ -120,7 +128,7 @@ export function prepareFencedDiscordGatewayOwner({
             applicationReady = false;
             rejectReadiness("gateway_lease_lost");
             guards.revoke();
-            await client.destroy();
+            await destroyClientOnce();
           },
           onLeaseLost: async reason => {
             applicationReady = false;
@@ -188,7 +196,7 @@ export function prepareFencedDiscordGatewayOwner({
       if (starting && startPromise && !supervisor) {
         guards.revoke();
         loginAbortController.abort(reason);
-        await Promise.resolve().then(() => client.destroy()).catch(() => {});
+        await destroyClientOnce().catch(() => {});
         await startPromise.catch(() => {});
         const current = await leaseStore.read().catch(() => null);
         return { released: !current || !(current.lease_active === true || current.lease_active === 1), alreadyStopped: false };
