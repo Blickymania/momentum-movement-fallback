@@ -1,5 +1,6 @@
 import test from "node:test";
-import assert from "node:assert/strict";\nimport { DatabaseSync } from "node:sqlite";\nimport { GatewayLeaseCoordinator, GATEWAY_LEASE_SCOPE } from "../cloudflare/gateway-lease-coordinator.mjs";\nimport { startGatewayOwner } from "./gateway-owner-supervisor.mjs";
+import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";\nimport { GatewayLeaseCoordinator, GATEWAY_LEASE_SCOPE } from "../cloudflare/gateway-lease-coordinator.mjs";\nimport { startGatewayOwner } from "./gateway-owner-supervisor.mjs";
 import worker from "../cloudflare/worker.mjs";
 import { createCloudflareGatewayLeaseStore } from "./cloudflare-gateway-lease-client.mjs";
 
@@ -153,7 +154,7 @@ test("Cloudflare Worker + SQLite Durable Object + remote lease-store supervisor 
   const sql = {
     exec(statement, ...params) {
       const prepared = db.prepare(statement);
-      if (/\\bRETURNING\\b|^\\s*SELECT\\b/i.test(statement)) {
+      if (/\bRETURNING\b|^\s*SELECT\b/i.test(statement)) {
         return { toArray: () => prepared.all(...params) };
       }
       prepared.run(...params);
