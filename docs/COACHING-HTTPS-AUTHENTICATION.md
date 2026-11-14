@@ -10,7 +10,7 @@ The signed input is:
 source + "\n" + timestamp_ms + "\n" + raw_json_body
 ```
 
-The receiver compares signatures without an early-exit byte comparison. The request body is capped at 256 KiB and the receiver responds with a generic 401 on authentication failure. The recovered workflow's interaction-ID deduplication map is process-local memory only; it does not survive a restart and is not sufficient as a durable anti-replay guarantee. Public `GET /readyz` remains a read-only readiness probe and does not accept interaction content.
+The receiver compares signatures without an early-exit byte comparison. The request body is capped at 256 KiB and the receiver responds with a generic 401 on authentication failure. Public `GET /readyz` remains a read-only readiness probe and does not accept interaction content. The former in-memory duplicate map remains only as a short-lived fast path; the candidate now requires a separate durable Cloudflare claim before dispatch.
 
 ## Separate sender identities
 
@@ -42,7 +42,7 @@ The value generated for Bot 005 must be copied only to Bot 005's `COACHING_WORKF
 
 The candidate workflow calls the separately authenticated Cloudflare Worker route `POST /coaching/interaction/claim` after HMAC verification and JSON parsing but before dispatch. The Worker uses its own `COACHING_IDEMPOTENCY_TOKEN` to reach a separate SQLite table, `coaching_interaction_claims`, in the existing independent Durable Object. The table uses Discord interaction ID as a primary key and retains claims for seven days. This table is separate from `gateway_ownership`; it does not add the Coaching Relay to Bot 005's Gateway lease scope.
 
-The durable claim is at-most-once: if the workflow process crashes after the claim is stored but before dispatch completes, the interaction will not be replayed automatically and may require manual recovery. That failure mode must be tested and accepted or replaced with a durable processing-state/recovery queue before cutover.
+The durable claim is at-most-once: if the workflow process crashes after the claim is stored but before dispatch completes, the interaction will not be replayed automatically and may require manual recovery. This failure mode remains an explicit release gate; a durable processing-state/recovery queue would be required to guarantee eventual processing after that crash window.
 
 ## Mandatory release gates
 
@@ -56,10 +56,10 @@ The durable claim is at-most-once: if the workflow process crashes after the cla
 
 ## Current state
 
-All changes listed above are candidate/source changes only. No public endpoint was created, no secrets were provisioned, and no production service was stopped, redeployed or modified. The recovered Railway workflow and Relay remain untouched.
+- HMAC sender and receiver source is committed; the authenticated workflow client fails closed without per-source secret configuration.
+- Bot 005 and the separate Relay have distinct source identities and require different HMAC secrets.
+- Cloudflare Worker and Durable Object source now provide a separately authenticated, durable interaction-ID claim table with seven-day retention; it is separate from the Gateway lease row.
+- These are candidate/source changes only. No public endpoint, Cloudflare Worker/DO deployment, or secret provisioning occurred. The recovered Railway workflow and Relay remain untouched.
+- The full repository test suite has not run successfully in GitHub Actions because runs terminate as `startup_failure` before jobs are created. The auth helper alone passed a 4-test local Node 22.16.0 harness; SQLite claim semantics passed a separate local Node 22.16.0 harness. These are limited component checks, not full integration tests.
 
-
-**Additional release blocker:** do not expose the receiver publicly until replay/idempotency state is durable across workflow restarts. HMAC authentication and the 60-second timestamp window reduce exposure but do not substitute for a durable interaction-ID uniqueness constraint.
-
-
-**Remaining reliability gate:** the durable claim is at-most-once, not a durable work queue. A workflow crash after claiming but before handling can require manual recovery. Add or explicitly accept that condition before public cutover.
+**Remaining reliability gate:** the durable claim is at-most-once, not a durable work queue. A workflow crash after claiming but before handling can require manual recovery. Add a durable processing-state/recovery queue or explicitly accept this failure mode before public cutover.
