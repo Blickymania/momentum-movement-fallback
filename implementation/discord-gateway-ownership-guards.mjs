@@ -68,8 +68,10 @@ export function installGatewayOwnershipGuards({
     const guarded = wrapListener(listener);
     if (typeof guarded !== "function") return originalOnce.call(this, event, listener);
     function onceWrapper(...args) {
+      try { checkOwnership(); }
+      catch { return undefined; }
       this.removeListener(event, onceWrapper);
-      return guarded.apply(this, args);
+      return listener.apply(this, args);
     }
     onceWrapper.listener = listener;
     return originalOn.call(this, event, onceWrapper);
