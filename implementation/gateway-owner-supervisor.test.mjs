@@ -134,3 +134,31 @@ test("closes a Gateway that completes connecting after lease loss", async () => 
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(destroyed, ["lease_lost", "lease_lost_after_login"]);
 });
+
+
+test("supervisor supports a remote lease-store backend without a PostgreSQL client", async () => {
+  const calls = [];
+  const leaseStore = {
+    async acquire(input) { calls.push(["acquire", input.ownerId]); return { ...leaseRow }; },
+    async renew(input) { calls.push(["renew", input.fencingEpoch]); return { ...leaseRow }; },
+    async release(input) { calls.push(["release", input.fencingEpoch]); return { ...leaseRow }; }
+  };
+  const owner = await startGatewayOwner({
+    leaseStore,
+    scope: leaseRow.lease_scope,
+    ownerId: leaseRow.owner_id,
+    deploymentId: leaseRow.deployment_id,
+    heartbeatIntervalMs: 1000,
+    renewTimeoutMs: 500,
+    loginGateway: async ({ assertOwned }) => assert.equal(assertOwned(), true),
+    destroyGateway: async () => {}
+  });
+  assert.equal(owner.ok, true);
+  assert.equal(owner.ready, true);
+  const stopped = await owner.shutdown();
+  assert.equal(stopped.released, true);
+  assert.deepEqual(calls, [
+    ["acquire", leaseRow.owner_id],
+    ["release", leaseRow.fencing_epoch]
+  ]);
+});
