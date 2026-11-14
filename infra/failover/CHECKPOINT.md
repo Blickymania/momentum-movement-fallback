@@ -287,3 +287,48 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 2. Connect Northflank account access for read-only free-tier/billing inspection; stop at card/upgrade prompts.
 3. Resolve the shared provider-independent PostgreSQL topology and existing production DB owner securely.
 4. Resume isolated preproduction deployment, OAuth lifecycle, routing, and rollback tests only after the shared DB prerequisite is met.
+
+
+## Cycle 16 — shared-database candidate and current resource-price review (2026-11-13 ET / 2026-11-14 UTC)
+
+### Northflank price correction
+- Rechecked the current official Northflank pricing page. Current displayed compute plans are nf-compute-50 (0.5 vCPU / 1 GB, $12/month), nf-compute-100-2 (1 vCPU / 2 GB, $24/month), and nf-compute-200 (2 vCPU / 4 GB, $48/month).
+- The Sandbox includes up to $20/month of combined Northflank Cloud resources, not $20 per resource.
+- The public calculator's example 10 GB PostgreSQL database is $13.17/month. Adding it to nf-compute-50 gives $25.17/month before extra logs, builds, backups, and egress, above the Sandbox allowance.
+- Prior references in this checkpoint to nf-compute-20 ($5.40) and nf-compute-100-1 ($18) are historical plan information and are not the currently displayed standard plan table. The deployment guide has been updated to current plan names/prices.
+- No assumption is made that the Manager+database stack can run for free. Actual plan/addon availability and account estimate remain unverified.
+
+### Neon shared PostgreSQL candidate review
+- Current official Neon Free documentation reports 100 CU-hours/project/month, 1 GB PostgreSQL storage/project, 5 GB public network transfer/project/month, up to 2 CU autoscaling, 10 branches, and a fixed 5-minute scale-to-zero window.
+- Neon documents that compute reactivates after a query within a few hundred milliseconds. This could be acceptable for an OAuth data plane under low/moderate request traffic, subject to latency tests.
+- At 0.25 CU, 100 CU-hours permits about 400 active compute-hours/month. If traffic or frequent health checks keep the database active, the quota can be consumed. When compute or transfer quota is exhausted, Neon documents that the Free project's compute is suspended until the next billing period or an upgrade.
+- Neon IP Allow is available on Scale, not Free. Free plan network protection must therefore rely on SSL/TLS, strong unique passwords, least-privilege database roles, secrets only in provider secret stores, credential rotation, and careful usage monitoring.
+- No periodic ping/keepalive should be used to prevent scale-to-zero; do not add a new scheduler or background polling process.
+- Neon is now the preferred shared-database candidate to inspect, because it is outside the Northflank/Railway/Cloudflare/Render compute fault domains. It is not approved for production yet. Need to measure the existing OAuth DB size and traffic, verify available project status and current quota, test pooled/unpooled TLS connection paths from each runtime, check restore and OAuth lifecycle, and observe cold-start latency before any data copy/cutover.
+- Current plugin discovery now shows Neon as installed. However, no callable Neon project/database actions are exposed in the current execution tool manifest, and no Neon account data could be inspected. No project or database was created or changed.
+
+### Router status consistency repair
+- Fixed GET /_failover/status to distinguish managerAvailable from fullyReady. It now returns status "degraded" and HTTP 503 when a Manager is reachable but no ready origin also reports oauthDatabaseVerified=true. It returns "ready"/200 only when a ready origin verifies the shared OAuth database.
+- This matches the stricter /readyz behavior. Ordinary traffic can still be routed to the known Railway Manager when it is available, but monitoring no longer treats the legacy DB-unverified origin as fully ready.
+- Added test coverage for the aggregate degraded state.
+
+### Verification status
+- Latest direct source-invariant count before these last documentation/test changes was 40/42. Two checks were themselves too strict: they rejected nf-compute-200 as a substring match of the retired nf-compute-20 plan, and expected capitalization that differed from the guide. Those assertions are being corrected; do not report the 40/42 as a code failure or as a final pass.
+- The GitHub Actions runner still fails before any job starts (startup_failure, zero jobs). No Node tests, TypeScript check, Wrangler build, Docker build, or live integration test is claimed.
+- Bun and Docker are not installed in the current execution environment.
+- Draft PR #2 remains open, draft, unmerged, and mergeable. Current pricing/data-plane changes are committed to the same isolated branch.
+
+### Last verified production and account state
+- Railway production Manager remains unchanged and is still the only known working production Manager origin.
+- Railway variable values remain redacted; production OAuth database host and owner are unknown.
+- Neon plugin search reports it as installed, but no Neon tool actions are exposed to inspect existing projects or provisioning; no Neon database action has been taken.
+- No Northflank account resources, databases, secrets, deployments, payment cards, or paid upgrades were created.
+- No Cloudflare Worker/router was deployed and no origin, DNS, or MCP endpoint was changed.
+- No Discord write, other-community access, scheduler, cron, keepalive, or recurring repair was created.
+
+### Exact next step
+1. Re-run the direct source invariant checks with corrected plan-label and case-insensitive no-card assertions.
+2. Verify the latest GitHub Actions run state; if jobs are still zero, preserve as runner/account blocker rather than source-test failure.
+3. Get a working Neon project-management tool surface, inspect whether an appropriate existing staging project already exists, and only then decide whether a new isolated test project is warranted. Never write production OAuth data without explicit migration/restore evidence.
+4. Measure and identify current production OAuth DB owner/size safely; test the shared Neon candidate with all Manager runtimes and a restore path before routing.
+5. Keep Northflank inactive in the router until the shared DB prerequisite, budget, runtime tests, and rollback gates pass.
