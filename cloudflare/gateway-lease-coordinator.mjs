@@ -139,6 +139,12 @@ function requiredTtl(value = DEFAULT_TTL_SECONDS) {
   return value;
 }
 
+function requireOwnerDeploymentBinding(owner, deployment, name) {
+  if (!owner.startsWith(deployment + ":")) {
+    throw new TypeError(name + "_must_be_bound_to_deployment");
+  }
+}
+
 function requiredEpoch(value) {
   const text = String(value ?? "");
   if (!/^\d{1,16}$/.test(text)) throw new TypeError("fencing_epoch_invalid");
@@ -182,6 +188,7 @@ export class GatewayLeaseCoordinator {
     if (normalizedScope !== LEASE_SCOPE) throw new TypeError("lease_scope_invalid");
     const owner = requiredString(ownerId, "owner_id");
     const deployment = requiredString(deploymentId, "deployment_id");
+    requireOwnerDeploymentBinding(owner, deployment, "owner_id");
     const ttl = requiredTtl(ttlSeconds);
     const now = this.now();
     const current = this.read(normalizedScope);
@@ -211,6 +218,7 @@ export class GatewayLeaseCoordinator {
     if (normalizedScope !== LEASE_SCOPE) throw new TypeError("lease_scope_invalid");
     const owner = requiredString(ownerId, "owner_id");
     const deployment = requiredString(deploymentId, "deployment_id");
+    requireOwnerDeploymentBinding(owner, deployment, "owner_id");
     const proof = requiredString(proofId, "proof_id");
     if (owner === "__bootstrap__" || deployment === "__bootstrap__") {
       throw new TypeError("bootstrap_identity_invalid");
@@ -247,6 +255,10 @@ export class GatewayLeaseCoordinator {
     const fenceProvider = requiredString(provider, "fence_provider");
     const proof = requiredString(proofId, "proof_id");
     const epoch = requiredEpoch(expectedFencingEpoch);
+    const current = this.read(normalizedScope);
+    if (!current) throw new Error("lease_bootstrap_required");
+    requireOwnerDeploymentBinding(expectedOwner, current.deployment_id, "expected_owner_id");
+    requireOwnerDeploymentBinding(candidateOwner, candidateDeployment, "candidate_owner_id");
     const now = this.now();
     const row = first(this.sql.exec(
       FENCE_CONFIRM_SQL,
