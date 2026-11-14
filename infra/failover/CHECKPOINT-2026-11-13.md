@@ -121,3 +121,61 @@ Scope: Dawn Dotta / Momentum Movement only. No other Discord community or projec
 1. Inspect the authenticated Cloudflare Hyperdrive dashboard and Workers plan page using the existing signed-in browser session; do not touch the Empress Worker or create a paid resource.
 2. Independently inspect whether the Dawn Railway OAuth Postgres service has a documented/reachable external connection option without changing its configuration.
 3. Once a safe Dawn-only endpoint is confirmed, provision the least-privileged database path and run real build/runtime tests; otherwise keep the migration isolated and continue code-side work.
+
+
+## Follow-up execution cycle — Railway network, scheduler, and failure audit
+
+### OAuth database reachability — verified blocker
+- Re-inspected the production `OAuth PostgreSQL` service in Railway.
+- Service networking exposes only private endpoint `oauth-postgresql`; there are no service domains and no TCP proxies.
+- `list_tcp_proxies` returned an empty array.
+- Database is online with a 1 GB persistent volume; no DB config, volume, or credentials were changed.
+- This proves there is currently no public TCP endpoint available for Cloudflare Hyperdrive. Do not create a public TCP proxy without a security review, TLS/authentication controls, and explicit risk assessment. Do not assume the Cloudflare Worker can resolve Railway's private hostname.
+- The existing Manager remains online on Railway, latest successful deployment `f878c9c8-4513-4d44-9a80-d546096d074f`, domain `dawn-dotta-discord-manager-production.up.railway.app`.
+
+### Scheduler inventory — read-only
+- Enumerated the full 34-service production environment. Existing cron-enabled services include:
+  - Momentum Movement Role Monitor — every 2 hours
+  - Member Lifecycle Management — every 5 minutes
+  - 1-on-1 Coaching Reminder Worker — every 5 minutes
+  - Dawn Dotta Gallery Safety Preflight — every 6 hours
+  - Dawn Dotta Gallery Discovery Engine — daily
+  - TikTok Campaign Intelligence & Publisher — every 30 minutes
+  - Dawn Dotta Official Social Directory Sync — hourly
+  - Dawn Dotta Superseded Post Cleaner — every 30 minutes
+  - Social Link Health Audit — daily
+  - Dawn Dotta TikTok LIVE Status Monitor — every 5 minutes
+  - Postgres Daily Backup — daily
+  - Dawn Dotta Original Media Vault Backup — every 30 minutes
+  - Dawn Dotta Content & Dashboard Parity — hourly
+  - Dawn Dotta Event Media Publisher — hourly
+  - Dawn Dotta Community Stats Sync — every 5 minutes
+- These are existing functional tasks and backups, not a new central failover scheduler. No cadence or service was changed.
+- Railway Automations inventory was attempted and returned `Railway Automations is not enabled for this user`. Project webhooks inventory returned none. No scheduler, cron, reminder, or automation was created.
+- No dedicated centralized scheduled maintenance/recovery process was identified by the service inventory. Do not consolidate existing functional schedules without auditing their source and dependencies.
+
+### Existing News Forum retention cleanup failure — root cause found, repair blocked
+- Read the crashed service's runtime logs and deployment diagnosis.
+- Logs show the old cleanup code repeatedly scanned forum ID `1567969466686513222` and ultimately failed with Discord HTTP 404 `Unknown Channel` (Discord error 10003). This is a retired/missing forum target, not a database or runtime dependency failure.
+- Current live Railway service configuration has a no-op start command that logs `News Forum Retention Cleanup disabled: target forum retired`; no staged changes are pending. The currently running crashed deployment still reflects old cleanup code.
+- Attempted a safe redeploy to apply the already-configured no-op. Railway rejected it before action because the Railway trial has expired and the latest crashed deployment has no reusable build. The tool explicitly reports that retrying will not change this and requires selecting a Railway plan or deploying code through Railway CLI/dashboard. No deployment was created, no service was restarted, and no config was changed.
+- The user prefers free/renewable tiers and no paid upgrades; do not select a paid Railway plan. Leave the disabled/no-op configuration in place. The old crash remains until a permitted deployment route is available.
+
+### Post-attempt verification
+- Re-read environment status after the failed redeploy attempt.
+- Manager remains live on the same successful deployment and domain.
+- News Forum retention cleanup remains the only service issue; its latest deployment is still CRASHED. No duplicate deployment was created.
+- Environment inventory reports 34 total services, one service with issues, zero recent failures in the requested window, and no pending work.
+
+### Cycle outcome
+- OAuth database network blocker: confirmed.
+- Scheduler inventory: completed read-only; no new automation.
+- Cleanup failure: exact root cause established; redeploy attempt safely rejected by expired Railway trial; no repair falsely claimed.
+- Production Manager and databases: unchanged.
+- Active blockers: (1) Cloudflare needs a reachable Dawn-only PostgreSQL endpoint; (2) GitHub Actions has startup failure/zero jobs; (3) Railway trial expired, preventing deployment of the existing no-op config; (4) Cloudflare dashboard page inspection still awaits the same authenticated browser tab being navigated to Hyperdrive.
+
+### Exact next steps
+1. Continue code-side validation and review in the isolated GitHub branch; do not claim npm/build/runtime tests passed.
+2. Continue read-only Cloudflare plan/Hyperdrive documentation research and inspect the existing browser tab when it is on the Hyperdrive page.
+3. Evaluate secure alternatives to public database exposure, including a dedicated free-tier database or a supported private network integration; do not migrate OAuth records or expose the existing DB without a documented security/rollback plan.
+4. If a no-cost Railway deployment path becomes available, deploy the already-configured no-op cleanup command and verify it exits successfully; otherwise keep the crash documented as trial/billing-dependent.
