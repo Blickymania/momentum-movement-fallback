@@ -1,0 +1,83 @@
+# Momentum Movement — Rules Acceptance Checkpoint
+
+Date: 2026-11-14 UTC
+Project: Dawn Dotta / Momentum Movement
+Repository: `Blickymania/momentum-movement-fallback`
+Working branch: `codex/dawn-rules-acceptance`
+Base branch: `hostless/dawn-dotta-bun-runtime`
+
+## Objective
+
+Add a real, persistent rules-acceptance workflow to the recovered Bot 005 candidate without changing the production Discord server or competing with the currently active Railway Gateway owner.
+
+## Completed in this cycle
+
+- Added `implementation/rules-acceptance.mjs`.
+- Added 12 focused tests in `implementation/rules-acceptance.test.mjs`.
+- Integrated a rules acceptance button handler into `candidate/bot-005/blickymania-bot-005.ts`.
+- The handler accepts only the exact verified guild, application, rules channel, rules message, and custom ID.
+- It acknowledges the component interaction with `deferUpdate` (no ephemeral response).
+- It stores acceptance in the existing encrypted member record using the existing AES-GCM vault mechanism.
+- The acceptance record stores the current policy version, timestamp, guild, channel, and source message; older policy acceptance remains in a bounded history.
+- Repeated acceptance of the same policy version is idempotent. Concurrent clicks by the same member are serialized in-process.
+- A receipt is sent by DM only after the encrypted write succeeds. A DM failure does not undo a successful acceptance record.
+- No Discord role assignment, permission overwrite, channel access, or category change is performed.
+- On candidate startup, the bot validates the existing private member vault and its encrypted-key configuration, then updates the existing rules dashboard in place to add the acceptance row. The original tabs and content are preserved and re-verified.
+- The bot health endpoint now reports `rulesAcceptanceReady`.
+- The existing member vault currently has zero records; its loader was hardened to paginate older records and keep the newest record per member, with a bounded scan limit that fails closed.
+- Added `start:bot005` to `package.json`.
+- Updated the Dockerfile to include the candidate, implementation, and Cloudflare runtime modules required by that start command. The default app command remains `start:listener` and continues to run `index.tsx`.
+
+## Tests and verification
+
+- Local Node.js v22.16.0 run: `node --test implementation/rules-acceptance.test.mjs` — 12 passed, 0 failed.
+- Tests cover button upsert and idempotency, preservation of existing dashboard components, exact-source interaction validation, timestamp/version recording, prior-version history, sequential and simultaneous duplicate clicks, DM receipt behavior, and fail-closed storage errors.
+- GitHub source inspection verified the Bot 005 candidate imports the new helper, validates the vault, upserts the button at startup, registers the interaction handler, and exposes readiness state.
+- The live rules dashboard was inspected read-only: channel `1566060632384602132`, message `1566161923404341290`, authored by the expected Bot 005 application. The current message contains the existing four navigation tabs and rules text.
+- The existing private member-record vault is `1570614206926033077`; its permissions already restrict it to the bot. It had no messages when inspected.
+- Discord manager audit remains clean; no production write was made in this cycle.
+
+## Current production state
+
+- Production Bot 005 remains the primary Gateway owner on Railway.
+- The Bot 005 candidate is not deployed and has not connected to Discord.
+- The existing Hostless app command remains `bun run start:listener`, which starts the separate LIVE & Events listener from `index.tsx`.
+- Hostless configuration does not yet declare a Bot 005 worker.
+- No Hostless app, worker, environment variable, secret, volume, domain, cron job, or deployment was created or changed.
+- No Railway, Cloudflare, Render, Discord, or GitHub production deployment was changed.
+- No bot role name, permission, position, hierarchy, or assignment was changed.
+- No scheduled maintenance, cron, or reminder process was created.
+
+## Safe cutover requirements
+
+The current Railway production Bot 005 is still the primary Gateway owner. The repository's failover checkpoint states that the current Render/Cloudflare fencer cannot stop the Railway primary and that the initial migration requires a separately verified shutdown of that primary followed by one-time candidate bootstrap. Starting the candidate before that stop is verified risks two Bot 005 processes handling the same interactions.
+
+Hostless supports a separate long-running worker. The intended future worker command is:
+
+```sh
+bun run start:bot005
+```
+
+Recommended initial worker resources, alongside the existing 0.2 CPU / 512 MB app: one replica, 0.2 CPU, 512 MB. Combined allocation is approximately 0.4 CPU / 1 GB. Confirm current Hostless project quota and worker availability before provisioning. The standalone worker should receive its own Bot 005 environment configuration; do not change the existing LIVE & Events app's start command or token environment.
+
+Required Bot 005 worker configuration includes:
+- `DISCORD_BOT_TOKEN` (existing bot token; provision only in Hostless secret manager)
+- `AUTHORIZED_GUILD_ID=1565048205970767992`
+- `APPLICATION_ID=1565304619838742598`
+- `PROFILE_DATA_VAULT_CHANNEL_ID=1570614206926033077`
+- `PROFILE_DATA_ENCRYPTION_KEY` (a distinct, securely generated 64-character hex key; never commit it)
+- `BOT005_DEPLOYMENT_ID`
+- `GATEWAY_LEASE_URL`
+- `LEASE_SERVICE_TOKEN`
+- `FENCE_REQUEST_TOKEN`
+- `COACHING_WORKFLOW_URL`
+- `COACHING_WORKFLOW_SOURCE=bot005`
+- `COACHING_WORKFLOW_AUTH_SECRET` (unique, securely provisioned secret)
+
+Before worker activation: verify the exact Railway Bot 005 service, stop it through an authorized provider operation, confirm its process and Gateway session have stopped, then provision and test the candidate lease/standby ownership. Do not stop the other six Gateway-connected services; each has a separate workload scope. Coordinate the coaching relay/HTTPS workflow migration as specified by the gateway workload inventory.
+
+## Blockers and exact next step
+
+**External blocker:** no connected Hostless management action is available in this session to inspect the selected project, provision its standalone worker environment, or execute a deployment. The browser tab for Hostless could not be read because its browser session returned an RPC error. Railway is past due/expired and the current fencer cannot stop the Railway Bot 005 primary.
+
+**Next execution step:** complete a read-only inspection of the candidate branch's CI/build configuration, validate the Docker image copy paths and Bot 005 module import graph, and keep the candidate isolated. Once the Railway primary stop and Hostless worker environment are verifiably available, provision the worker and run its health, lease, button-upsert, acceptance-write, duplicate-click, and rollback tests before declaring production complete.
