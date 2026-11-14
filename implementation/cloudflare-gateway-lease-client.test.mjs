@@ -1,5 +1,5 @@
 import test from "node:test";
-import assert from "node:assert/strict";
+import assert from "node:assert/strict";\nimport { DatabaseSync } from "node:sqlite";\nimport { GatewayLeaseCoordinator, GATEWAY_LEASE_SCOPE } from "../cloudflare/gateway-lease-coordinator.mjs";\nimport { startGatewayOwner } from "./gateway-owner-supervisor.mjs";
 import worker from "../cloudflare/worker.mjs";
 import { createCloudflareGatewayLeaseStore } from "./cloudflare-gateway-lease-client.mjs";
 
@@ -145,4 +145,79 @@ test("Worker never forwards unapproved route paths", async () => {
   });
   assert.equal(response.status, 404);
   assert.equal(forwarded, false);
+});
+
+
+test("Cloudflare Worker + SQLite Durable Object + remote lease-store supervisor enforce one owner end to end", async () => {
+  const db = new DatabaseSync(":memory:");
+  const sql = {
+    exec(statement, ...params) {
+      const prepared = db.prepare(statement);
+      if (/\\bRETURNING\\b|^\\s*SELECT\\b/i.test(statement)) {
+        return { toArray: () => prepared.all(...params) };
+      }
+      prepared.run(...params);
+      return { toArray: () => [] };
+    }
+  };
+  const ctx = {
+    storage: { sql },
+    blockConcurrencyWhile(callback) { return callback(); }
+  };
+  const durableObject = new GatewayLeaseCoordinator(ctx, {});
+  const namespace = {
+    idFromName(name) { assert.equal(name, GATEWAY_LEASE_SCOPE); return "one-deterministic-id"; },
+    get(id) {
+      assert.equal(id, "one-deterministic-id");
+      return { fetch: request => durableObject.fetch(request) };
+    }
+  };
+  const remoteFetch = async (url, init) => worker.fetch(new Request(url, init), {
+    LEASE_SERVICE_TOKEN: token,
+    GATEWAY_LEASE_COORDINATOR: namespace
+  });
+  const store = createCloudflareGatewayLeaseStore({
+    baseUrl: "https://lease.example.com",
+    serviceToken: token,
+    fetchFn: remoteFetch,
+    timeoutMs: 2500
+  });
+  let primaryLogins = 0;
+  let standbyLogins = 0;
+  const common = {
+    leaseStore: store,
+    scope: GATEWAY_LEASE_SCOPE,
+    deploymentId: "candidate",
+    heartbeatIntervalMs: 1000,
+    renewTimeoutMs: 500,
+    destroyGateway: async () => {}
+  };
+  const primary = await startGatewayOwner({
+    ...common,
+    ownerId: "primary-process-unique",
+    loginGateway: async () => { primaryLogins++; }
+  });
+  assert.equal(primary.ok, true);
+  const standbyDenied = await startGatewayOwner({
+    ...common,
+    ownerId: "standby-process-unique",
+    loginGateway: async () => { standbyLogins++; }
+  });
+  assert.deepEqual(standbyDenied, { ok: false, reason: "lease_unavailable" });
+  assert.equal(primaryLogins, 1);
+  assert.equal(standbyLogins, 0);
+
+  const stopped = await primary.shutdown();
+  assert.equal(stopped.released, true);
+
+  const standby = await startGatewayOwner({
+    ...common,
+    ownerId: "standby-process-unique",
+    loginGateway: async () => { standbyLogins++; }
+  });
+  assert.equal(standby.ok, true);
+  assert.equal(standby.lease.fencing_epoch, "2");
+  assert.equal(standbyLogins, 1);
+  await standby.shutdown();
+  db.close();
 });
