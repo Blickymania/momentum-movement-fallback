@@ -6,6 +6,9 @@ import { installGatewayOwnershipGuards } from "./discord-gateway-ownership-guard
 function fakeClient() {
   const client = new EventEmitter();
   const requests = [];
+  const logins = [];
+  client.login = async (...args) => { logins.push(args); return "ready"; };
+  client.logins = logins;
   client.rest = {
     async request(...args) {
       requests.push(args);
@@ -29,6 +32,7 @@ function fakeFetchTarget() {
 
 test("rejects missing client REST hook and non-public coordinator URLs", () => {
   const client = new EventEmitter();
+  client.login = async () => {};
   assert.throws(() => installGatewayOwnershipGuards({
     client,
     leaseCoordinatorUrl: "https://lease.example.com",
@@ -83,6 +87,24 @@ test("wraps event and once listeners so they do not run without active ownership
   client.emit("interaction");
   assert.equal(events, 1);
   assert.equal(guard.revoked, true);
+  guard.restore();
+});
+
+test("blocks Gateway login unless a valid ownership lease is active", async () => {
+  const client = fakeClient();
+  const guard = installGatewayOwnershipGuards({
+    client,
+    leaseCoordinatorUrl: "https://lease.example.com",
+    fetchTarget: fakeFetchTarget()
+  });
+  assert.throws(() => client.login("token-placeholder"), /gateway_lease_not_active/);
+  assert.equal(client.logins.length, 0);
+  guard.setAssertOwned(() => true);
+  assert.equal(await client.login("token-placeholder"), "ready");
+  assert.equal(client.logins.length, 1);
+  guard.revoke();
+  assert.throws(() => client.login("token-placeholder"), /gateway_ownership_revoked/);
+  assert.equal(client.logins.length, 1);
   guard.restore();
 });
 
@@ -142,6 +164,7 @@ test("replaces client listener methods and global fetch only until explicit rest
   const fetchTarget = fakeFetchTarget();
   const originalOn = client.on;
   const originalOnce = client.once;
+  const originalLogin = client.login;
   const originalRest = client.rest.request;
   const originalFetch = fetchTarget.fetch;
   const guard = installGatewayOwnershipGuards({
@@ -151,11 +174,13 @@ test("replaces client listener methods and global fetch only until explicit rest
   });
   assert.notEqual(client.on, originalOn);
   assert.notEqual(client.once, originalOnce);
+  assert.notEqual(client.login, originalLogin);
   assert.notEqual(client.rest.request, originalRest);
   assert.notEqual(fetchTarget.fetch, originalFetch);
   guard.restore();
   assert.equal(client.on, originalOn);
   assert.equal(client.once, originalOnce);
+  assert.equal(client.login, originalLogin);
   assert.equal(client.rest.request, originalRest);
   assert.equal(fetchTarget.fetch, originalFetch);
 });
