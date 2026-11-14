@@ -182,3 +182,27 @@ Continue reviewing Worker input validation, MCP request parsing, and OAuth redir
 
 ### Next execution step
 Continue independent validation of request method/content-type handling, MCP JSON-RPC shape validation, OAuth endpoint error handling, and router request forwarding. Do not introduce retry behavior for any ambiguous write.
+
+
+## JSON-RPC validation cycle — implemented and exercised
+
+### Changes
+- Added a dedicated JSON-RPC 2.0 envelope validator: requires object request, `jsonrpc: "2.0"`, non-empty method, structured params when present, and string or finite-number IDs when present.
+- Malformed JSON now returns JSON-RPC parse error `-32700`; invalid request envelopes return `-32600`.
+- Notifications without an ID return HTTP 202 with no body before tool dispatch, preventing accidental execution of side-effecting `tools/call` requests without a response ID.
+- Source change commit: `151aa72a42b4f41ea2c2ab3b0aaf0b2ddb0755ef`.
+- Added two static invariant tests; latest test commit: `f015452f7c60a4c27075711472c807eef03dcf67`.
+- Read-back confirms 23 test cases and successful isolated V8 syntax parsing of the test module.
+- Executed the actual extracted JSON-RPC validator in isolated V8 against 10 cases: valid numeric/string IDs and notification accepted; null, array, wrong version, missing method, null params, boolean ID, and object ID rejected. All 10 expected outcomes passed.
+
+### CI
+- Latest observed run for this branch: `43542314424`, commit `f015452f7c60a4c27075711472c807eef03dcf67`, conclusion `startup_failure`, path `BuildFailed`.
+- Jobs returned: 0.
+- The GitHub Actions runner/startup issue remains external to these source assertions; do not claim Node tests, TypeScript, or Wrangler build passed.
+
+### Safety
+- No production service, OAuth database, Discord resource, Cloudflare resource, credentials, DNS, billing, or scheduler changed.
+- No scheduled automation or recurring repair process created.
+
+### Next execution step
+Review MCP protocol method handling, error responses, OAuth client redirect registration, and the router's health/failover probes. Continue to avoid automatic replay of uncertain writes.
