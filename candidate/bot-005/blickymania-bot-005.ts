@@ -105,7 +105,22 @@ const b64=b=>btoa(Array.from(b,x=>String.fromCharCode(x)).join("")),un64=s=>Uint
 async function key(){if(!mk)mk=(async()=>{const h=Bun.env.PROFILE_DATA_ENCRYPTION_KEY||"";if(!/^[a-f0-9]{64}$/i.test(h))throw Error("profile_key");return crypto.subtle.importKey("raw",Uint8Array.from(h.match(/../g),x=>parseInt(x,16)),{name:"AES-GCM"},false,["encrypt","decrypt"])})();return mk}
 async function seal(v){const iv=crypto.getRandomValues(new Uint8Array(12)),c=await crypto.subtle.encrypt({name:"AES-GCM",iv},await key(),new TextEncoder().encode(JSON.stringify(v)));return"MRV1."+b64(iv)+"."+b64(new Uint8Array(c))}
 async function unseal(s){const p=s.split(".");return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(p[1])},await key(),un64(p[2]))))}
-async function load(){if(ml)return ml;ml=(async()=>{const a=await caseApi("GET","/channels/"+MV+"/messages?limit=100");for(const x of a||[])if(x.author?.id===A&&x.content?.startsWith("MRV1.")){try{const v=await unseal(x.content);mc.set(v.userId,v);mi.set(v.userId,x.id)}catch{}}})();return ml}
+async function load(){if(ml)return ml;ml=(async()=>{
+let before=null;
+for(let page=0;page<=50;page++){
+const route="/channels/"+MV+"/messages?limit=100"+(before?"&before="+before:"");
+const messages=await caseApi("GET",route);
+if(!Array.isArray(messages))throw Error("profile_vault_response_invalid");
+for(const x of messages)if(x.author?.id===A&&x.content?.startsWith("MRV1.")){
+try{const v=await unseal(x.content);if(typeof v.userId==="string"&&!mc.has(v.userId)){mc.set(v.userId,v);mi.set(v.userId,x.id)}}catch{}
+}
+if(messages.length<100)return;
+const oldest=String(messages[messages.length-1]?.id||"");
+if(!oldest||oldest===before)throw Error("profile_vault_pagination_invalid");
+if(page===50)throw Error("profile_vault_scan_limit");
+before=oldest;
+}
+})();return ml}
 function empty(id){return{userId:id,rulesAcceptance:null,profile:{about:"",tiktok:"",instagram:"",visibility:"private"},birthday:{date:"",year:"",visibility:"private",post:null},anniversary:{date:"",year:"",visibility:"private",post:null}}}
 async function get(id){await load();return mc.get(id)||empty(id)}
 async function save(v){await load();const c=await seal(v),old=mi.get(v.userId),x=old?await caseApi("PATCH","/channels/"+MV+"/messages/"+old,{content:c}):await caseApi("POST","/channels/"+MV+"/messages",{content:c});if(!x?.id)throw Error("profile_save");mc.set(v.userId,v);mi.set(v.userId,x.id)}
