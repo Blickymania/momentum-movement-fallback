@@ -106,13 +106,17 @@ test("candidate Coaching Workflow requires a durable idempotency claim before di
   assert.match(source, /COACHING_IDEMPOTENCY_TOKEN/);
 });
 
-test("Cloudflare Durable Object persists coaching interaction IDs separately from the Bot 005 lease row", async () => {
-  const coordinator = await readFile(new URL("../cloudflare/gateway-lease-coordinator.mjs", import.meta.url), "utf8");
-  assert.match(coordinator, /CREATE TABLE IF NOT EXISTS coaching_interaction_claims/);
-  assert.match(coordinator, /COACHING_INTERACTION_RETENTION_MS = 7 \* 24 \* 60 \* 60 \* 1000/);
-  assert.match(coordinator, /claimCoachingInteraction/);
-  assert.match(coordinator, /PRIMARY KEY/);
-  assert.match(coordinator, /ON CONFLICT \(interaction_id\) DO NOTHING/);
+test("coaching idempotency uses a separate Durable Object class and storage binding", async () => {
+  const idempotency = await readFile(new URL("../cloudflare/coaching-interaction-idempotency.mjs", import.meta.url), "utf8");
+  const gatewayLease = await readFile(new URL("../cloudflare/gateway-lease-coordinator.mjs", import.meta.url), "utf8");
+  const wrangler = await readFile(new URL("../cloudflare/wrangler.jsonc", import.meta.url), "utf8");
+  assert.match(idempotency, /CREATE TABLE IF NOT EXISTS coaching_interaction_claims/);
+  assert.match(idempotency, /claim\(\{ interactionId, source \}\)/);
+  assert.match(idempotency, /PRIMARY KEY/);
+  assert.match(idempotency, /ON CONFLICT \(interaction_id\) DO NOTHING/);
+  assert.doesNotMatch(gatewayLease, /coaching_interaction_claims/);
+  assert.match(wrangler, /COACHING_IDEMPOTENCY_STORE/);
+  assert.match(wrangler, /CoachingInteractionIdempotency/);
 });
 
 test("Cloudflare Worker protects the durable coaching claim route with a separate secret", async () => {
