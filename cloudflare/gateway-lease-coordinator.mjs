@@ -77,7 +77,7 @@ function requiredTtl(value = DEFAULT_TTL_SECONDS) {
 
 function requiredEpoch(value) {
   const text = String(value ?? "");
-  if (!/^\\d{1,16}$/.test(text)) throw new TypeError("fencing_epoch_invalid");
+  if (!/^\d{1,16}$/.test(text)) throw new TypeError("fencing_epoch_invalid");
   const number = Number(text);
   if (!Number.isSafeInteger(number) || number < 1) {
     throw new TypeError("fencing_epoch_invalid");
