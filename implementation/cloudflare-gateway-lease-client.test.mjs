@@ -12,7 +12,7 @@ const bootstrapToken = "b".repeat(48);
 const primaryFenceToken = "p".repeat(48);
 const fenceRequestToken = "r".repeat(48);
 const lease = {
-  lease_scope: "momentum-movement:discord-gateway",
+  lease_scope: "momentum-movement:bot-005-gateway",
   owner_id: "instance-1",
   fencing_epoch: "7",
   deployment_id: "deploy-1"
@@ -156,7 +156,7 @@ test("Worker proxies authenticated state and mutation calls to one deterministic
     GATEWAY_LEASE_COORDINATOR: namespace
   });
   assert.equal(response.status, 200);
-  assert.equal(objectName, "momentum-movement:discord-gateway");
+  assert.equal(objectName, "momentum-movement:bot-005-gateway");
   assert.equal(requestSeen.method, "POST");
   assert.equal((await response.json()).lease.owner_id, "instance-1");
 });
