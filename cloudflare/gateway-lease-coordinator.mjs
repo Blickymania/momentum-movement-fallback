@@ -78,6 +78,15 @@ WHERE lease_scope = ?
   AND owner_id = ?
   AND fencing_epoch = ?
   AND lease_until_ms <= ?
+  AND (
+    fenced_owner_id IS NULL OR
+    (
+      fence_target_owner_id = ? AND
+      fence_target_deployment_id = ? AND
+      fence_provider = ? AND
+      fence_proof_id = ?
+    )
+  )
 RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch,
           lease_until_ms, heartbeat_at_ms, deployment_id,
           fenced_owner_id, CAST(fenced_epoch AS TEXT) AS fenced_epoch,
@@ -249,7 +258,11 @@ export class GatewayLeaseCoordinator {
       normalizedScope,
       expectedOwner,
       epoch,
-      now
+      now,
+      candidateOwner,
+      candidateDeployment,
+      fenceProvider,
+      proof
     ));
     if (!row) throw new Error("lease_fence_not_confirmed");
     return row;
