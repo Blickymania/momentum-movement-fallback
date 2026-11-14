@@ -58,7 +58,8 @@ Local Node.js v22.16.0 tests run in an isolated folder using Node's built-in `no
 - Supervisor-to-Worker-to-Durable-Object local end-to-end ownership test: 1 passed.
 - Gateway ownership-guard tests: 6 passed.
 - Prepared Discord owner adapter tests: 2 passed.
-- **Combined Cloudflare control-plane + Bot 005 fencing adapter suite: 27 passed, 0 failed.**
+- Standby hard-stop controller tests: 8 passed.
+- **Combined Cloudflare control-plane + Bot 005 fencing + hard-stop orchestration suite: 35 passed, 0 failed.**
 
 This simulates SQLite semantics and the Worker/client path locally. The tests also cover the authenticated state-read route, successful state response envelope, root Worker URL path composition, trailing-dot localhost rejection, minimum service-secret length, denial of direct client.login before ownership, guarded event callbacks, guarded Discord REST calls, blocked direct Railway HTTP, and clean shutdown. It is not a Cloudflare preview/runtime integration test and does not validate actual Cloudflare account configuration, Durable Object migrations, secret deployment, account-specific quota usage, true Discord.js compatibility, process-kill fencing, or network outages at the edge. The guard blocks new REST/fetch requests after lease loss; it cannot cancel a request that was already sent and accepted remotely.
 
@@ -108,3 +109,20 @@ Important limits:
 - The helper must be installed before the source registers any event listeners. The recovered Bot 005 source has not yet been patched to call this helper.
 - A REST request already transmitted before ownership loss cannot be recalled. Per-effect epoch checks, idempotency receipts, and external hard-stop/process termination remain required.
 - The guard blocks the existing hard-coded Railway coaching URL. That coaching workflow must be migrated to a public HTTPS service endpoint and configured explicitly before coaching handlers can function on an independent host. There is no silent fallback to Railway.
+
+
+## Physical hard-stop orchestration — source-only contract
+
+Added implementation/standby-hard-stop-controller.mjs and eight tests. Its sequence is deliberately strict:
+1. Read the single Momentum Movement lease.
+2. Refuse to touch anything if an unexpected owner currently holds an active lease.
+3. Ask a provider-specific process-control adapter to stop the known primary by exact owner ID, deployment ID and process ID.
+4. Accept success only when the adapter confirms state=stopped and gatewayClosed=true for those exact identifiers.
+5. Release only the prior primary's matching fencing epoch, then re-read the lease and refuse takeover if any active owner remains.
+6. Start standby through the fenced owner callback. That callback must acquire the lease before login and await the application-level READY/guild verification signal.
+
+A missing, ambiguous, mismatched, or throwing hard-stop result never starts the standby. The module itself does not contain a Render, Railway, Fly.io or other host API adapter. There is no production process-stop integration yet.
+
+The prepared owner now exposes markApplicationReady(), markApplicationNotReady(), waitUntilReady(), ready, and gatewayLoginComplete. This prevents successful client.login() completion from being mistaken for a verified application READY state. The app should call markApplicationReady() only after confirming the expected bot identity and target guild, and call markApplicationNotReady() when that state is lost.
+
+Latest full local test suite: **35 passed, 0 failed** (19 Cloudflare/SQLite API, six egress guard, two prepared-owner, eight hard-stop controller). This remains a Node simulation with fake process-control evidence and mocked Discord client; it is not a live provider kill or Cloudflare-hosted failover test.
