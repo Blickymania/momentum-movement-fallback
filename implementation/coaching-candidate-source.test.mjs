@@ -84,6 +84,8 @@ test("candidate Coaching Workflow verifies sender HMAC and timestamp before pars
   assert.ok(acceptedAt > parseAt);
   assert.match(source, /COACHING_BOT005_AUTH_SECRET/);
   assert.match(source, /COACHING_RELAY_AUTH_SECRET/);
+  assert.match(source, /botAuthSecret===relayAuthSecret/);
+  assert.match(source, /Distinct Bot 005 and Relay authentication secrets are required/);
   assert.match(source, /status:401/);
   assert.match(source, /x-coaching-signature/);
 });
