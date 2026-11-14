@@ -61,7 +61,7 @@ async function claimCoachingInteraction(request, env) {
   } catch { return json({ error: "invalid_json" }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body) ||
       Object.keys(body).sort().join(",") !== "interactionId,source" ||
-      typeof body.interactionId !== "string" || !/^\\d{17,22}$/.test(body.interactionId) ||
+      typeof body.interactionId !== "string" || !/^\d{17,22}$/.test(body.interactionId) ||
       (body.source !== "bot005" && body.source !== "coaching-relay")) {
     return json({ error: "coaching_claim_invalid" }, 400);
   }
