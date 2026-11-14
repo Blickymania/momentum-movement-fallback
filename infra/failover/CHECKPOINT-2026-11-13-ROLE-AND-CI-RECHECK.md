@@ -306,3 +306,30 @@ Continue repository/config compatibility audit and investigate any remaining sou
 
 ## Latest CI observation after test-harness repair
 - Run ID: `43542626232`; head SHA: `87a3f84a8a5a74be1b1bf6bda92c8942ca0bc5ab`; conclusion: `startup_failure`; path: `BuildFailed`; jobs returned: 0.
+
+
+## Repository and build-configuration audit
+
+### Scope/diff verification
+- Compared migration branch base `01323e721a6aca8394bd98b4141c5d33942971f5` to the latest checkpoint commit `e14841fe32dda036fd2e4eac53f280022c82bbf8`.
+- The only changed paths are the two failover checkpoint/protocol documents, `src/index.ts`, `src/failover-router.ts`, and `tests/port-invariants.test.mjs`.
+- No production deployment manifests, Discord config, Render workspace settings, secrets, or other community projects were changed.
+- Compare reported 29 commits ahead and 0 behind the isolated branch base.
+
+### Configuration checks
+- `package.json`, `tsconfig.json`, `wrangler.jsonc`, and `wrangler.router.jsonc` all parse as JSON.
+- Required npm scripts are present: typecheck, test, Worker dry-run, router dry-run, and aggregate check.
+- CI targets Node 22. Worker config has `nodejs_compat`; router does not request Node compatibility because it uses standard Fetch APIs only.
+- `package-lock.json` is absent. It was not fabricated. Container Node 22.16.0 and Node's test runner are available, but project dependencies cannot be fetched: npm registry lookup failed with DNS `EAI_AGAIN`. Therefore no reliable lockfile generation, dependency installation, TypeScript compilation, or Wrangler build was possible in this environment.
+- A globally installed TypeScript 5.8.3 compiler exists, but project dependencies/types (including pg) are not installed locally; running it against incomplete dependencies would not be a valid project typecheck.
+
+### Current validation truth
+- Latest custom source harness: 30/30 actual test callbacks passed against read-back source.
+- Native `node --test`: not run.
+- `tsc --noEmit`: not run against the project dependency graph.
+- `wrangler deploy --dry-run`: not run.
+- Live OAuth/database/Discord/router integration: not run.
+- GitHub Actions continues to fail before job creation with `startup_failure` and zero jobs.
+
+### Exact next execution step
+Continue investigating a genuine executable build path or a runner-side cause for the GitHub Actions startup failure. Do not claim the Worker is deployable until native test, typecheck, and Wrangler dry-run pass.
