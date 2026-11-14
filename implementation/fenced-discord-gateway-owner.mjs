@@ -188,7 +188,7 @@ export function prepareFencedDiscordGatewayOwner({
       if (starting && startPromise && !supervisor) {
         guards.revoke();
         loginAbortController.abort(reason);
-        await client.destroy().catch(() => {});
+        await Promise.resolve().then(() => client.destroy()).catch(() => {});
         await startPromise.catch(() => {});
         const current = await leaseStore.read().catch(() => null);
         return { released: !current || !(current.lease_active === true || current.lease_active === 1), alreadyStopped: false };
