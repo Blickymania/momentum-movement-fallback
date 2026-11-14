@@ -1,5 +1,6 @@
 import { GatewayCoordinatorCore } from "./gateway-coordinator-core.mjs";
 import { createGatewayHandlerRegistry } from "./gateway-handler-registry.mjs";
+import { createInteractionTokenVault } from "./interaction-token-vault.mjs";
 
 const CONTROL_SECRET_MIN_LENGTH = 32;
 const DEFINITIONS_MAX_BYTES = 12 * 1024;
@@ -73,15 +74,19 @@ export class GatewayCoordinatorDurableObject {
     this.state = state;
     this.env = env;
     this.corePromise = null;
+    this.tokenVault = null;
   }
 
   async createCore() {
     const definitions = readDefinitions(this.env.GATEWAY_CLIENT_DEFINITIONS);
     const handlerRegistry = readHandlerRegistry(this.env.GATEWAY_HANDLER_MANIFEST, definitions);
+    const tokenVault = createInteractionTokenVault(this.env.GATEWAY_INTERACTION_ENCRYPTION_KEY);
+    this.tokenVault = tokenVault;
     const core = new GatewayCoordinatorCore({
       storage: this.state.storage,
       definitions,
       handlerRegistry,
+      protectInteraction: (payload) => tokenVault.encryptPayload(payload),
       tokenProvider: async (reference) => this.env[reference],
       fingerprintToken: async (token) => {
         const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
