@@ -83,7 +83,7 @@ const definitions = [
   { id: "bot-disabled", guildId: "1565304619838742500", applicationId: "1565304619838742501", intents: 1, enabled: false, tokenRef: "BOT_DISABLED_TOKEN" },
 ];
 
-function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken, clientDefinitions = definitions, handlerRegistry } = {}) {
+function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken, clientDefinitions = definitions, handlerRegistry, protectInteraction } = {}) {
   const storage = new MemoryDOStorage();
   const sockets = [];
   const tokens = new Map([
@@ -113,6 +113,7 @@ function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, f
     verifyIdentity,
     ...(fingerprintToken ? { fingerprintToken } : {}),
     ...(handlerRegistry ? { handlerRegistry } : {}),
+    ...(protectInteraction ? { protectInteraction } : {}),
     log: (event, metadata) => logs.push({ event, metadata }),
   });
   let clock = 1_800_000_000_000;
@@ -324,6 +325,70 @@ test("READY session and subsequent dispatch events persist into isolated per-cli
   assert.deepEqual((await betaInbox.listPending()).map((item) => item.payload.id), ["beta-message"]);
   assert.equal(alpha.sent[0].op, 2);
   assert.equal(beta.sent[0].op, 2);
+});
+
+test("fails closed on an interaction when durable token protection is not configured", async () => {
+  const handlerRegistry = {
+    route: () => ({ status: "routed", handlers: ["discord-engagement-engine"] }),
+  };
+  const h = makeHarness({ handlerRegistry });
+  await h.core.initialize();
+  await h.core.start();
+  const socket = h.sockets[0];
+  frame(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+  await h.flush();
+  frame(socket, { op: 0, s: 1, t: "READY", d: { session_id: "session", resume_gateway_url: "wss://resume.example" } });
+  await h.flush();
+
+  const secretToken = "must-never-be-written-to-durable-storage";
+  frame(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+    id: "1569000000000000001",
+    application_id: APP_A,
+    guild_id: GUILD_A,
+    token: secretToken,
+    data: { component_type: 2, custom_id: "ddxp:my" },
+  }});
+  await h.flush();
+
+  const state = h.core.sessions.get("bot-alpha");
+  assert.equal(state.status, "fatal");
+  assert.equal(state.lastError, "interaction_token_protection_unavailable");
+  assert.equal(socket.closed.at(-1).code, 4004);
+  const stored = [...h.storage.values.values()];
+  assert.equal(JSON.stringify(stored).includes(secretToken), false);
+  assert.equal((await h.core.getInbox("bot-alpha").listPending()).length, 0);
+});
+
+test("persists only protected interaction tokens when an explicit protector is configured", async () => {
+  const handlerRegistry = {
+    route: () => ({ status: "routed", handlers: ["discord-engagement-engine"] }),
+  };
+  const h = makeHarness({
+    handlerRegistry,
+    protectInteraction: async (payload) => {
+      const { token, ...safe } = payload;
+      return { ...safe, interaction_token: { version: 1, algorithm: "A256GCM", iv: "test-iv", ciphertext: "test-ciphertext" } };
+    },
+  });
+  await h.core.initialize();
+  await h.core.start();
+  const socket = h.sockets[0];
+  frame(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+  await h.flush();
+  frame(socket, { op: 0, s: 1, t: "READY", d: { session_id: "session", resume_gateway_url: "wss://resume.example" } });
+  await h.flush();
+  frame(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+    id: "1569000000000000001",
+    application_id: APP_A,
+    guild_id: GUILD_A,
+    token: "secret-token-protected-by-the-test-adapter",
+    data: { component_type: 2, custom_id: "ddxp:my" },
+  }});
+  await h.flush();
+  const event = (await h.core.getInbox("bot-alpha").listPending())[0];
+  assert.equal(Object.prototype.hasOwnProperty.call(event.payload, "token"), false);
+  assert.equal(event.payload.interaction_token.ciphertext, "test-ciphertext");
+  assert.equal(JSON.stringify([...h.storage.values.values()]).includes("secret-token-protected-by-the-test-adapter"), false);
 });
 
 test("handler registry drops irrelevant events while atomically advancing the Resume sequence", async () => {
