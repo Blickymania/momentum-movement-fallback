@@ -113,3 +113,57 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 - Recovered Discord Manager source reads `RAILWAY_SERVICE_KEY` and `OAUTH_DATABASE_URL`; the actual OAuth database host is not in source and remains unverified. Its health payload reports `service: "railway"`, and write-guard messages refer to Railway. This requires configuration/identity cleanup and a credential-free host audit during migration.
 - Recovered Core Shadow source body contains no `.railway.internal` or `DATABASE_URL` reference; it is still read-only and does not open a Gateway.
 - No Render/Supabase resources, services, databases, or credentials were created or changed. No billing or plan upgrade was performed.
+
+
+## Cycle 6 — Gateway owner supervisor and private-schema migration (source-only)
+
+### Implemented
+- Added `implementation/gateway-owner-supervisor.mjs` and `implementation/gateway-owner-supervisor.test.mjs`.
+- The supervisor acquires a lease before invoking Gateway login. If acquisition returns no row, it never invokes login.
+- It provides a synchronous `assertOwned()` gate for adapter code, starts the lease heartbeat before login, races login against lease loss, and destroys the local Gateway when renewal fails or times out.
+- If a Gateway connection resolves after the lease was lost during a pending login, the supervisor issues a second close after that late connection resolves.
+- Graceful shutdown stops the heartbeat, destroys the local Gateway, then releases only the matching owner/epoch lease.
+- The heartbeat interval and bounded renewal timeout remain referenced in Node so an active supervisor cannot silently exit merely because no other event-loop handle exists.
+- Active leases cannot be reacquired by the same owner ID; each process instance must use a unique owner ID.
+- The supervisor is source-only. It is not yet integrated into the Bot 005 startup path or the production event/side-effect handlers. A database lease does not physically fence another process; external hard-stop proof remains mandatory.
+
+### Schema and data protection
+- Added `migrations/001_gateway_ownership.sql`.
+- The migration creates `failover.gateway_ownership` in a dedicated non-public schema, adds length/epoch constraints, and revokes schema/table privileges from `PUBLIC`.
+- The lease module now qualifies all SQL against `failover.gateway_ownership`. Its optional schema bootstrap executes schema creation, table creation, and table revoke as three separate SQL statements.
+- The migration has not been applied to any database. No schema, data, or credentials were changed.
+
+### Tests and repairs
+- The expanded local Node.js v22.16.0 isolated harness ran the eight lease logic tests plus six supervisor lifecycle tests and one schema-bootstrap test: **15 passed, 0 failed**.
+- A first combined pass exposed that the heartbeat interval was unreferenced; corrected it so the supervisor itself keeps the Node process alive while active.
+- Another pass exposed an old test assertion using the wrong acquisition inequality; corrected it to assert acquisition only when expired and renewal only while active.
+- The tests use fake DB responses and injected login/destroy functions. They do not verify live PostgreSQL concurrency, real Discord Gateway behavior, process fencing, or an end-to-end failover.
+- Earlier independent preflight tests remain 8/8 in the separate local harness. No hosted test job has executed.
+
+### GitHub Actions and browser diagnosis
+- Latest inspected push run: `43552702634` for commit `35aa10ea525e02645a11bd0be3cc4c0c0098c1b8`; result `startup_failure`; jobs endpoint returned an empty array.
+- This is now repeated across multiple pushes. No runner started and there are no job-level logs.
+- A read-only browser inspection was attempted for the private run and repository Actions settings. It could not access the private repository: `ERR_SOCKS_CONNECTION_FAILED`; the secure sign-in card expired. The exact startup reason and Actions permissions setting were not shown. No repository settings or workflows were modified by that browser attempt.
+- Do not guess that the cause is billing, disabled Actions, permissions, or YAML. Those remain unverified.
+
+### Latest verified state
+- Lease module, supervisor module, two unit-test files, preflight service/test files, and private-schema SQL migration are committed.
+- Local isolated lease + supervisor tests: 15/15 passed.
+- Local isolated preflight tests: 8/8 passed in the previous verified run.
+- GitHub Actions: latest observed run 43552702634 still startup_failure, zero jobs.
+- Render service inventory remains inconclusive (`null`); no Render Postgres or Key Value instances listed.
+- Supabase organization remains Free tier with two active OAuth-named projects; neither was repurposed.
+- No independent coordination DB selected or connected.
+- No Render or Supabase resource was created/upgraded; no billing approval was used.
+- Bot 005 remains the sole active production Gateway owner. Its recovered source still calls `client.login(token)` without the new supervisor and includes the hard-coded coaching dependency `http://coaching-workflow.railway.internal:3000/interaction`.
+- No standby Gateway session, production write, live failover, or failback test was attempted.
+
+### Next execution steps
+1. Get repository Actions run/settings visibility through a supported authenticated path; do not keep creating commits merely to provoke the same zero-job startup failure.
+2. Resolve the Render service inventory response through a supported read-only API/dashboard path.
+3. Compare exact paid persistent compute + database costs between Render and another independent provider; only then seek explicit cost authorization.
+4. Migrate the Bot 005 coaching-workflow Railway-internal dependency and audit the Discord Manager `OAUTH_DATABASE_URL` host without printing credentials.
+5. Integrate the supervisor into a separate reviewed Bot 005 candidate branch, with event-handler side-effect fencing and a rollback plan. Do not alter the live deployment.
+6. Verify an external hard-stop/fencing controller can conclusively stop the old Gateway owner before a standby login.
+7. Apply the private schema migration only after provider approval, then run real PostgreSQL concurrency, lease-expiry, DB outage and stale-epoch tests.
+8. Only after primary and standby adapters, hard fencing, handler parity, idempotency and rollback are proven should controlled failover/failback be considered.
