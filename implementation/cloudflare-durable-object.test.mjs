@@ -170,7 +170,8 @@ test("HTTP acquire returns 409 for a competing owner and never exposes storage i
     ]);
     const codes = statuses.map(x => x.status).sort();
     assert.deepEqual(codes, [200, 409]);
-    const body = await statuses[0].clone().json();
+    const successful = statuses.find(response => response.status === 200);
+    const body = await successful.clone().json();
     assert.equal(body.ok, true);
     assert.ok(body.lease);
   } finally { env.db.close(); }
