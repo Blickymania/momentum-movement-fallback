@@ -34,9 +34,11 @@ export async function startGatewayOwner({
   let lostReason = null;
   let heartbeat = null;
   let destroyedForReason = new Set();
+  let resolveLeaseLost;
+  const leaseLostSignal = new Promise(resolve => { resolveLeaseLost = resolve; });
 
   const assertOwned = () => {
-    if (leaseLost || !gatewayReady || shutdownStarted) {
+    if (leaseLost || shutdownStarted) {
       throw new Error("gateway_lease_not_active");
     }
     return true;
@@ -54,14 +56,16 @@ export async function startGatewayOwner({
     leaseLost = true;
     gatewayReady = false;
     lostReason = reason;
+    resolveLeaseLost(reason);
+    // Destroy first. A slow notification/observability callback must not delay
+    // local Gateway shutdown after ownership has been lost.
+    const destruction = destroy("lease_lost").catch(() => {});
     try {
       if (typeof onLeaseLost === "function") await onLeaseLost(reason);
     } catch {
       // Observability callback failure must never prevent local Gateway destruction.
     }
-    // The adapter's destroyGateway callback must be safe to call while login is
-    // pending, and a subsequent post-login destroy is issued if necessary.
-    try { await destroy("lease_lost"); } catch { /* remain fail-closed */ }
+    await destruction
   };
 
   heartbeat = startLeaseHeartbeat({
@@ -77,26 +81,36 @@ export async function startGatewayOwner({
     onLeaseLost: handleLeaseLost
   });
 
-  try {
-    await loginGateway({
+  let loginOutcome;
+  const loginTask = Promise.resolve()
+    .then(() => loginGateway({
       lease,
       assertOwned,
       // Call this immediately before every privileged Discord side effect.
       // Handlers must not rely on "client ready" alone as proof of ownership.
       fencingEpoch: lease.fencing_epoch
+    }))
+    .then(() => ({ kind: "connected" }), error => ({ kind: "failed", error }));
+
+  loginOutcome = await Promise.race([
+    loginTask,
+    leaseLostSignal.then(reason => ({ kind: "lease_lost", reason }))
+  ]);
+
+  if (loginOutcome.kind === "lease_lost") {
+    gatewayReady = false;
+    // If a client finishes connecting after the lease was lost, destroy it again.
+    void loginTask.then(outcome => {
+      if (outcome.kind === "connected") return destroy("lease_lost_during_login").catch(() => {});
     });
+    await destroy("lease_lost_during_login").catch(() => {});
+    return { ok: false, reason: loginOutcome.reason };
+  }
 
-    if (leaseLost || shutdownStarted) {
-      gatewayReady = false;
-      await destroy("lease_lost_during_login");
-      return { ok: false, reason: lostReason || "shutdown_during_login" };
-    }
-
-    gatewayReady = true;
-  } catch (error) {
+  if (loginOutcome.kind === "failed") {
     gatewayReady = false;
     heartbeat.stop();
-    try { await destroy("gateway_start_failed"); } catch { /* keep original error */ }
+    await destroy("gateway_start_failed").catch(() => {});
     if (!leaseLost) {
       await releaseGatewayLease(db, {
         scope: lease.lease_scope,
@@ -104,8 +118,16 @@ export async function startGatewayOwner({
         fencingEpoch: lease.fencing_epoch
       }).catch(() => null);
     }
-    throw error;
+    throw loginOutcome.error;
   }
+
+  if (leaseLost || shutdownStarted) {
+    gatewayReady = false;
+    await destroy("lease_lost_during_login").catch(() => {});
+    return { ok: false, reason: lostReason || "shutdown_during_login" };
+  }
+
+  gatewayReady = true;
 
   return {
     ok: true,
