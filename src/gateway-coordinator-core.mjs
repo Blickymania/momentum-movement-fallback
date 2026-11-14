@@ -612,7 +612,7 @@ export class GatewayCoordinatorCore {
     if (decision.clearSession) await this.getInbox(id).clearSession();
     if (decision.action === "fatal") {
       state.status = "fatal";
-      state.lastError = decision.reason;
+      state.lastError = state.lastError || decision.reason;
       state.reconnectAt = null;
       state.pendingAuthAction = null;
     } else {
