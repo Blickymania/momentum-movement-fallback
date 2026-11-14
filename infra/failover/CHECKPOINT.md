@@ -438,3 +438,35 @@ Continue read-only inspection of the two Railway PostgreSQL services and their v
 - Railway production environment remains without staged changes. Dawn Dotta Discord Manager remains live, one replica, latest deployment SUCCESS.
 - Neon staging endpoint is still `idle` and `disabled: true`; project usage fields are zero. No app secrets or connections were created.
 - The next unresolved gate is the Manager's exact OAuth database reference and tested backup/restore coverage. Diagnostic function -> OAuth PostgreSQL is confirmed; existing daily backup worker -> separate Postgres is confirmed. Do not assume the latter backs up the former.
+
+
+## Cycle 22 — inspect deployed production Manager OAuth wiring and readiness (2026-11-14 UTC)
+
+### Exact live Manager source findings
+- Retrieved the deployed source of the production Railway service `Dawn Dotta Discord Manager` (Bun 1.4.4), with no staged replacement.
+- Its OAuth database handle is constructed only from `Bun.env.OAUTH_DATABASE_URL`:
+  `const mcpOAuthDb = Bun.env.OAUTH_DATABASE_URL ? new McpOAuthSQL(Bun.env.OAUTH_DATABASE_URL) : null`.
+- The deployed Manager source does not reference `OAUTH_DB_HOST`, `OAUTH_DB_NAME`, `OAUTH_DB_USER`, or `OAUTH_DB_PASSWORD`. Those variables are used by the separate temporary diagnostic function. Therefore the diagnostic function's successful connection to OAuth PostgreSQL does **not** prove where the Manager's `OAUTH_DATABASE_URL` points.
+- The Manager's live `GET /readyz` calls Discord `/users/@me` and `/guilds/{id}`, verifies bot/application and guild identity, then returns `{status:"ready", manager, discordVerified:true}`. It does not check `MCP_OAUTH_ENABLED`, `OAUTH_DATABASE_URL`, or issue `SELECT 1`.
+- The Manager's `GET /healthz` returns an unconditional platform/HTTP health response. It is not a database probe.
+
+### Correlated live telemetry
+- The latest available HTTP sample contains 501 requests, all `POST /mcp`; no `/oauth/*`, `/register`, or OAuth discovery requests appear in that sample.
+- The corresponding 501 network-flow sample contains no traffic to PostgreSQL ports 5432, 5433, or 6432.
+- The 454 DNS records in the sample resolve only `discord.com` (A/AAAA); no Railway Postgres service hostname or Neon hostname appears.
+- These samples establish that no OAuth/PostgreSQL traffic was observed in that sampled window. They do not establish that OAuth has never been used or that database traffic is absent outside the retained sample.
+
+### Implications
+- The live Manager can advertise `ready` while its OAuth database is unavailable or misconfigured. The current legacy-readiness compatibility in the draft router must not be mistaken for verified OAuth readiness; a live cutover needs a tested DB-aware production readiness release or a separate independently authenticated DB probe.
+- The only database identity that matters for the Manager's OAuth tokens is the database targeted by `OAUTH_DATABASE_URL`. The value is redacted by Railway's connected OAuth integration. The separate `OAUTH_DB_*` target and its confirmed private connection cannot substitute as proof.
+- The existing temporary diagnostic function is exposed on a public Railway service domain without an authorization check in its deployed GET handler; when configured, it returns the current database name and a SELECT 1 result. Historical logs show public HTTP 200 requests. It is read-only, but unnecessarily exposes DB identity/availability and its access should be restricted or the temporary endpoint retired after a replacement is proven. No change was made to it.
+- Existing daily backup service targets the separate `Postgres` service; no verified backup/restore coverage for `OAuth PostgreSQL` was discovered. The Manager's actual target remains unknown pending a safe inspection of `OAUTH_DATABASE_URL`.
+
+### Next cycle
+1. Obtain a safe, owner-visible resolution of the Manager's `OAUTH_DATABASE_URL` reference (e.g. confirm which Railway service's DATABASE_URL it references); do not paste the secret value into chat.
+2. If it resolves to `OAuth PostgreSQL`, require a verified backup/archive and an isolated restore rehearsal for that service before considering any cutover.
+3. If it resolves to `Postgres`, verify the existing daily backup is that exact dataset and test a restore; do not rely on volume names alone.
+4. Update the production readiness contract in an isolated release candidate so `/readyz` fails closed when OAuth is enabled but DB connectivity is unverified, then run full OAuth lifecycle and rollback tests before deploying.
+5. Restrict or retire the public temporary diagnostic endpoint after an authenticated replacement is established; do not break a relied-upon monitor without confirming dependencies.
+
+No production service, variable, DB, volume, route, credential, schedule, Discord configuration, or client endpoint was changed in this cycle.
