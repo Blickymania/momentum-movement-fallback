@@ -89,3 +89,35 @@ Scope: Dawn Dotta / Momentum Movement only. No other Discord community or projec
 - Inspection completed; one false-positive test repaired in the prior cycle; additional OAuth/network/CI blockers documented.
 - No production resources, Discord state, secrets, databases, billing settings, DNS, or schedules were changed.
 - Status: `BLOCKED — awaiting Hyperdrive dashboard inspection and a reachable Dawn-only database endpoint; code remains unbuilt/unverified.`
+
+
+## Follow-up execution cycle — source-level validation
+
+### Work completed
+- Re-inspected the current Worker, router, OAuth implementation, static test suite, package scripts, and Wrangler configs.
+- Ran 18 focused source-level assertions in an isolated JavaScript execution environment against the exact current GitHub branch contents.
+- Assertions covered request-local database context, fresh PostgreSQL client creation, parameterized SQL, schema-init error reset, one-time authorization-code consumption under row lock, refresh-token rotation/revocation, token hashing, Discord guild admin/owner verification, OAuth write-scope enforcement, hard-coded Dawn guild/application identity guard, destructive Discord deletion blocking, no automatic Discord write replay, HTTPS-only router origins, readiness identity verification, one-shot router forwarding, package test/build scripts, and existing static-test coverage.
+- Result: **18 passed, 0 failed**.
+- These were source-level assertions executed against retrieved source text. They are not the repository's `npm test`, TypeScript compilation, Wrangler dry-run, or live Worker/OAuth/Discord/database tests. Do not report the application as built or runtime-verified.
+- No source changes were needed in this cycle; no code commit was created. This avoids adding more static tests while the actual runner remains unavailable.
+
+### Risk review
+- OAuth authorization-code and refresh-token one-time semantics are protected by PostgreSQL row locks and transactions in the inspected source.
+- OAuth access/refresh token values are hashed before persistence.
+- Callback checks that the Discord account is owner or administrator of the exact configured guild.
+- Remaining critical external dependency is a verified, reachable Dawn-only PostgreSQL endpoint and Hyperdrive configuration. No resource has been created and no Railway DB/network setting was changed.
+- Actual build/runtime validation remains blocked by the GitHub Actions startup failures (zero jobs) and lack of an authorized local/remote build runner.
+
+### Current scheduler inventory
+- No new scheduler or recurring automation created.
+- Existing Railway cron services remain untouched; the centralized-maintenance maximum-one audit is still outstanding.
+
+### Cycle verification
+- Source-level validation: 18/18 passed.
+- GitHub Actions: latest recorded runs still startup-failed with zero jobs; not a passing CI result.
+- Production Railway, Discord, Cloudflare resources, OAuth DB records, secrets, DNS, and billing: unchanged.
+
+### Exact next execution step
+1. Inspect the authenticated Cloudflare Hyperdrive dashboard and Workers plan page using the existing signed-in browser session; do not touch the Empress Worker or create a paid resource.
+2. Independently inspect whether the Dawn Railway OAuth Postgres service has a documented/reachable external connection option without changing its configuration.
+3. Once a safe Dawn-only endpoint is confirmed, provision the least-privileged database path and run real build/runtime tests; otherwise keep the migration isolated and continue code-side work.
