@@ -33,7 +33,7 @@ export async function startGatewayOwner({
   let shutdownStarted = false;
   let lostReason = null;
   let heartbeat = null;
-  let destroyedForReason = new Set();
+  const destroyedForReason = new Map();
   let resolveLeaseLost;
   const leaseLostSignal = new Promise(resolve => { resolveLeaseLost = resolve; });
 
@@ -46,9 +46,10 @@ export async function startGatewayOwner({
 
   const destroy = async reason => {
     const key = String(reason || "unspecified");
-    if (destroyedForReason.has(key)) return;
-    destroyedForReason.add(key);
-    await destroyGateway(key);
+    if (destroyedForReason.has(key)) return destroyedForReason.get(key);
+    const task = Promise.resolve().then(() => destroyGateway(key));
+    destroyedForReason.set(key, task);
+    return task;
   };
 
   const handleLeaseLost = async reason => {
@@ -101,9 +102,9 @@ export async function startGatewayOwner({
     gatewayReady = false;
     // If a client finishes connecting after the lease was lost, destroy it again.
     void loginTask.then(outcome => {
-      if (outcome.kind === "connected") return destroy("lease_lost_during_login").catch(() => {});
+      if (outcome.kind === "connected") return destroy("lease_lost_after_login").catch(() => {});
     });
-    await destroy("lease_lost_during_login").catch(() => {});
+    await destroy("lease_lost").catch(() => {});
     return { ok: false, reason: loginOutcome.reason };
   }
 
