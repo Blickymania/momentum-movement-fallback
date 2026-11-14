@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  acquireGatewayLease,
+  acquireGatewayLease,\n  ensureLeaseSchema,
   renewGatewayLease,
   releaseGatewayLease,
   startLeaseHeartbeat,
@@ -120,7 +120,7 @@ test("invalid lease TTL and fencing epoch are rejected before database access", 
 
 test("active lease cannot be reacquired even by a process reusing the same owner id", async () => {
   const db = fakeDb((sql) => {
-    assert.ok(sql.includes("WHERE gateway_ownership.lease_until <= clock_timestamp()"));
+    assert.ok(sql.includes("WHERE failover.gateway_ownership.lease_until <= clock_timestamp()"));
     assert.ok(!sql.includes("OR gateway_ownership.owner_id = EXCLUDED.owner_id"));
     return [];
   });
@@ -144,4 +144,15 @@ test("a hung heartbeat renewal times out and invokes fail-closed handling", asyn
   await heartbeat.beat();
   await heartbeat.beat();
   assert.equal(reason, "lease_renewal_timeout");
+});
+
+
+test("schema bootstrap creates and locks down the private failover schema", async () => {
+  const db = fakeDb(() => []);
+  await ensureLeaseSchema(db);
+  assert.equal(db.calls.length, 2);
+  assert.match(db.calls[0].sql, /CREATE SCHEMA IF NOT EXISTS failover/);
+  assert.match(db.calls[0].sql, /REVOKE ALL ON SCHEMA failover FROM PUBLIC/);
+  assert.match(db.calls[1].sql, /CREATE TABLE IF NOT EXISTS failover\\.gateway_ownership/);
+  assert.match(db.calls[1].sql, /REVOKE ALL ON TABLE failover\\.gateway_ownership FROM PUBLIC/);
 });
