@@ -176,7 +176,7 @@ test("OAuth redirect URIs are HTTPS or loopback and reject credentials/fragments
 
 test("OAuth authorization requires an exact registered redirect and PKCE S256", () => {
   assert.match(source, /redirects\.includes\(redirectUri\)/);
-  assert.match(source, /code_challenge_method\)!=="S256"/);
+  assert.match(source, /get\("code_challenge_method"\)!=="S256"/);
   assert.match(source, /mcpOAuthPkce\(verifier\)!==row\.code_challenge/);
 });
 
