@@ -27,6 +27,7 @@ test("OAuth-enabled readiness fails closed unless Neon PostgreSQL and all OAuth 
   assert.ok(start >= 0 && end > start, "readiness route must exist");
   const readiness = manager.slice(start, end);
   assert.match(readiness, /if\(mcpOAuthEnabled\(\)\)/);
+  assert.match(readiness, /\\^\\\\d\{15,22\}\$/);
   assert.match(readiness, /mcpOAuthDb/);
   assert.match(readiness, /to_regclass\('public\.mcp_oauth_clients'\)/);
   assert.match(readiness, /oauth_database_unavailable/);
