@@ -527,3 +527,23 @@ This invocation used reconstructed local component folders, Node's SQLite engine
 - GitHub Actions remains a zero-job startup failure; latest inspected run at this point was `43556643815`, with preceding runs `43556634163` and `43556557762` likewise returning no jobs. No runner/job logs exist and the root cause remains unknown.
 - Render service list remains inconclusive (`null`); Cloudflare dashboard authentication expired; actual account inventory/plan is unknown.
 - Initial Railway cutover still requires manually verified old Gateway shutdown and operator bootstrap. Worker-managed Render suspend/readback is only for subsequent Render-to-Render transfers after primary and standby run as distinct Render services.
+
+
+## Read-only production source provenance audit — November 14, 2026 UTC
+
+The existing Railway connector was used strictly for read-only inspection of the current production service configurations and configured start commands. Secret variable values were returned redacted and were not emitted, copied or modified.
+
+### Verified production service state
+- **Blickymania Bot 005** — service `328ad9bb-7db8-4f9a-9a72-f91b73ef9fc9`; state `live`; latest deployment `SUCCESS` created `2026-11-11T21:57:32.100Z`; one replica in `sfo`; image `ghcr.io/railwayapp/function-bun:1.4.4`; runtime V2; health check `/healthz`; restart policy `ALWAYS`; no mounted volumes or staged changes.
+- **Dawn Dotta Discord Manager** — service `596b402b-936b-490e-97c7-d41d9ed87caf`; state `live`; latest deployment `SUCCESS` created `2026-11-11T23:08:05.053Z`; one replica in `sfo`; same Bun 1.4.4 image; runtime V2; health check `/healthz`; restart policy `ALWAYS`; no mounted volumes or staged changes. Its default Railway service domain is `dawn-dotta-discord-manager-production.up.railway.app` on port 8080. No domain was listed for Bot 005.
+- This confirms both live services are still on Railway. No service was stopped, restarted, edited or redeployed.
+
+### Source provenance
+- The Bot 005 configured start command is an outer base64 Bun loader containing an inner base64/LZW application payload. The payload was decoded locally without printing it. The fully decompressed live application source is **exactly identical** to `recovered/railway/blickymania-bot-005.ts` after its recovery header. This validates the recovered Bot snapshot against the current configured live start command.
+- The exact live Bot code uses `discord.js@14.27.0`, calls `client.login(token)`, has 55 global `fetch()` call sites and seven occurrences of the Discord interaction event registration identifier. It includes the hard-coded `http://coaching-workflow.railway.internal:3000/interaction` integration. No direct Node `http.request`/`https.request`, raw `net`/`tls`/`dgram` socket call, imported `undici`, or WebSocket constructor was found in the application source.
+- The Discord Manager's configured start command decodes to 44,479 source characters. Its recovered source body is 44,480 characters; the only difference is one final trailing newline in the recovery snapshot. The implementation is otherwise an exact textual match.
+- The decoded Manager source reads `OAUTH_DATABASE_URL` and `RAILWAY_SERVICE_KEY`. Its service environment lists `OAUTH_DATABASE_URL` plus `OAUTH_DB_HOST`, `OAUTH_DB_NAME`, `OAUTH_DB_PASSWORD`, `OAUTH_DB_PORT` and `OAUTH_DB_USER`, but the recovered source only reads the consolidated URL variable for its Bun SQL client.
+- The Railway connector redacted all variable values. Therefore the actual OAuth database hostname remains **unknown**. Do not infer that the database itself is hosted on Railway merely because the Manager process runs there, and do not log or expose the URL credentials.
+- Bot 005's live environment names include the Discord token, guild/application identity, profile data key and channel IDs, silent-build mode, social TikTok URL and PORT. There is no `COACHING_WORKFLOW_URL` variable; the coaching host is hard-coded in the source.
+
+This read-only inspection resolves the source-provenance question: the recovered Bot 005 snapshot is current and the coaching workflow dependency is live in the actual configured start command. It does not resolve the Manager's OAuth database host because the values remain redacted.
