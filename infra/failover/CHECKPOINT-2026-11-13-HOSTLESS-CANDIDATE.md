@@ -56,6 +56,13 @@ Assessment:
 - No source code change was justified in this cycle. No untested speculative security patch was committed.
 - Previous test evidence remains: 33/33 isolated V8 source-invariant harness assertions and 3/3 native Node connector-script tests. These are not a full TypeScript/Wrangler/DB/runtime test suite.
 
+## Additional source-level security invariant pass
+
+- Re-fetched the current Worker and router blobs from the branch and evaluated 12 targeted source invariants against those exact blobs.
+- Result: **12/12 passed**: S256 PKCE enforcement; exact registered redirect matching; Discord guild owner/admin gate; authorization-code row lock; code consumption and both token inserts in one transaction; refresh-token revocation/rotation; token hashing; OAuth write-scope enforcement; explicit write opt-in; destructive channel/role deletion block; no automatic Discord write retry; and router GET/HEAD-only transport failover.
+- This is an isolated source-pattern/invariant check in the tool execution environment. It is not a TypeScript compile, Node test-runner execution, Wrangler dry-run, PostgreSQL integration, or live OAuth test.
+- No source code changed in this pass.
+
 ## Infrastructure and safety status
 
 - Prepared Railway SSH + Cloudflare Tunnel connector remains isolated in GitHub and has only mocked lifecycle validation.
