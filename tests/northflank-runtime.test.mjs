@@ -49,7 +49,7 @@ test("Northflank deployment documentation does not contain runtime credentials",
 });
 
 test("Northflank cannot enter the router before shared OAuth data parity is proven", () => {
-  assert.ok(deployment.includes("Do not configure `NORTHFLANK_MANAGER_ORIGIN` in the router until"));
+  assert.ok(/do not configure `NORTHFLANK_MANAGER_ORIGIN` in the router until/i.test(deployment));
   assert.ok(deployment.includes("row-count/digest reconciliation"));
   assert.ok(deployment.includes("same logical OAuth data plane"));
   assert.ok(deployment.includes("a rehearsed restore path"));
