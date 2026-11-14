@@ -96,8 +96,7 @@ test("lease loss during a hanging login cancels startup and destroys Gateway", a
     destroyGateway: async reason => { destroyed.push(reason); }
   }));
   assert.deepEqual(result, { ok: false, reason: "lease_not_renewed" });
-  assert.ok(destroyed.includes("lease_lost"));
-  assert.ok(destroyed.includes("lease_lost_during_login"));
+  assert.deepEqual(destroyed, ["lease_lost"]);
 });
 
 test("a timed-out DB renewal fences the local Gateway and closes it", async () => {
@@ -110,10 +109,28 @@ test("a timed-out DB renewal fences the local Gateway and closes it", async () =
     onLeaseLost: async reason => { lostReason = reason; }
   }));
   assert.equal(result.ok, true);
-  await new Promise(resolve => setTimeout(resolve, 1250));
+  await new Promise(resolve => setTimeout(resolve, 1800));
   assert.equal(result.ready, false);
   assert.equal(result.leaseLost, true);
   assert.equal(lostReason, "lease_renewal_timeout");
   assert.ok(destroyed.includes("lease_lost"));
   assert.throws(() => result.assertOwned(), /gateway_lease_not_active/);
+});
+
+
+test("closes a Gateway that completes connecting after lease loss", async () => {
+  const db = fakeDb({ renew: [] });
+  const destroyed = [];
+  let resolveLogin;
+  const loginPromise = new Promise(resolve => { resolveLogin = resolve; });
+  const startPromise = startGatewayOwner(base(db, {
+    loginGateway: () => loginPromise,
+    destroyGateway: async reason => { destroyed.push(reason); }
+  }));
+  const result = await startPromise;
+  assert.deepEqual(result, { ok: false, reason: "lease_not_renewed" });
+  assert.deepEqual(destroyed, ["lease_lost"]);
+  resolveLogin();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(destroyed, ["lease_lost", "lease_lost_after_login"]);
 });
