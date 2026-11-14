@@ -386,3 +386,60 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 - Latest jobs endpoint read returned an empty jobs array. No runner or job started and no job logs exist.
 - Immediately preceding runs 43554398207, 43554383023, 43554374901, and 43554354944 also ended startup_failure. Do not interpret the repeat as proof of a particular billing/permissions cause.
 - The Actions failure remains an external GitHub account/repository execution blocker, not a failed unit-test result. Local verification remains 35/35 passed.
+
+
+## Cycle 11 — Worker-managed Render hard fence and deployment-specific bot credentials
+
+### Implemented
+- Replaced the bot-side direct hard-fence client with implementation/cloudflare-fence-request-client.mjs. It sends only candidateOwnerId and candidateDeploymentId to the Worker POST /fence endpoint.
+- The Worker now uses FENCE_REQUEST_TOKENS_JSON, keyed by deployment ID, rather than one shared fence token. A primary credential cannot request a promotion as the standby deployment.
+- The Worker validates the exact two-field request shape and requires candidateOwnerId to start with candidateDeploymentId plus a colon. prepareFencedDiscordGatewayOwner enforces the same owner ID namespace and creates a fresh UUID-based owner ID by default.
+- The Worker alone holds RENDER_API_KEY, RENDER_SERVICE_IDS_JSON, and the Durable Object binding. The Render key is not included in Bot-side code/config. The operator bootstrap credential is separately scoped and not distributed to either Bot.
+- The Worker reads the expired old lease from the fixed Durable Object, verifies the candidate Render service is running, requests suspension of the previous Render service, polls Render's service record until suspended, derives a stable bounded SHA-256 proof ID, and only then calls the Durable Object's internal fence-confirm method.
+- The Durable Object records the exact previous owner ID/epoch, candidate owner/deployment, provider and proof ID. Public Worker routing does not expose /lease/fence/confirm; the internal call is made only by the Worker.
+- The worker fence request response is accepted by the Bot-side requester only when it confirms the exact candidate identity and a Render suspended state.
+- Added tests for per-deployment token isolation, owner/deployment prefix validation, no public internal fence endpoint, and service suspension before epoch increment.
+
+### Important provider boundary — current Railway primary
+- Production Bot 005 remains on Railway. Render's API cannot suspend a Railway service.
+- Therefore the automatic Render hard-stop path cannot stop today's live primary. It is designed for a future state in which both primary and standby are distinct Render services, with distinct service IDs and deployment mappings.
+- The first Railway-to-independent transition requires a manual, independently verified stop of the legacy Railway Gateway followed by the one-time operator bootstrap. Do not call bootstrap while the legacy Gateway could still be connected.
+- After the first migration, a Render-primary/Render-standby transfer can be automated using the Worker-controlled Render service suspension/readback.
+- Render API documentation confirms the suspend endpoint accepts POST /v1/services/{serviceId}/suspend with HTTP 202 and the service GET record has suspended / not_suspended values. The code deliberately requires the GET readback; the 202 alone is not enough. Sources: https://api-docs.render.com/reference/suspend-service-1 and https://api-docs.render.com/reference/retrieve-service.
+- Render documents rate limits for the suspend endpoint; the promotion path issues one suspend request and readback requests only. Source: https://api-docs.render.com/reference/rate-limiting.
+
+### Local tests executed
+- Ownership guard suite: 7/7 passed.
+- Durable Object, bot-facing fence client and Render service fencer component suite: 20/20 passed.
+- Worker-managed Render suspension/DO integration simulation: 2/2 passed after adding the deployment owner ID requirement and per-deployment request token map.
+- Prepared Discord owner adapter suite: 5/5 passed in a local reconstructed Node harness after adding the deployment-bound owner check.
+- Provider-neutral hard-stop contract plus e2e supervisor batch: 9/9 passed.
+- Total: 43 passed, 0 failed across these separate component-local batches.
+- These were isolated local test folders/copies using Node.js v22.16.0, Node SQLite, mocked Discord clients and mocked Render HTTP. They are not a clean full repository checkout or GitHub Actions run, a real Cloudflare edge test, actual Render suspension, or actual production Gateway failover.
+- GitHub Actions remains a blocker: run 43553376060 previously returned startup_failure and zero jobs; no job logs/runner output exist. The exact cause remains unknown. Do not infer an account billing or permissions cause.
+
+### Current Cloudflare limits correction
+- Official Cloudflare Durable Objects pricing documentation currently lists Free limits of 100,000 Durable Object requests/day, 13,000 GB-s/day, 50 million SQLite SQL row reads/day, 100,000 row writes/day, and 5 GB SQL stored data. The read quota is 50 million/day (not 5 million/day as written in an earlier draft).
+- At one primary heartbeat every 10 seconds, estimated writes are about 8,640/day. A standby state read every 15 seconds adds about 5,760 reads/day. Combined baseline request count is about 14,400/day before retries and other account traffic. This appears below published Free limits, but Cloudflare plan and actual account usage remain unverified.
+- Cloudflare says Durable Objects are available on Workers Free and Workers Paid; Free is SQLite-only and daily limits reset at 00:00 UTC. If a Free limit is exceeded, subsequent operations of that type fail until reset; the lease logic must remain fail-closed. Sources: https://developers.cloudflare.com/durable-objects/platform/pricing/ and https://developers.cloudflare.com/durable-objects/platform/limits/.
+
+### Exact remaining blockers
+- No Cloudflare Worker, Durable Object namespace, secret, route, or DNS record has been deployed/configured. The Cloudflare sign-in card expired during read-only account inspection; plan, namespace inventory and usage are unknown. No plan/resource/billing change has been made.
+- Render service inventory remains inconclusive (the list call returned null); no service IDs have been selected and no Render service has been created. The Render service fencer cannot act on the current Railway Bot 005.
+- No separate persistent primary/standby Render service deployments exist yet. The fencer requires distinct Render service IDs.
+- The initial Railway cutover still needs an operator-controlled shutdown and verification of the existing Gateway before bootstrap.
+- The recovered Bot 005 application source has not yet been modified to install the guard before event listeners or to call the prepared owner adapter. Exact Bun/Discord.js runtime compatibility remains unknown.
+- The coaching workflow remains at http://coaching-workflow.railway.internal:3000/interaction; the new guard blocks Railway endpoints. This workflow must be migrated to public HTTPS with verified data/state continuity before Bot 005 is independent.
+- Discord Manager OAUTH_DATABASE_URL host remains unknown and must be audited without printing credentials.
+- No production lease integration, real Render process suspension, Cloudflare-hosted Durable Object test, production standby Gateway, live failover/failback, or rollback has occurred.
+
+### Next cycle
+1. Resolve Render service inventory via a responsive dashboard/API route and identify whether an always-on primary/standby service plan is affordable. Do not provision or incur charges.
+2. Restore Cloudflare authenticated read-only access to inspect actual account plan, namespaces, Workers and usage. No changes during inventory.
+3. Identify whether primary and standby can be run as two separate Render services with deployment IDs and service IDs; if not, select a provider with an equally verifiable host-stop API.
+4. Review the exact Render API key scope needed for service read and suspend, and store it only as a Cloudflare Worker secret. Keep each candidate's fence request token separately scoped.
+5. Reconstruct the exact Bot 005 Bun/Discord.js dependency manifest and test ownership guard patching against that exact runtime.
+6. Migrate the coaching workflow and Discord Manager OAuth dependency out of Railway, preserving feature/data parity.
+7. Build a separate candidate Bot 005 source tree, install the guard before all listeners, and integrate verified app readiness with the supervisor. Do not change the recovered production snapshot.
+8. Only after the old Railway process is manually and verifiably stopped should an operator perform the one-time bootstrap. Subsequent Render-to-Render promotions require successful Render suspend/readback and exact fence confirmation.
+9. Deploy only authorized preproduction resources and run the full failure/recovery/rollback matrix before any live cutover.
