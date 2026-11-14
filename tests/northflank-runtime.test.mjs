@@ -34,7 +34,7 @@ test("Manager static bearer authentication supports neutral name and legacy comp
 });
 
 test("Northflank deployment guidance prevents accidental paid provisioning and public database exposure", () => {
-  assert.match(deployment, /No card needed/);
+  assert.match(deployment, /no credit card required/i);
   assert.match(deployment, /Do not select Pay as You Go/);
   assert.match(deployment, /Do not expose the database publicly/);
   assert.match(deployment, /WRITES_ENABLED=false/);
