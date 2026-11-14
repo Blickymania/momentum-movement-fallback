@@ -17,7 +17,7 @@ function fakeDb({ acquire = [leaseRow], renew = [leaseRow], release = [leaseRow]
       calls.push({ sql, args });
       if (sql.includes("INSERT INTO failover.gateway_ownership")) return acquire;
       if (sql.includes("SET lease_until = clock_timestamp() - interval")) return release;
-      if (sql.includes("UPDATE gateway_ownership")) {
+      if (sql.includes("UPDATE failover.gateway_ownership")) {
         if (typeof renew === "function") return renew(sql, args);
         return renew;
       }
