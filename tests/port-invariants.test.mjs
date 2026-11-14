@@ -100,3 +100,19 @@ test("channel ownership verification has a bounded upstream timeout", () => {
 test("Discord API requests use an explicit bounded timeout", () => {
   assert.match(source, /const init:RequestInit=\{method,headers,signal:AbortSignal\.timeout\(15000\)\}/);
 });
+
+test("request body reader enforces a streaming byte ceiling", () => {
+  assert.match(source, /async function readBoundedText[\s\S]*?request\.body\?\.getReader\(\)[\s\S]*?total>maxBytes/);
+  assert.match(source, /reader\.cancel\(\)/);
+});
+
+test("MCP and OAuth endpoints use distinct request-size limits", () => {
+  assert.match(source, /readBoundedText\(request,2\*1024\*1024\)/);
+  assert.match(source, /readBoundedText\(request,64\*1024\)/);
+  assert.equal((source.match(/readBoundedText\(request,16\*1024\)/g)||[]).length, 2);
+});
+
+test("oversized MCP and OAuth bodies are rejected with HTTP 413", () => {
+  assert.match(source, /tooLarge\?413:400/);
+  assert.match(source, /mcpOAuthError\("request_body_too_large",413\)/);
+});
