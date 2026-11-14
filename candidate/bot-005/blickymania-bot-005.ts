@@ -41,6 +41,7 @@ const preparedGatewayOwner = prepareFencedDiscordGatewayOwner({
   deploymentId: Bun.env.BOT005_DEPLOYMENT_ID,
   leaseCoordinatorUrl: Bun.env.GATEWAY_LEASE_URL,
   leaseServiceToken: Bun.env.LEASE_SERVICE_TOKEN,
+  fenceRequestToken: Bun.env.FENCE_REQUEST_TOKEN,
   heartbeatIntervalMs: 10000,
   renewTimeoutMs: 5000
 });
@@ -551,11 +552,11 @@ try{
 if(client.user?.id!==A)throw Error("Discord bot/application mismatch");
 const guild=await client.guilds.fetch(G);
 if(guild.id!==G)throw Error("Wrong authorized guild");
-guildVerified=true;ready=true;log("gateway_verified",{app:A,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",handlerCount:SAFE.size,commandRegistryManagedElsewhere:true});
+guildVerified=true;ready=true;preparedGatewayOwner.markApplicationReady();log("gateway_verified",{app:A,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",handlerCount:SAFE.size,commandRegistryManagedElsewhere:true});
 }catch(err){lastError=err instanceof Error?err.name:"identity_failed";ready=false;guildVerified=false;log("identity_failed",{kind:lastError});await preparedGatewayOwner.shutdown("identity_verification_failed");}
 });
-client.on(Events.ShardDisconnect,ev=>{ready=false;log("disconnected",{code:ev.code})});
-client.on(Events.ShardResume,()=>{ready=true;log("resumed")});
+client.on(Events.ShardDisconnect,ev=>{ready=false;preparedGatewayOwner.markApplicationNotReady();log("disconnected",{code:ev.code})});
+client.on(Events.ShardResume,()=>{ready=true;preparedGatewayOwner.markApplicationReady();log("resumed")});
 client.on(Events.Error,err=>{lastError=err?.name||"gateway_error";log("error",{kind:lastError})});
 client.on(Events.InteractionCreate,async i=>{
 if(!i.isChatInputCommand()||i.guildId!==G||!CORE_COMMANDS.has(i.commandName))return;
@@ -1290,3 +1291,9 @@ Bun.serve({hostname:"0.0.0.0",port:Number(Bun.env.PORT||8080),fetch:momentumHttp
 Bun.serve({hostname:"::",port:8081,fetch:momentumHttpHandler});
 const gatewayStart = await preparedGatewayOwner.start();
 if(!gatewayStart?.ok)throw Error("Bot 005 lease unavailable; Gateway login was not attempted");
+try {
+  await preparedGatewayOwner.waitUntilReady(30000);
+} catch (error) {
+  await preparedGatewayOwner.shutdown("application_readiness_failed");
+  throw error;
+}
