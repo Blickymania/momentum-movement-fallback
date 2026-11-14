@@ -332,3 +332,36 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 3. Get a working Neon project-management tool surface, inspect whether an appropriate existing staging project already exists, and only then decide whether a new isolated test project is warranted. Never write production OAuth data without explicit migration/restore evidence.
 4. Measure and identify current production OAuth DB owner/size safely; test the shared Neon candidate with all Manager runtimes and a restore path before routing.
 5. Keep Northflank inactive in the router until the shared DB prerequisite, budget, runtime tests, and rollback gates pass.
+
+
+## Cycle 17 — final source validation and PR checkpoint (2026-11-13 ET / 2026-11-14 UTC)
+
+### Final verified result
+- Retrieved the exact current branch files for Northflank Docker/runtime guidance, Bun Manager, Cloudflare Worker Manager, failover router, Northflank/router tests, and CI workflow.
+- Executed **46 direct source-level invariants: 46 passed, 0 failed**.
+- Coverage includes pinned Bun container, Manager/Worker runtime identity, real PostgreSQL SELECT 1 readiness checks, fail-closed database errors, neutral bearer compatibility, origin priority, selected-origin DB-status propagation, both router endpoints' degraded/503 behavior, 5-second health cache, concurrent-probe coalescing, safe GET/HEAD retries, no mutation replay, HTTPS origin validation, shared OAuth data-plane requirement, Neon quotas/scale-to-zero/IP Allow tier limits, current Northflank Sandbox prices, no-card guardrails, and credential-pattern scans.
+- Rechecked GitHub branch: head SHA f7780c14bf956c3594592036f37463da96064804 at the time of this checkpoint.
+- Draft PR #2 is open, mergeable, unmerged, and still in draft: https://github.com/Blickymania/momentum-movement-fallback/pull/2. PR body updated to reflect the 46/46 source checks, Neon candidate, current pricing and outstanding gates.
+- GitHub Actions latest observed run 43556844490 ended with startup_failure. Its jobs endpoint returned total_count=0. No CI runner job or test logs were produced.
+
+### Neon connector state
+- Current plugin discovery reports Neon as installed/enabled after the user's connection confirmation.
+- The current execution tool manifest contains no callable Neon project/database operations, and the skill list contains no Neon skill. The account's project inventory, quotas, connection URLs, secrets, and database resources therefore could not be inspected or changed in this session.
+- No Neon project or database has been created, migrated, or edited.
+- Neon Free is a candidate, not an approved production database. Current published limits and security tradeoffs are in northflank/DEPLOYMENT.md.
+
+### Current final disposition
+- The code and deployment package are source-prepared on an isolated branch and preserved in a draft PR.
+- The latest direct source check passes, but actual Node tests, TypeScript compilation, Wrangler build, Docker build, live Neon database connections, OAuth lifecycle, and live failover are not verified.
+- GitHub Actions zero-job startup failure remains an external runner/account blocker.
+- Current production OAuth database owner/host and dataset size remain unknown due to redacted Railway variables.
+- The Neon account actions are not callable in this execution session despite installed status, so inspection of existing Neon projects remains a connector-surface blocker.
+- No Northflank/Neon resources, paid plan, payment card, secret, production database, DNS, Cloudflare route, Railway service, MCP client URL, Discord message, role, channel, or production bot setting has been modified.
+- No scheduler, cron, keepalive, or recurring repair was created.
+
+### Exact next execution step
+1. Restore GitHub Actions job creation (latest run has zero jobs; inspect account/repository Actions runner policy or GitHub support).
+2. Expose/use the connected Neon project-management actions, inspect existing projects first, and verify free-plan resource availability without creating or modifying production data.
+3. Identify the live Dawn OAuth database host, owner, size, schema, and backups securely.
+4. Evaluate a Neon staging project only after its account quota and network constraints are confirmed; test TLS/pooled connections, cold starts, database quota behavior, OAuth lifecycle, and restore from backup across intended runtimes.
+5. Do not enable Northflank routing or change live Railway until shared data identity, full tests, and rollback are proven.
