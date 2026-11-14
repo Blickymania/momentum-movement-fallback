@@ -398,3 +398,16 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 3. Resolve Neon Free suspend behavior and test a minimal TLS/pooler connection only after safe staging credentials and app-runtime access are established; explicitly suspend after every test.
 4. Restore GitHub Actions runner job creation and run actual unit/build/container tests.
 5. Keep Northflank origin unset and production unchanged until every gate passes.
+
+
+## Cycle 19 — lock down staging compute and latest CI verification (2026-11-14 UTC)
+
+- After confirming Neon Free cannot change the suspend timeout, the staging endpoint was manually suspended and then set `disabled: true`. A fresh endpoint listing confirms both `current_state: idle` and `disabled: true`; this prevents the staging compute from being unintentionally woken by an external connection until deliberately re-enabled.
+- Neon project usage fields currently report zero compute seconds, active seconds, CPU seconds, data transfer, written bytes, and storage-hours. No connection string/password was retrieved and no app secret was configured.
+- The staging project remains an empty isolated test DB. No app runtime is connected to it.
+- Latest PR-head GitHub Actions runs after the checkpoint/docs update: `43561741910` and `43561728887`, both `startup_failure`; each jobs endpoint returns an empty array. Combined commit status has no statuses. This remains a runner-startup blocker, not a code-test failure.
+- Final read-only Railway inventory still shows no production staged changes and the live Manager deployment SUCCESS. No production changes were made.
+- Draft PR #2 is open, draft, mergeable, unmerged, head `a7d53a3d52e528f09f9c80ec5a12de5202b9e4be` at the time of this checkpoint.
+
+### Next safe action
+Continue read-only inspection of the two Railway PostgreSQL services and their volume/backup metadata to identify the Manager's actual OAuth DB reference. Do not expose secret values, read token/user payloads, or change DB contents. If service references remain hidden by Railway's OAuth redaction, stop and request an approved safe diagnostic route rather than guessing. Keep the Neon staging endpoint disabled until the next explicitly controlled test window.
