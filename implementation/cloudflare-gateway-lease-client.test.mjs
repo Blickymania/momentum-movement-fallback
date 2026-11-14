@@ -46,6 +46,9 @@ test("lease client only accepts public HTTPS coordinator URLs", () => {
     "https://lease.internal",
     "https://lease.lan",
     "https://lease.test",
+    "https://lease.invalid",
+    "https://lease.example",
+    "https://lease.onion",
     "https://singlelabel",
     "https://[::1]"
   ]) {
