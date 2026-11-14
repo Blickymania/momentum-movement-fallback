@@ -153,11 +153,11 @@ Render documents service suspension rate limits; this controller issues one susp
 
 Latest component-local Node.js 22.16.0 simulations:
 - Render suspension + Durable Object Worker path: 2 passed.
-- Lease store, SQLite coordinator, and Render fencer component batch: 20 passed.
+- Lease store, SQLite coordinator, and Render fencer component batch: 18 passed.
 - Discord event/REST/fetch guard: 7 passed.
 - Prepared Gateway owner adapter with deployment-prefixed owner ID: 5 passed.
 - Provider-neutral hard-stop contract and e2e supervisor batch: 9 passed.
-- **Total: 43 passed, 0 failed across separate local test batches.**
+- **Total: 41 passed, 0 failed across separate local test batches.**
 
 These tests use isolated working copies, simulated Cloudflare context, Node SQLite, fake Discord clients, and mocked Render HTTP responses. They are not a clean repository checkout test run, Cloudflare-hosted integration test, or actual Render service suspension test. GitHub Actions still fails before job creation and has no job logs.
 
@@ -170,3 +170,7 @@ These tests use isolated working copies, simulated Cloudflare context, Node SQLi
 - The Bot 005 source still calls `http://coaching-workflow.railway.internal:3000/interaction`; the guard rejects Railway calls. That service must be migrated to public HTTPS with state/feature parity before independent hosting.
 - Discord Manager `OAUTH_DATABASE_URL` host remains unknown.
 - No actual Render service suspension, production Discord Gateway login, failover/failback, or rollback has occurred.
+
+## Render credential isolation correction
+
+The unused helper that could combine a PostgreSQL/Cloudflare lease store with the Render API adapter inside a Bot process has been removed. The Render service fencer is now intentionally consumed only by cloudflare/worker.mjs. Bot-side code uses only cloudflare-fence-request-client.mjs, which sends candidate identity and a deployment-specific request token to the Worker; it never imports a Render API client or receives the Render API key. The current component suite no longer includes the two removed helper-wrapper tests. The Render fencer suite is 7/7, and the Worker-to-Render-to-Durable-Object flow remains separately simulated.
