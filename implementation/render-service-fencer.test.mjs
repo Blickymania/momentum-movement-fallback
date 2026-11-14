@@ -1,9 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  createRenderServiceFencer,
-  createRenderFencedCloudflareLeaseStore
-} from "./render-service-fencer.mjs";
+import { createRenderServiceFencer } from "./render-service-fencer.mjs";
 
 const apiKey = "render-api-key-for-test-123456";
 const serviceMap = {
