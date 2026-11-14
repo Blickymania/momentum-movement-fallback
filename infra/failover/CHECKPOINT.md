@@ -508,3 +508,24 @@ No production service, variable, DB, volume, route, credential, schedule, Discor
 - Neon staging endpoint remains `idle` and `disabled: true`; no application has been connected to it.
 - The exact live Manager OAuth database reference remains unresolved because the connected Railway OAuth integration returns variable names only. The actual production readiness endpoint still does not query the DB, and OAuth PostgreSQL backup/restore coverage remains unverified.
 - Next safe move: confirm the Manager's `OAUTH_DATABASE_URL` reference via an owner-visible Railway setting or an authorized session that can read variable values without copying secrets into chat; then map that exact DB to a proven backup and restore path. Until then, no Northflank origin activation, Neon app connection, or production route change.
+
+
+## Cycle 26 — latest CI and direct-URL identification checkpoint (2026-11-14 UTC)
+
+### CI verification
+- Refreshed PR #2 at head `6437aabd2071ab40e8c84bf80ac618c0245bbd92`. It remains open, draft, mergeable, and unmerged.
+- Latest pull-request workflow runs for that head: `43562366598` and `43562361737`; both concluded `startup_failure`.
+- Queried both run job lists; both returned **zero jobs**. The workflow never reached the runner/job stage. Therefore these runs do not establish a source/test failure, and they also do not establish passing tests.
+- The branch workflow definition still invokes Node 22, `npm install`, then `npm run check` (TypeScript typecheck, Node tests, Worker dry-run, router dry-run). None of those commands ran in these attempts.
+
+### Direct database URL clue
+- Owner reports the live Manager's `OAUTH_DATABASE_URL` value is presented as a direct `postgres://` URL, not an obvious Railway service-reference expression.
+- This only identifies the URL format; it does **not** identify which Railway Postgres service is the target.
+- The only remaining safe identifier needed from the URL is the hostname portion after `@` and before the port separator (normally `:5432`). Do not request, store, or paste the full URL, username, password, or query parameters.
+- Once the hostname is supplied, compare it locally against the two known Railway Postgres service endpoints. If the hostname does not exactly match either verified endpoint, stop and determine its owner without changing configuration.
+
+### Safety state
+- No production Manager, database, backup worker, variable, route, DNS record, deployment, or schedule was changed.
+- PR #2 remains draft and is not approved for merge or production cutover.
+- OAuth database backup/restore coverage remains unverified for the Manager's actual target. Northflank/Neon routing remains inactive. The Neon staging endpoint remains idle and disabled.
+- Continue with host-independent checks only until the database host is identified. Do not expose the production Postgres port or migrate OAuth rows as a shortcut.
