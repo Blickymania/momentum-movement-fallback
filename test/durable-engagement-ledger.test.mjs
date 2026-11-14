@@ -249,11 +249,7 @@ test("creates a durable dispatcher handler with an idempotent receipt", async ()
 test("rejects startup without a verified public channel resolver", async () => {
   const { ledger } = makeLedger();
   await ledger.initialize();
-  const handler = createEngagementMessageHandler({ ledger });
-  await assert.rejects(() => handler({
-    eventType: "MESSAGE_CREATE",
-    payload: makeMessage(),
-  }, {}), /channel resolver/);
+  assert.throws(() => createEngagementMessageHandler({ ledger }), /channel resolver/);
 });
 
 test("meaningful-text filter strips URLs and mentions before measuring content", () => {
