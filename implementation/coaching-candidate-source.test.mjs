@@ -95,7 +95,7 @@ test("candidate Coaching Workflow requires a durable idempotency claim before di
   const source = await readFile(workflowPath, "utf8");
   assert.match(source, /COACHING_IDEMPOTENCY_URL/);
   assert.match(source, /COACHING_IDEMPOTENCY_TOKEN/);
-  assert.match(source, /coaching-interaction\/claim/);
+  assert.match(source, /coaching\/interaction\/claim/);
   const routeAt = source.lastIndexOf('url.pathname==="/interaction"');
   const claimAt = source.indexOf("claimResponse=await fetch(coachingIdempotencyEndpoint", routeAt);
   const acceptedAt = source.indexOf("Response.json({accepted:true})", routeAt);
