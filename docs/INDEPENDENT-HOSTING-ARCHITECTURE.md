@@ -76,7 +76,7 @@ A reusable module is committed at `implementation/shared-gateway-lease.mjs`, wit
 
 ## GitHub Actions status
 
-An event-triggered workflow exists at `.github/workflows/failover-tests.yml`; it has no scheduled trigger. Run `43550719031` ended with `startup_failure` and the Actions API reported zero jobs, so the runner never began and no test job ran. The workflow YAML was read back and is structurally valid. The exact startup cause is not exposed by the available connector response. A direct read of repository Actions settings/check-suite metadata was rejected by the connector's endpoint allow-list; do not assert a root cause without evidence.
+An event-triggered workflow exists at `.github/workflows/failover-tests.yml`; it has no scheduled trigger. Run `43550719031` and the later run `43551272700` both ended with `startup_failure`; the Actions API reported zero jobs for both, so neither runner began and no test job ran. The workflow YAML was read back and is structurally valid. The exact startup cause is not exposed by the available connector response. A direct read of repository Actions settings/check-suite metadata was rejected by the connector's endpoint allow-list; do not assert a root cause without evidence.
 
 The repository's private repository metadata reports admin/push access for the connected GitHub identity. This does not, by itself, prove Actions billing or policy configuration. No successful hosted CI run has been verified yet.
 
