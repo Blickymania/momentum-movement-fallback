@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import worker from "../cloudflare/worker.mjs";
 
 const token = "coaching-idempotency-test-secret-at-least-32";
-const route = "https://control.example.com/coaching/interaction/claim";
+const route = "https://control.example.com/claim";
 
 function makeNamespace() {
   const claims = new Set();
@@ -13,12 +13,12 @@ function makeNamespace() {
     calls,
     idFromName(name) { return "id:" + name; },
     get(id) {
-      assert.equal(id, "id:momentum-movement:bot-005-gateway");
+      assert.equal(id, "id:momentum-movement:coaching-interaction-idempotency");
       return {
         async fetch(request) {
           const url = new URL(request.url);
           calls.push(url.pathname);
-          if (url.pathname !== "/coaching/interaction/claim") {
+          if (url.pathname !== "/claim") {
             return Response.json({ error: "not_found" }, { status: 404 });
           }
           const body = await request.json();
@@ -41,7 +41,7 @@ function request(body, authorization = "Bearer " + token) {
 
 test("durable coaching claim route requires its own bearer credential", async () => {
   const namespace = makeNamespace();
-  const env = { GATEWAY_LEASE_COORDINATOR: namespace, COACHING_IDEMPOTENCY_TOKEN: token };
+  const env = { COACHING_IDEMPOTENCY_STORE: namespace, COACHING_IDEMPOTENCY_TOKEN: token };
   const denied = await worker.fetch(request({
     interactionId: "12345678901234567", source: "bot005"
   }, "Bearer wrong-secret"), env);
@@ -51,7 +51,7 @@ test("durable coaching claim route requires its own bearer credential", async ()
 
 test("durable coaching claim route validates exact source and Discord snowflake fields", async () => {
   const namespace = makeNamespace();
-  const env = { GATEWAY_LEASE_COORDINATOR: namespace, COACHING_IDEMPOTENCY_TOKEN: token };
+  const env = { COACHING_IDEMPOTENCY_STORE: namespace, COACHING_IDEMPOTENCY_TOKEN: token };
   const invalidId = await worker.fetch(request({ interactionId: "not-a-snowflake", source: "bot005" }), env);
   assert.equal(invalidId.status, 400);
   const invalidSource = await worker.fetch(request({ interactionId: "12345678901234567", source: "other" }), env);
@@ -65,7 +65,7 @@ test("durable coaching claim route validates exact source and Discord snowflake 
 
 test("durable coaching claim route delegates atomically and returns duplicate status", async () => {
   const namespace = makeNamespace();
-  const env = { GATEWAY_LEASE_COORDINATOR: namespace, COACHING_IDEMPOTENCY_TOKEN: token };
+  const env = { COACHING_IDEMPOTENCY_STORE: namespace, COACHING_IDEMPOTENCY_TOKEN: token };
   const body = { interactionId: "22345678901234567", source: "coaching-relay" };
   const first = await worker.fetch(request(body), env);
   assert.equal(first.status, 200);
@@ -74,15 +74,15 @@ test("durable coaching claim route delegates atomically and returns duplicate st
   assert.equal(second.status, 200);
   assert.deepEqual(await second.json(), { ok: true, claimed: false, duplicate: true });
   assert.deepEqual(namespace.calls, [
-    "/coaching/interaction/claim",
-    "/coaching/interaction/claim"
+    "/claim",
+    "/claim"
   ]);
 });
 
 test("durable claim route fails closed when its token or DO binding is missing", async () => {
   const missingToken = await worker.fetch(request({
     interactionId: "32345678901234567", source: "bot005"
-  }), { GATEWAY_LEASE_COORDINATOR: makeNamespace() });
+  }), { COACHING_IDEMPOTENCY_STORE: makeNamespace() });
   assert.equal(missingToken.status, 503);
   const missingBinding = await worker.fetch(request({
     interactionId: "42345678901234567", source: "bot005"
