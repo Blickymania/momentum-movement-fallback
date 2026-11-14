@@ -83,7 +83,7 @@ const definitions = [
   { id: "bot-disabled", guildId: "1565304619838742500", applicationId: "1565304619838742501", intents: 1, enabled: false, tokenRef: "BOT_DISABLED_TOKEN" },
 ];
 
-function makeHarness({ random = () => 0.25 } = {}) {
+function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken } = {}) {
   const storage = new MemoryDOStorage();
   const sockets = [];
   const tokens = new Map([
@@ -110,6 +110,8 @@ function makeHarness({ random = () => 0.25 } = {}) {
     },
     now: () => clock,
     random,
+    verifyIdentity,
+    ...(fingerprintToken ? { fingerprintToken } : {}),
     log: (event, metadata) => logs.push({ event, metadata }),
   });
   let clock = 1_800_000_000_000;
@@ -143,6 +145,115 @@ test("starts enabled identities with one persisted alarm and no shared sequence 
   assert.equal(snapshot.clients.find((client) => client.clientId === "bot-disabled").status, "disabled");
   assert.equal(JSON.stringify(snapshot).includes("alpha-secret-test-token"), false);
   assert.equal(JSON.stringify(snapshot).includes("beta-secret-test-token"), false);
+});
+
+test("refuses duplicate token values across distinct secret references without opening a second session", async () => {
+  const h = makeHarness();
+  h.tokens.set("BOT_BETA_TOKEN", h.tokens.get("BOT_ALPHA_TOKEN"));
+  await h.core.initialize();
+  await h.core.start();
+  assert.equal(h.sockets.length, 1);
+  const beta = h.core.sessions.get("bot-beta");
+  assert.equal(beta.status, "fatal");
+  assert.equal(beta.lastError, "duplicate_discord_credential");
+  assert.equal(beta.reconnectAt, null);
+  assert.equal(JSON.stringify(h.logs).includes("alpha-secret-test-token"), false);
+});
+
+test("fails closed when the configured Discord identity does not match the definition", async () => {
+  const h = makeHarness({
+    verifyIdentity: async (_token, definition) => definition.id !== "bot-alpha",
+  });
+  await h.core.initialize();
+  await h.core.start();
+  assert.equal(h.sockets.length, 1);
+  assert.equal(h.core.sessions.get("bot-alpha").status, "fatal");
+  assert.equal(h.core.sessions.get("bot-alpha").lastError, "discord_identity_mismatch");
+  assert.equal(h.core.sessions.get("bot-beta").status, "connecting");
+});
+
+test("missing token is terminal and does not enter an automatic reconnect loop", async () => {
+  const h = makeHarness();
+  h.tokens.delete("BOT_ALPHA_TOKEN");
+  await h.core.initialize();
+  await h.core.start();
+  assert.equal(h.core.sessions.get("bot-alpha").status, "fatal");
+  assert.equal(h.core.sessions.get("bot-alpha").lastError, "gateway_token_missing");
+  const count = h.sockets.length;
+  await h.core.alarm();
+  await h.core.start();
+  assert.equal(h.sockets.length, count);
+});
+
+test("resumes the saved session and last committed sequence after coordinator restart", async () => {
+  const h = makeHarness();
+  await h.core.initialize();
+  await h.core.start();
+  const first = h.sockets[0];
+  frame(first, { op: 10, d: { heartbeat_interval: 30000 } });
+  await h.flush();
+  frame(first, { op: 0, s: 20, t: "READY", d: { session_id: "restart-session", resume_gateway_url: "wss://resume.restart.example" } });
+  await h.flush();
+  frame(first, { op: 0, s: 21, t: "MESSAGE_CREATE", d: { id: "last-committed" } });
+  await h.flush();
+
+  const restarted = new GatewayCoordinatorCore({
+    storage: h.storage,
+    definitions,
+    tokenProvider: async (reference) => h.tokens.get(reference),
+    connectSocket: async (url, context) => {
+      const socket = new MockSocket(context.id + "-" + context.generation);
+      socket.url = url;
+      socket.context = context;
+      h.sockets.push(socket);
+      return socket;
+    },
+    scheduleAlarm: async (timestamp) => h.storage.setAlarm(timestamp),
+    verifyIdentity: async () => true,
+    now: h.now,
+    random: () => 0.25,
+  });
+  await restarted.initialize();
+  await restarted.start();
+  const resumed = h.sockets.at(-1);
+  assert.ok(resumed.url.startsWith("wss://resume.restart.example/"));
+  frame(resumed, { op: 10, d: { heartbeat_interval: 30000 } });
+  await restarted.serial;
+  assert.equal(resumed.sent[0].op, 6);
+  assert.equal(resumed.sent[0].d.session_id, "restart-session");
+  assert.equal(resumed.sent[0].d.seq, 21);
+});
+
+test("fatal configuration status survives restart until an explicit operator reset", async () => {
+  const h = makeHarness();
+  h.tokens.delete("BOT_ALPHA_TOKEN");
+  await h.core.initialize();
+  await h.core.start();
+  assert.equal(h.core.sessions.get("bot-alpha").status, "fatal");
+
+  const restarted = new GatewayCoordinatorCore({
+    storage: h.storage,
+    definitions,
+    tokenProvider: async (reference) => h.tokens.get(reference),
+    connectSocket: async (url, context) => {
+      const socket = new MockSocket(context.id + "-" + context.generation);
+      h.sockets.push(socket);
+      return socket;
+    },
+    scheduleAlarm: async (timestamp) => h.storage.setAlarm(timestamp),
+    now: h.now,
+    random: () => 0.25,
+  });
+  await restarted.initialize();
+  await restarted.start();
+  assert.equal(restarted.sessions.get("bot-alpha").status, "fatal");
+  const count = h.sockets.length;
+  const reset = await restarted.resetFatalClient("bot-alpha");
+  assert.equal(reset.reset, true);
+  assert.equal(reset.status, "disconnected");
+  await restarted.start();
+  assert.equal(h.sockets.length, count);
+  assert.equal(restarted.sessions.get("bot-alpha").status, "fatal");
 });
 
 test("HELLO sends the right Identify per client and schedules one alarm using heartbeat jitter", async () => {
