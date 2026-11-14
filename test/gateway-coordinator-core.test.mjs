@@ -70,8 +70,10 @@ class MockSocket {
   }
   send(value) { this.sent.push(JSON.parse(String(value))); }
   close(code = 1000, reason = "") {
+    if (this.readyState === 3) return;
     this.closed.push({ code, reason });
     this.readyState = 3;
+    this.emit("close", { code, reason });
   }
 }
 
@@ -239,8 +241,9 @@ test("missed heartbeat ACK closes only the stale socket and schedules bounded re
   await h.core.alarm();
   h.advance(30001);
   await h.core.alarm();
+  await h.flush();
   assert.equal(socket.closed.at(-1).code, 4000);
-  assert.equal(state.status, "heartbeat_unacknowledged");
+  assert.equal(state.status, "reconnect_wait");
   assert.ok(state.reconnectAt >= h.now());
   assert.equal(h.core.sockets.has("bot-beta"), true);
 });
