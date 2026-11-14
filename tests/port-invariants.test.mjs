@@ -58,11 +58,11 @@ test("failover router probes verified Dawn Manager origins in priority order", a
   assert.match(router, /body\?\.discordVerified === true/);
 });
 
-test("failover router forwards an actual request only once", async () => {
+test("router forwards each verified origin once and stops writes after one failure", async () => {
   const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
-  assert.match(router, /fetch\(new Request\(forwardUrl\(request\.url, selected\.origin\), request\)\)/);
-  assert.match(router, /Never retry a timed-out POST/);
-  assert.doesNotMatch(router, /for\s*\([^)]*attempt|while\s*\(/);
+  assert.match(router, /fetch\(new Request\(forwardUrl\(request\.url, current\.origin\), request\)\)/);
+  assert.match(router, /if \(!safeRead\) break/);
+  assert.match(router, /current = await chooseOrigin\(env, excluded\)/);
 });
 
 test("OAuth schema initialization retries after a failed setup", () => {
