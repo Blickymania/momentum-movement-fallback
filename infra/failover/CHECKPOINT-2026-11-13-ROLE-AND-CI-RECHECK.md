@@ -471,3 +471,11 @@ Inspect and test the connector's Railway CLI invocation against documented seman
 
 ### Next execution step
 Keep the connector prepared and isolated. Continue the provider/host feasibility review; do not place the Railway project token or Cloudflare tunnel token on an untrusted or short-lived host. No production tunnel or VPC resources should be created until a trustworthy persistent host is available.
+
+
+## Cloudflare permission interpretation update
+
+- Re-reviewed Cloudflare's current official account-role documentation. It defines **Super Administrator - All Privileges** as able to edit any Cloudflare setting, manage members, and manage account-owned API tokens.
+- That makes the verified member policy sufficient in principle for the separately documented VPC Service creation requirement; the earlier wording that the permission remained wholly unknown was overly cautious.
+- Sources: https://developers.cloudflare.com/fundamentals/manage-members/roles/ and https://developers.cloudflare.com/workers/networking/private-networks/vpc-services/
+- The exact VPC creation operation still has not been attempted, so operational access is not yet proven by a successful create/test. No role or member permission was changed.
