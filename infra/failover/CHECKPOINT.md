@@ -145,3 +145,29 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 - Render connector listed only workspace `My Workspace` (ID `tea-dbcqe7ss728c73fthlug`), but requires explicit user workspace selection before scoped service operations. No Render service created.
 - Cloudflare dashboard access needs a usable authenticated session; the attempted read-only browser connection failed at proxy/network before login. No Cloudflare deployment possible until this is fixed.
 - Production OAuth database ownership and safe export route still need identifying; do not reuse the unrelated Supabase projects.
+
+
+## Cycle 10 — Cloudflare account access and dependency recheck (2026-11-13 ET / 2026-11-14 UTC)
+
+### Confirmed
+- The user's connected browser now exposes a signed-in Cloudflare account home page. Account dashboard access is confirmed; this is not yet confirmation of the Workers plan, payment-method status, or enabled resources.
+- Cloudflare's current official public materials advertise Workers Free with no credit card required and document 100,000 requests/day, 10 ms CPU time/request, 128 MB memory, 50 subrequests/request, and 6 simultaneous outgoing connections/request.
+- Hyperdrive is included on Workers Free with 100,000 database statements/day; when a free limit is exceeded, additional operations fail until reset rather than silently becoming unlimited.
+- The existing Railway OAuth PostgreSQL is its own service with a private-only service endpoint, no public domain, and a 1 GB persistent volume. Do not assume Cloudflare or Render can connect to that private hostname.
+- The Manager's environment-variable names include Discord credentials, manager bearer key, OAuth client ID/secret/redirect, issuer/resource URLs, database URL and host/user/password values, signing/encryption keys, and write flag. Values were not read or copied.
+- Render workspace metadata shows one workspace named "My Workspace" (tea-dbcqe7ss728c73fthlug). Its service tools explicitly require the user to choose a workspace before workspace-scoped operations; no Render resource was created.
+
+### Not completed / not claimed
+- The Cloudflare Workers & Pages page has not been inspected; current account page does not show existing Worker scripts, Hyperdrive configs, databases, KV, R2, or Queue resources.
+- The Cloudflare browser-control task remained non-terminal after 240 seconds. It yielded no completed resource inventory. No second automation run was launched.
+- No Cloudflare resources, plan changes, payment details, API tokens, secrets, DNS, or deployments were created or changed.
+- GitHub Actions CI remains unverified: prior runs returned startup_failure with zero jobs. This is not a code-test pass.
+- The migration branch's local/static invariants are not a substitute for TypeScript compilation, npm tests, Wrangler dry-runs, live database/OAuth tests, or deployment verification.
+
+### Next step
+- Inspect the signed-in Cloudflare account's Workers & Pages view, Workers plan, and billing status without changing settings. The user's connected browser can supply that view by opening:
+  https://dash.cloudflare.com/7738d94fbc5466ad91eb65045ee746f2/workers-and-pages
+- Only use Workers Free and zero-cost resources. Stop at any upgrade, paid-plan, payment-method, or card prompt.
+- Before deploying the Worker, fix and verify the Postgres/Hyperdrive binding in wrangler.jsonc, and define a secure migration route for the private Railway OAuth database. Keep the current Railway Manager and OAuth database available until the new endpoint passes real readiness, OAuth lifecycle, MCP read, controlled write, and rollback tests.
+- Preserve the separate LIVE/Events Gateway listener; do not combine it with the stateless Manager migration.
+- Do not create scheduled jobs or new cron processes.
