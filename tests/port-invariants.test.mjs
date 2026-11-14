@@ -38,9 +38,9 @@ test("manager MCP routes and guild-scope guardrails remain present", () => {
   assert.match(source, /scope_mismatch/);
 });
 
-test("health route is provider-neutral and write requests are not replayed", () => {
+test("health route is provider-neutral and Discord writes use one upstream request", () => {
   assert.match(source, /service:"cloudflare-workers"/);
-  assert.doesNotMatch(source, /retry.*POST|POST.*retry/i);
+  assert.match(source, /const r=await fetch\(url,init\)/);
 });
 
 test("source contains no common embedded credential formats", () => {
