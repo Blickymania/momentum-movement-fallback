@@ -160,3 +160,25 @@ Continue independent security and runtime-compatibility review of the isolated W
 
 ### Next execution step
 Continue reviewing Worker input validation, MCP request parsing, and OAuth redirect/state edge cases. Preserve no-retry semantics for any Discord write whose outcome is uncertain. Seek a local reproducible Node/Wrangler test path without a paid service or production mutation.
+
+
+## Bounded request parsing cycle — implemented and exercised
+
+### Changes
+- Added `readBoundedText`, which checks declared Content-Length, streams request chunks, tracks bytes, cancels the reader on overflow, and releases the reader lock.
+- Applied separate limits: MCP JSON-RPC requests 2 MiB; dynamic OAuth client registration 64 KiB; OAuth token and revocation form bodies 16 KiB each.
+- Oversized payloads are rejected with HTTP 413 rather than fully buffered and parsed.
+- Source change commit: `30b3545781e22b9986e7eea6852c97201497395c`.
+- During isolated V8 execution of the helper, caught a bug in the first implementation: the Content-Length decimal regex had an extra escape and rejected valid digit strings. Repaired it in commit `d9651a0cb67e2b6c0df22c9717f1f9b76739ef07`.
+- Added static tests for bounded streaming, endpoint-specific limits, 413 behavior, and decimal Content-Length validation. Latest test commit: `81d28db9386299893b94d2ece592c14e5a681de5`.
+- Read-back confirms 21 test cases and valid test-module syntax under isolated V8 parsing (Node imports and `import.meta` removed for parsing only).
+- Executed the actual extracted bounded-reader implementation in isolated V8 with mocked stream readers: valid 10-byte multi-chunk body returned `helloworld`; declared 11-byte body was rejected before reading; chunked overflow was rejected, stream canceled, and lock released. All five checks passed.
+- This does not substitute for the full Node test runner, TypeScript compiler, Wrangler build, or live Worker integration.
+
+### CI and source state
+- Latest push run for commit `81d28db9386299893b94d2ece592c14e5a681de5`: run `43542242326`, conclusion `startup_failure`, path `BuildFailed`; jobs endpoint returned an empty array.
+- No CI tests executed. Do not claim the test suite passes.
+- No production services, Discord resources, databases, Cloudflare resources, credentials, DNS, billing, or scheduler settings changed.
+
+### Next execution step
+Continue independent validation of request method/content-type handling, MCP JSON-RPC shape validation, OAuth endpoint error handling, and router request forwarding. Do not introduce retry behavior for any ambiguous write.
