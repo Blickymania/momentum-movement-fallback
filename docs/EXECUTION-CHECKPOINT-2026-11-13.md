@@ -227,3 +227,61 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 6. Implement and verify out-of-band hard-stop control for the old Gateway process before any standby login can occur.
 7. Deploy only preproduction control plane/runtime after account plan, cost, secrets and service scope are reviewed and explicitly authorized. Do not connect it to the production guild during preproduction.
 8. Run real edge tests, failover/failback, expired lease, DB/Worker outage, late login, duplicate side-effect, process kill, and rollback before any controlled production cutover.
+
+
+## Cycle 8 — Bot 005 event and outbound egress fencing adapters (source-only)
+
+### Implemented
+- Added implementation/discord-gateway-ownership-guards.mjs.
+- Added implementation/discord-gateway-ownership-guards.test.mjs.
+- Added implementation/fenced-discord-gateway-owner.mjs.
+- Added implementation/fenced-discord-gateway-owner.test.mjs.
+- Ownership guard wraps Discord client.login(), client.on(), client.once(), client.rest.request(), and the configured process fetch target.
+- Direct Gateway login and event listeners are denied until the supervisor supplies a live ownership assertion.
+- Every non-coordinator outbound fetch requires the active lease assertion. Railway hostnames (including the recovered coaching-workflow.railway.internal URL) and rlwy.net endpoints are rejected regardless of whether a lease is held.
+- The one-time event wrapper preserves listeners when an event fires before ownership exists; an event without ownership is dropped without consuming the once-listener.
+- The prepared owner adapter creates the Cloudflare lease client before global fetch is wrapped, installs egress guards immediately after Discord Client construction, and only allows the shared supervisor to invoke client.login().
+- A denied lease returns lease_unavailable and keeps the bot disconnected. Graceful shutdown revokes outbound calls, destroys the local client, then releases the exact owner/epoch lease.
+
+### Repairs discovered by tests
+- First guard test run exposed EventEmitter.once() internally calling .on(), which double-wrapped one-time listeners. Replaced it with an explicit once wrapper registered through the original on method.
+- A second test showed the one-time listener could be consumed before ownership when an event arrives early. The wrapper now checks ownership before removing itself, preserving the listener until the first authorized invocation.
+- The direct REST and fetch wrappers throw synchronously when lease ownership is missing/revoked; tests were updated to assert the synchronous fail-closed contract.
+- Added an unconditional Railway endpoint rejection so an active lease cannot accidentally re-enable the old in-cluster coaching dependency.
+
+### Verification
+- Reran the whole local suite under Node.js v22.16.0 with real Node SQLite for the Durable Object simulation and mocked Discord clients/HTTP transport.
+- Cloudflare Durable Object and Worker/client suite: 19 passed.
+- Ownership guard suite: 6 passed.
+- Prepared Discord owner adapter integration suite: 2 passed.
+- **Combined latest local test result: 27 passed, 0 failed.**
+- The prepared-owner test verifies guard installation, pre-lease listener suppression, lease acquisition before client.login, authorized REST/fetch while owned, egress revocation on shutdown, exact lease release, and no login when acquisition returns conflict.
+- These are isolated local tests. No real Discord.js package/runtime integration, Cloudflare edge deployment, real process kill, real network partition, or end-to-end production failover was tested.
+
+### Critical remaining integration constraints
+- The helper must be invoked immediately after constructing the Bot 005 Discord Client and before registering the source's application event listeners. It has not yet been inserted into the recovered Bot 005 application.
+- The exact deployed Discord.js version is not recorded in the recovered source snapshot. The helper requires a writable client.rest.request hook; if the runtime does not expose it, setup throws before Gateway login. Verify against the exact runtime package before preparing a candidate release.
+- A REST request already transmitted cannot be cancelled by this guard after lease loss. Side effects need handler-level fencing/idempotency and reconciliation.
+- The hard-coded coaching workflow endpoint is now explicitly denied by the guard; the service must be moved to a public HTTPS endpoint and configured before coaching handlers are available.
+- The out-of-band hard-stop controller is still absent. A lease or REST gate does not close a different process's already-open Gateway socket.
+
+### Latest verified state
+- Cloudflare lease control plane remains source-only and has 27 combined local tests passing.
+- PostgreSQL backend/migration remain unused source-only alternatives.
+- No Cloudflare resource, Worker, Durable Object namespace, service secret, plan, route, DNS, or billing setting has been created or modified.
+- Cloudflare account plan/usage browser inspection is still running with no findings returned; no account setting changed.
+- GitHub Actions remains blocked before job creation (startup_failure, empty job list). This new push will also be event-triggered; do not call hosted CI successful or infer a cause.
+- Render inventory remains inconclusive for services; no Render Postgres or Key Value instance was found.
+- Supabase remains Free with its two active OAuth-named projects; neither has been changed.
+- Bot 005 remains the sole live Gateway owner. No production changes, standby login, guild write, failover or failback test.
+- No billing authorization or paid provisioning.
+
+### Next actions
+1. Complete read-only Cloudflare account plan/namespace inventory; if browser inspection cannot finish, record unavailable and do not change account resources.
+2. Resolve Render service inventory and inspect candidate persistent worker configuration without creating resources.
+3. Identify the exact Discord.js/Bun runtime version for Bot 005 and run compatibility tests for client.login and client.rest.request interception.
+4. Migrate the coaching-workflow service and replace the hard-coded Railway URL with a required HTTPS environment setting; keep it disabled until target service parity is proven.
+5. Audit Discord Manager OAUTH_DATABASE_URL host without exposing the credential.
+6. Build a reviewed candidate copy of Bot 005 source with the guard installed immediately after Client construction, before all listeners, and the prepared owner at startup. Do not modify the recovered production snapshot or deploy to production.
+7. Implement an independent hard-stop controller with process/service identity and positive termination confirmation.
+8. Complete real Cloudflare preproduction namespace testing, exact runtime compatibility, PostgreSQL/SQLite coordination outage testing, failover/failback, side-effect idempotency, and rollback before production cutover.
