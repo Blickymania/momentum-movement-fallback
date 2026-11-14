@@ -206,3 +206,28 @@ Continue independent validation of request method/content-type handling, MCP JSO
 
 ### Next execution step
 Review MCP protocol method handling, error responses, OAuth client redirect registration, and the router's health/failover probes. Continue to avoid automatic replay of uncertain writes.
+
+
+## Safe-read router failover cycle — implemented
+
+### Changes
+- Router now tracks origins already attempted during a request.
+- If the selected origin fails at the transport layer, GET and HEAD requests may probe and forward to the next verified origin.
+- POST, PUT, PATCH, and DELETE are never replayed after a transport failure. The router returns 502 after the single attempt, preserving the no-duplicate-write rule.
+- Alternate origins are excluded after one attempt, preventing loops or duplicate attempts to the same origin.
+- Router source commit: `e7cb9bc349998c393108411b5973cdd12f0b8b30`.
+- Added static router tests for safe-method gating, alternate-origin verification, and duplicate-origin prevention. Test commit: `fd33281c6d245bca013ebef759de649fd1bf066a`.
+- Read-back verified all four invariants and 25 test cases. Isolated V8 syntax parsing of the test module succeeded.
+- No real router HTTP simulation, Node test runner, TypeScript compilation, or Wrangler dry-run has run.
+
+### CI
+- Latest observed push run: `43542381933`, commit `fd33281c6d245bca013ebef759de649fd1bf066a`, conclusion `startup_failure`, path `BuildFailed`.
+- Jobs returned: 0.
+- No passing CI evidence.
+
+### Production and scheduler
+- No production resource, database, Discord resource, Cloudflare resource, credentials, DNS, billing, or scheduler changed.
+- No cron, reminder, recurring automation, monitor, or centralized maintenance job created.
+
+### Next execution step
+Inspect and validate router status/readiness semantics, origin allowlisting, URL rewriting, and request forwarding headers. Then review the isolated Worker config and package/build assumptions for a reproducible local validation path.
