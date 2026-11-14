@@ -7,7 +7,7 @@
 - Separate secrets are required for Bot 005 and the independent Coaching Interaction Relay.
 - Required environment variables: DISCORD_BOT_TOKEN, AUTHORIZED_GUILD_ID, APPLICATION_ID, COACHING_BOT005_AUTH_SECRET, COACHING_RELAY_AUTH_SECRET, WRITES_ENABLED.
 - /readyz is a read-only health endpoint. Do not expose a public endpoint until both source secrets are provisioned and the candidate is deployed behind HTTPS.
-- Signed interactions are still deduplicated by Discord interaction ID; duplicate submissions are not reprocessed.
+- Interaction IDs are deduplicated by a process-local map. This does not survive workflow restarts; a durable idempotency store is a mandatory blocker before public exposure.
 - No production service, database, or deployment has been changed.
 
 ---
