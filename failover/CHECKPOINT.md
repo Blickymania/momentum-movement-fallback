@@ -41,6 +41,13 @@
 - The Role Monitor's current configured source is read-only and normalizes the actual `🛡️ Moderators` role name. Actual server categories do not include a Level 50 Lounge category; the Level 50 access role exists and the level-50 voice counter is under Community Stats. Runtime logs still show older expectations (singular Moderator and Level 50 Lounge category), so runtime/config drift is suspected. No Discord role or category was changed.
 - The project has 15 existing cron-scheduled services with distinct feature purposes. No new cron or recurring repair task was created.
 
+## Provider terms verified from first-party sources
+
+- **Botkeep primary candidate:** new-signup Free tier provides one workload slot, 512 MB RAM, 50% shared CPU (0.5 vCore), 1 GB storage, Bun, continuous runtime, no manual renewal, and explicitly no credit card. The provider describes the offer as beta and says it has no uptime SLA.
+- **Silly Development standby candidate:** Free tier provides Bun, 256 MB RAM, 25% CPU, 512 MB disk, no card, no trial, and no expiry/renewal. Its acceptable-use policy prohibits using the service as file storage, a media server, or CDN; only use it for the standby listener. The exact free-server count per account must be verified in the account panel; never create extra accounts to stack capacity.
+- **Cloudflare coordinator:** Workers Free is the default plan; SQLite-backed Durable Objects are supported on Free. Published limits include 100,000 DO requests/day, 13,000 GB-s/day, 100,000 SQL rows written/day, and 5 GB SQL storage. Free-plan operations fail when a limit is exceeded; do not enable paid Workers or paid overages. The account signup/payment-method prompt was not independently verified; if a card or paid subscription is demanded to enable the required Free feature, stop.
+- First-party references: [Botkeep](https://botkeep.cloud/), [Botkeep FAQ](https://botkeep.cloud/faq), [Silly Development terms](https://sillydev.co.uk/terms), [Silly Development acceptable-use policy](https://sillydev.co.uk/acceptable-use), [Cloudflare Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [Cloudflare Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
+
 ## Active failures and blockers
 
 ### Retired News Forum cleanup worker
@@ -64,7 +71,7 @@
 
 ## Exact next execution steps
 
-1. Verify whether the existing Cloudflare account/API credentials are usable without exposing or logging their values; if so, deploy the lease coordinator on Workers Free and verify health/auth endpoints.
+1. Add the three required GitHub Actions secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `LEASE_CONTROL_TOKEN`) and manually run `.github/workflows/deploy-dawn-dotta-lease.yml`; verify the returned Worker URL and `/health` endpoint. The connected Railway app redacts the existing environment values, so do not copy or expose them in chat.
 2. Revalidate current no-card Botkeep and Silly Development terms/availability; provision only if free eligibility and persistent runtime are confirmed.
 3. Run the GitHub failover tests in an authenticated repository context; record the actual workflow run and test counts. Do not mark CI passed based on file creation.
 4. Inspect backup-service configuration and determine whether the existing single scheduled Postgres backup can safely cover both PostgreSQL services without adding a second scheduler.
