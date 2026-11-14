@@ -56,7 +56,7 @@ test("prepared owner composes the Cloudflare lease client and deployment-specifi
 test("candidate Relay and Bot 005 are separate Gateway workloads, not a shared lease", async () => {
   const bot = await readFile(botPath, "utf8");
   const relay = await readFile(relayPath, "utf8");
-  assert.match(bot, /momentum-movement:bot-005-gateway/);
+  assert.match(bot, /prepareFencedDiscordGatewayOwner/);
   assert.match(relay, /raw Discord Gateway/);
   assert.doesNotMatch(relay, /prepareFencedDiscordGatewayOwner/);
 });
