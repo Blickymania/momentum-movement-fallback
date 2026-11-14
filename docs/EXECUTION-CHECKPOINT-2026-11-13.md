@@ -167,3 +167,63 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 6. Verify an external hard-stop/fencing controller can conclusively stop the old Gateway owner before a standby login.
 7. Apply the private schema migration only after provider approval, then run real PostgreSQL concurrency, lease-expiry, DB outage and stale-epoch tests.
 8. Only after primary and standby adapters, hard fencing, handler parity, idempotency and rollback are proven should controlled failover/failback be considered.
+
+
+## Cycle 7 — Cloudflare SQLite Durable Object control-plane candidate (source-only)
+
+### Implemented
+- Added `cloudflare/gateway-lease-coordinator.mjs`: a single fixed-scope SQLite Durable Object for `momentum-movement:discord-gateway`.
+- Added `cloudflare/worker.mjs`: bearer-authenticated HTTP front door with a public liveness route and an allowlist of four lease routes.
+- Added `cloudflare/wrangler.jsonc`: SQLite Durable Object class binding and initial namespace migration.
+- Added `implementation/cloudflare-gateway-lease-client.mjs`: bounded-timeout HTTPS client that rejects Railway/local/IP-literal hosts and maps HTTP 409 to a refused lease.
+- Refactored `implementation/gateway-owner-supervisor.mjs` to accept a generic `leaseStore` adapter while preserving the PostgreSQL implementation as an alternative. Startup, heartbeat, local Gateway destruction, and release can now call the Cloudflare client without a Postgres client library.
+- Added Durable Object SQLite tests and Worker/client integration tests.
+- The Cloudflare Durable Object now returns a consistent success envelope from `GET /lease/state`, enforces GET-only on that route, limits request bodies, validates safe fencing epochs, and stores/returns the epoch as text to avoid JavaScript integer precision loss.
+- Worker rejects lease service tokens outside 32–512 characters; client enforces the same bound.
+- Fixed a client base-URL path bug for root URLs, trailing-slash normalization, and trailing-dot localhost validation.
+- The Cloudflare code remains control plane only. It does not open a Discord Gateway or write to a Discord guild.
+
+### Tests and verification
+- Local Node.js v22.16.0 simulation harness used Node's real built-in SQLite engine plus a simulated Durable Object context, Worker namespace, and fetch boundary.
+- Durable Object/SQLite API tests: 9 passed.
+- Worker/client tests: 9 passed.
+- Supervisor-to-Worker-to-Durable-Object local end-to-end ownership test: 1 passed.
+- **Combined Cloudflare control-plane suite: 19 passed, 0 failed.**
+- Coverage includes competing-owner denial, same-owner reacquisition denial, expiry/monotonic epoch increment, owner+epoch-bound renewal and release, state-read precision, invalid TTL/scope/epoch, authentication, method allowlist, JSON errors, timeout fail-closed, root URL composition, secret length validation, and supervisor primary/standby acquisition ordering.
+- This is local simulation validation only. It is not a Cloudflare edge preview/runtime test and does not validate account plan, real namespace migrations, deployed secrets, real network partitions, or physical process fencing.
+- Updated `docs/CLOUDFLARE-LEASE-CONTROL-PLANE.md` and `docs/INDEPENDENT-HOSTING-ARCHITECTURE.md` with the revised candidate and 19-test result.
+
+### Cloudflare current-plan fit
+- Cloudflare's official documentation describes Durable Objects as single-threaded coordination primitives with private, persistent storage and SQLite transactions. SQLite-backed Durable Objects are available on Workers Free and Paid.
+- Published Free limits show 100,000 Worker requests/day, 100,000 Durable Object requests/day, 5 million SQLite row reads/day, 100,000 SQLite row writes/day, 5 GB storage, and 13,000 GB-s/day DO compute. If a limit is exhausted, that operation class fails until reset; the fail-closed lease logic must keep the standby disconnected and primary stop/close Gateway when renewal cannot complete.
+- Rough baseline: primary heartbeat each 10 sec = 8,640 writes/requests/day; standby state check each 15 sec = 5,760 reads/requests/day; approximately 14,400 combined daily requests before retries/other account traffic. This appears within published Free limits, but actual account plan and usage are not yet verified.
+- Cloudflare may remove the extra managed database fee for this control-plane use, but it does not supply the always-on Bot 005/standby runtime.
+- Official references: https://developers.cloudflare.com/durable-objects/platform/pricing/ ; https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/ ; https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/ ; https://developers.cloudflare.com/workers/platform/pricing/ ; https://developers.cloudflare.com/workers/platform/limits/
+- No Worker, Durable Object namespace, secret, route, DNS record, account plan, or billing setting has been created or modified.
+
+### GitHub Actions status
+- Most recent inspected run after the Cloudflare implementation commits: `43553376060`, head SHA `83c1222260e50cc2bcef0ab878d081887dd8626b`, push event, conclusion `startup_failure`; jobs endpoint returned an empty list.
+- Other immediately preceding runs `43553359701` and `43553352346` failed the same way.
+- No runner executed the test workflow. Do not report GitHub-hosted CI as passing and do not continue pushing commits solely to provoke the same startup failure. Exact account Actions plan/permission cause remains unknown; the prior browser attempt could not retrieve the private repository page.
+
+### Verified current state
+- Cloudflare SQLite Durable Object control-plane code and its worker/client adapter are committed but undeployed.
+- Cloudflare local simulation suite: 19/19 passed.
+- PostgreSQL lease backend remains source-only alternative; migration unapplied.
+- No independent runtime or production lease store has been selected/deployed.
+- Render service inventory remains inconclusive (`null`); no Render Postgres/Key Value listed.
+- Supabase Free organization retains two active OAuth-named projects; no re-use/upgrade/new project.
+- Cloudflare account plan and usage have not yet been verified; a read-only dashboard inspection was started, with no account setting changed.
+- Bot 005 remains sole production Gateway owner, untouched. It still has the hard-coded Railway-internal coaching-workflow URL and no supervisor integration.
+- Discord Manager OAuth DB host still unknown; no credentials exposed.
+- No external hard-stop controller exists yet. No standby Gateway session, production Discord write, live failover/failback, or physical process-fencing test has been performed.
+
+### Next steps
+1. Complete read-only Cloudflare account plan/usage and Durable Object inventory inspection. Do not create resources or change plan.
+2. Complete a read-only Render dashboard inventory to resolve the null service-list response.
+3. Select the persistent independent Gateway runtime only after reviewing actual always-on pricing and operational features.
+4. Migrate the Bot 005 coaching workflow internal dependency and audit the Discord Manager OAuth database host safely.
+5. Build a candidate Bot 005 adapter against the Cloudflare leaseStore interface on a separate review branch; gate every privileged event handler and side effect with ownership assertion/fencing.
+6. Implement and verify out-of-band hard-stop control for the old Gateway process before any standby login can occur.
+7. Deploy only preproduction control plane/runtime after account plan, cost, secrets and service scope are reviewed and explicitly authorized. Do not connect it to the production guild during preproduction.
+8. Run real edge tests, failover/failback, expired lease, DB/Worker outage, late login, duplicate side-effect, process kill, and rollback before any controlled production cutover.
