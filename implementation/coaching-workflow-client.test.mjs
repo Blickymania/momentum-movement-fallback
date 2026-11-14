@@ -80,7 +80,9 @@ test("uses the current global fetch at call time so the runtime ownership guard 
   const originalFetch = globalThis.fetch;
   const calls = [];
   const client = createCoachingWorkflowClient({
-    endpoint: "https://coaching.example.com/interaction"
+    endpoint: "https://coaching.example.com/interaction",
+    authSource: "bot005",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars"
   });
   globalThis.fetch = async (url, init) => {
     calls.push({ url: String(url), method: init.method });
