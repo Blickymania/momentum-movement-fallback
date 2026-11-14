@@ -75,7 +75,7 @@
 
 ## Exact next execution steps
 
-1. Add the three required GitHub Actions secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `LEASE_CONTROL_TOKEN`) and manually run `.github/workflows/deploy-dawn-dotta-lease.yml`; verify the returned Worker URL and `/health` endpoint. For the first deploy, Cloudflare requires Workers Admin scoped only to the Workers product; rotate the API token to Workers Editor scoped to this Worker afterward. The connected Railway app redacts existing variable values, so do not copy or expose them in chat.
+1. Add the three required GitHub Actions secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `LEASE_CONTROL_TOKEN`) and manually run `.github/workflows/deploy-dawn-dotta-lease.yml`; verify the returned Worker URL and `/health` endpoint. Prefer pre-creating the empty Worker in the Cloudflare Free dashboard and using a Workers Editor API token scoped only to that Worker. If the workflow creates the Worker from scratch, use Workers Admin scoped only to the Workers product for the first run, then immediately rotate to Worker-scoped Editor. The connected Railway app redacts existing variable values, so do not copy or expose them in chat.
 2. Revalidate current no-card Botkeep and Silly Development terms/availability; provision only if free eligibility and persistent runtime are confirmed.
 3. Run the GitHub failover tests in an authenticated repository context; record the actual workflow run and test counts. Do not mark CI passed based on file creation.
 4. Inspect backup-service configuration and determine whether the existing single scheduled Postgres backup can safely cover both PostgreSQL services without adding a second scheduler.
