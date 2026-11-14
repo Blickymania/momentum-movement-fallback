@@ -14,23 +14,75 @@ CREATE TABLE IF NOT EXISTS gateway_ownership (
   lease_until_ms INTEGER NOT NULL,
   heartbeat_at_ms INTEGER NOT NULL,
   deployment_id TEXT NOT NULL
-    CHECK (length(deployment_id) BETWEEN 1 AND 200)
+    CHECK (length(deployment_id) BETWEEN 1 AND 200),
+  fenced_owner_id TEXT,
+  fenced_epoch INTEGER,
+  fence_target_owner_id TEXT,
+  fence_target_deployment_id TEXT,
+  fence_verified_at_ms INTEGER,
+  fence_provider TEXT,
+  fence_proof_id TEXT
 )`;
 
 const ACQUIRE_SQL = `
+UPDATE gateway_ownership
+SET owner_id = ?,
+    fencing_epoch = fencing_epoch + 1,
+    lease_until_ms = ?,
+    heartbeat_at_ms = ?,
+    deployment_id = ?,
+    fenced_owner_id = NULL,
+    fenced_epoch = NULL,
+    fence_target_owner_id = NULL,
+    fence_target_deployment_id = NULL,
+    fence_verified_at_ms = NULL,
+    fence_provider = NULL,
+    fence_proof_id = NULL
+WHERE lease_scope = ?
+  AND lease_until_ms <= ?
+  AND fenced_owner_id = owner_id
+  AND fenced_epoch = fencing_epoch
+  AND fence_target_owner_id = ?
+  AND fence_target_deployment_id = ?
+RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch,
+          lease_until_ms, heartbeat_at_ms, deployment_id,
+          fenced_owner_id, CAST(fenced_epoch AS TEXT) AS fenced_epoch,
+          fence_target_owner_id, fence_target_deployment_id,
+          fence_verified_at_ms, fence_provider, fence_proof_id`;
+
+const BOOTSTRAP_SQL = `
 INSERT INTO gateway_ownership
-  (lease_scope, owner_id, fencing_epoch, lease_until_ms, heartbeat_at_ms, deployment_id)
+  (lease_scope, owner_id, fencing_epoch, lease_until_ms, heartbeat_at_ms,
+   deployment_id, fenced_owner_id, fenced_epoch, fence_target_owner_id,
+   fence_target_deployment_id, fence_verified_at_ms, fence_provider, fence_proof_id)
 VALUES
-  (?, ?, 1, ?, ?, ?)
-ON CONFLICT (lease_scope) DO UPDATE SET
-  owner_id = excluded.owner_id,
-  fencing_epoch = gateway_ownership.fencing_epoch + 1,
-  lease_until_ms = excluded.lease_until_ms,
-  heartbeat_at_ms = excluded.heartbeat_at_ms,
-  deployment_id = excluded.deployment_id
-WHERE gateway_ownership.lease_until_ms <= ?
-RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch, lease_until_ms,
-          heartbeat_at_ms, deployment_id`;
+  (?, '__bootstrap__', 0, ?, ?, '__bootstrap__',
+   '__bootstrap__', 0, ?, ?, ?, 'operator_attested', ?)
+ON CONFLICT (lease_scope) DO NOTHING
+RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch,
+          lease_until_ms, heartbeat_at_ms, deployment_id,
+          fenced_owner_id, CAST(fenced_epoch AS TEXT) AS fenced_epoch,
+          fence_target_owner_id, fence_target_deployment_id,
+          fence_verified_at_ms, fence_provider, fence_proof_id`;
+
+const FENCE_CONFIRM_SQL = `
+UPDATE gateway_ownership
+SET fenced_owner_id = owner_id,
+    fenced_epoch = fencing_epoch,
+    fence_target_owner_id = ?,
+    fence_target_deployment_id = ?,
+    fence_verified_at_ms = ?,
+    fence_provider = ?,
+    fence_proof_id = ?
+WHERE lease_scope = ?
+  AND owner_id = ?
+  AND fencing_epoch = ?
+  AND lease_until_ms <= ?
+RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch,
+          lease_until_ms, heartbeat_at_ms, deployment_id,
+          fenced_owner_id, CAST(fenced_epoch AS TEXT) AS fenced_epoch,
+          fence_target_owner_id, fence_target_deployment_id,
+          fence_verified_at_ms, fence_provider, fence_proof_id`;
 
 const RENEW_SQL = `
 UPDATE gateway_ownership
@@ -57,6 +109,9 @@ RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch, l
 const READ_SQL = `
 SELECT lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch, lease_until_ms,
        heartbeat_at_ms, deployment_id,
+       fenced_owner_id, CAST(fenced_epoch AS TEXT) AS fenced_epoch,
+       fence_target_owner_id, fence_target_deployment_id,
+       fence_verified_at_ms, fence_provider, fence_proof_id,
        lease_until_ms > ? AS lease_active
 FROM gateway_ownership
 WHERE lease_scope = ?`;
@@ -120,15 +175,84 @@ export class GatewayLeaseCoordinator {
     const deployment = requiredString(deploymentId, "deployment_id");
     const ttl = requiredTtl(ttlSeconds);
     const now = this.now();
+    const current = this.read(normalizedScope);
+    if (!current) throw new Error("lease_bootstrap_required");
+    if (current.lease_active === 1 || current.lease_active === true) return null;
+    if (current.fenced_owner_id !== current.owner_id ||
+        String(current.fenced_epoch) !== String(current.fencing_epoch) ||
+        current.fence_target_owner_id !== owner ||
+        current.fence_target_deployment_id !== deployment) {
+      throw new Error("hard_fence_required");
+    }
     return first(this.sql.exec(
       ACQUIRE_SQL,
-      normalizedScope,
       owner,
       now + ttl * 1000,
       now,
       deployment,
+      normalizedScope,
+      now,
+      owner,
+      deployment
+    ));
+  }
+
+  bootstrap({ scope, ownerId, deploymentId, proofId }) {
+    const normalizedScope = requiredString(scope, "scope");
+    if (normalizedScope !== LEASE_SCOPE) throw new TypeError("lease_scope_invalid");
+    const owner = requiredString(ownerId, "owner_id");
+    const deployment = requiredString(deploymentId, "deployment_id");
+    const proof = requiredString(proofId, "proof_id");
+    if (owner === "__bootstrap__" || deployment === "__bootstrap__") {
+      throw new TypeError("bootstrap_identity_invalid");
+    }
+    const now = this.now();
+    const row = first(this.sql.exec(
+      BOOTSTRAP_SQL,
+      normalizedScope,
+      now - 1,
+      now,
+      owner,
+      deployment,
+      now,
+      proof
+    ));
+    if (!row) throw new Error("lease_bootstrap_already_initialized");
+    return row;
+  }
+
+  confirmFence({
+    scope,
+    expectedOwnerId,
+    expectedFencingEpoch,
+    candidateOwnerId,
+    candidateDeploymentId,
+    provider,
+    proofId
+  }) {
+    const normalizedScope = requiredString(scope, "scope");
+    if (normalizedScope !== LEASE_SCOPE) throw new TypeError("lease_scope_invalid");
+    const expectedOwner = requiredString(expectedOwnerId, "expected_owner_id");
+    const candidateOwner = requiredString(candidateOwnerId, "candidate_owner_id");
+    const candidateDeployment = requiredString(candidateDeploymentId, "candidate_deployment_id");
+    const fenceProvider = requiredString(provider, "fence_provider");
+    const proof = requiredString(proofId, "proof_id");
+    const epoch = requiredEpoch(expectedFencingEpoch);
+    const now = this.now();
+    const row = first(this.sql.exec(
+      FENCE_CONFIRM_SQL,
+      candidateOwner,
+      candidateDeployment,
+      now,
+      fenceProvider,
+      proof,
+      normalizedScope,
+      expectedOwner,
+      epoch,
       now
     ));
+    if (!row) throw new Error("lease_fence_not_confirmed");
+    return row;
   }
 
   renew({ scope, ownerId, fencingEpoch, deploymentId, ttlSeconds = DEFAULT_TTL_SECONDS }) {
@@ -187,6 +311,8 @@ export class GatewayLeaseCoordinator {
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
     const paths = {
+      "/lease/bootstrap": value => this.bootstrap(value),
+      "/lease/fence/confirm": value => this.confirmFence(value),
       "/lease/acquire": value => this.acquire(value),
       "/lease/renew": value => this.renew(value),
       "/lease/release": value => this.release(value)
@@ -204,7 +330,7 @@ export class GatewayLeaseCoordinator {
     }
 
     try {
-      const result = action(body);
+      const result = await action(body);
       if (url.pathname === "/lease/acquire" && !result) {
         return json({ ok: false, reason: "lease_unavailable" }, 409);
       }
@@ -216,7 +342,13 @@ export class GatewayLeaseCoordinator {
       const reason = error instanceof Error && /^[a-z0-9_]{1,80}$/.test(error.message)
         ? error.message
         : "lease_request_invalid";
-      return json({ error: reason }, 400);
+      const conflicts = new Set([
+        "lease_bootstrap_required",
+        "lease_bootstrap_already_initialized",
+        "hard_fence_required",
+        "lease_fence_not_confirmed"
+      ]);
+      return json({ ok: false, reason }, conflicts.has(reason) ? 409 : 400);
     }
   }
 }
@@ -224,6 +356,8 @@ export class GatewayLeaseCoordinator {
 export const leaseCoordinatorSqlForTests = Object.freeze({
   TABLE_SQL,
   ACQUIRE_SQL,
+  BOOTSTRAP_SQL,
+  FENCE_CONFIRM_SQL,
   RENEW_SQL,
   RELEASE_SQL,
   READ_SQL
