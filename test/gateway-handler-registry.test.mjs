@@ -42,8 +42,6 @@ function event(type, payload) {
 test("routes known feature prefixes to exactly one owner", () => {
   const registry = createGatewayHandlerRegistry(manifest());
   const cases = [
-    ["cw:live:open", "live-events-listener"],
-    ["ln2:post", "live-now-v2"],
     ["ddxp:my", "discord-engagement-engine"],
     ["gift:start", "gift-assist"],
     ["fclub:manual", "fan-club-level-up"],
@@ -59,6 +57,10 @@ test("routes known feature prefixes to exactly one owner", () => {
     assert.equal(result.status, "routed", customId);
     assert.deepEqual(result.handlers, [owner], customId);
   }
+  const listener = createGatewayHandlerRegistry(manifest({ livePublisher: "live-events-listener" }));
+  assert.deepEqual(listener.route(event("INTERACTION_CREATE", interaction("cw:live:open"))).handlers, ["live-events-listener"]);
+  const shadow = createGatewayHandlerRegistry(manifest({ livePublisher: "live-now-v2" }));
+  assert.deepEqual(shadow.route(event("INTERACTION_CREATE", interaction("ln2:post"))).handlers, ["live-now-v2"]);
 });
 
 test("resolves the uniprof collision using its exact Fan Club hub message", () => {
