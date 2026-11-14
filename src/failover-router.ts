@@ -107,7 +107,7 @@ export default {
     if (!selected) return json({ error: "no_verified_manager_origin_available" }, 503);
 
     if (url.pathname === "/readyz" && request.method === "GET") {
-      return json({ status: "ready", manager: MANAGER_NAME, selectedOrigin: selected.name });
+      return json({ status: "ready", manager: MANAGER_NAME, discordVerified: true, selectedOrigin: selected.name });
     }
 
     // Forward writes to one selected origin exactly once. Only GET/HEAD may
