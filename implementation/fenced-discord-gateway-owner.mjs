@@ -20,6 +20,7 @@ export function prepareFencedDiscordGatewayOwner({
   ownerId,
   leaseCoordinatorUrl,
   leaseServiceToken,
+  leaseStore: suppliedLeaseStore,
   ttlSeconds = 30,
   heartbeatIntervalMs = 10000,
   renewTimeoutMs = 7000,
@@ -42,11 +43,15 @@ export function prepareFencedDiscordGatewayOwner({
 
   // Create the remote store before wrapping global fetch so the client captures
   // its dedicated lease transport. The guard exempts only this public HTTPS origin.
-  const leaseStore = createCloudflareGatewayLeaseStore({
+  const leaseStore = suppliedLeaseStore || createCloudflareGatewayLeaseStore({
     baseUrl: leaseCoordinatorUrl,
     serviceToken: leaseServiceToken,
     fetchFn
   });
+  if (!leaseStore || typeof leaseStore.acquire !== "function" ||
+      typeof leaseStore.renew !== "function" || typeof leaseStore.release !== "function") {
+    throw new TypeError("lease_store_contract_invalid");
+  }
   const guards = installGatewayOwnershipGuards({
     client,
     leaseCoordinatorUrl,
@@ -131,7 +136,7 @@ export function prepareFencedDiscordGatewayOwner({
                 reject(new Error("gateway_start_aborted"));
               };
               signal.addEventListener("abort", onAbort, { once: true });
-                    Promise.resolve()
+              Promise.resolve()
                 .then(() => client.login(botToken))
                 .then(value => {
                   cleanup();
