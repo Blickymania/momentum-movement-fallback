@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dawn-dotta-manager-failover",
+  "main": "src/failover-router.ts",
+  "compatibility_date": "2026-11-13",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": {
+    "RAILWAY_FALLBACK_ORIGIN": "https://dawn-dotta-discord-manager-production.up.railway.app"
+  }
+}
