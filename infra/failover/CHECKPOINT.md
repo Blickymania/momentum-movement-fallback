@@ -156,3 +156,45 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 3. If local/CI tests pass, request only the Northflank account-side setup needed to inspect its Sandbox resource estimate; stop before any card or paid-plan prompt.
 4. Identify the production OAuth database owner without exposing credentials, then produce an isolated migration/restore plan.
 5. Continue to a pre-production Northflank deployment only when account access, free budget, DB isolation, and secrets are available; keep the live Railway Manager untouched.
+
+
+## Cycle 12 — shared OAuth database fault-domain audit and test-gate review (2026-11-13 ET / 2026-11-14 UTC)
+
+### New critical architecture finding
+- A standalone Northflank PostgreSQL addon is not automatically a safe shared OAuth store for the Northflank, Railway, Cloudflare, and Render Manager origins.
+- Northflank addons are private to the project by default. Public TLS TCP access is available for supported PostgreSQL addons, but enabling it is a deliberate security/network decision. The Railway and other fallback origins do not automatically inherit Northflank private-network access.
+- A Northflank-only database remains in the same provider fault domain as the Northflank Manager. If Northflank itself has a platform outage, both compute and that database can fail together.
+- The router's readiness SELECT 1 check proves only that the candidate can reach a database. It does not prove it is the same logical OAuth dataset as the live Manager or that replication is current.
+- The Northflank runbook now blocks provisioning an isolated Northflank OAuth database as the production store. It requires one shared, recoverable OAuth data plane reachable by all active/fallback origins, row-count and canonical digest reconciliation, OAuth lifecycle tests, and restore validation before routing.
+- Neon Free was evaluated only as a possible test database: official current documentation lists 100 CU-hours/project/month, 1 GB/project storage, 5 GB egress and scale-to-zero after five minutes. This is not accepted as a production always-on failover database. No Neon project was created.
+- No independent shared production PostgreSQL provider has been selected or verified. This remains a hard external dependency and prevents a safe Northflank traffic cutover.
+
+### Additional implementation and repairs
+- Router readiness now propagates the selected Manager origin's actual oauthDatabaseVerified status; it no longer reports true unconditionally when the selected origin is the legacy Railway Manager.
+- Readiness probes are cached for 5 seconds per candidate and concurrent probes for the same origin are coalesced. The cache is a load/latency optimization only; it is not a lease or authorization primitive.
+- The router test suite now checks the selected origin's database-verification propagation and probe-cache behavior; duplicate test blocks were removed and the original readiness matcher corrected.
+- The Northflank deployment guide documents the shared OAuth data-plane/fault-domain requirement and the decision to leave NORTHFLANK_MANAGER_ORIGIN unset until proven.
+- Static credential-pattern scan of the modified Manager, Worker, router, test, workflow, and Northflank deployment files: no Discord-token-like strings, GitHub tokens, private-key blocks, or static Bearer credentials found.
+- Source comparison confirmed the Manager and Worker only differ from the previous migration branch by the intended readiness/auth compatibility additions; the router has the intended new provider priority, DB-status propagation, safe-read retries, and probe caching.
+
+### Test and execution environment status
+- GitHub Actions has triggered on every push to the Northflank branch, but the latest workflow run 43556031739 ended in startup_failure; the jobs endpoint returned total_count: 0 and no job logs were available. The previous 17 branch runs have the same zero-job startup failure pattern.
+- This is not a source-test failure, and it is not a passing test. The GitHub runner never began.
+- Execution environment inventory: Node.js v22.16.0 and npm 10.9.2 are present; Bun and Docker CLIs are unavailable. No complete local project checkout/dependency install was performed in this tool environment, so Node suite, TypeScript typecheck, Wrangler dry-runs, and Docker image build are not claimed as passed.
+- No Northflank account provisioning, database creation, secret upload, payment method, DNS, Cloudflare Worker deployment, Render deployment, Railway production change, or Discord write was made.
+- No scheduled automation, cron, keepalive, or recurring repair was created.
+
+### Last verified production state
+- Railway Manager remains connected with verified bot/guild identity and is still the only known working production Manager origin.
+- Railway production Manager service and its deployment were not modified.
+- Railway variable values remain redacted by the connected OAuth integration; the current production OAuth database host and precise database owner remain unknown.
+- Core Shadow remains a separate, older read-only Bot 005 Gateway preflight service with takeover disabled; not part of this Manager HTTP failover cutover.
+- Existing staged News Forum cleanup patch remains untouched.
+
+### Exact next execution sequence
+1. Diagnose the GitHub Actions runner startup failure through account/repository Actions settings or GitHub support; there are no job logs from which to infer a code/YAML cause.
+2. Obtain authenticated Northflank account access and inspect the Sandbox resource estimator, database minimum resources, and no-card/no-upgrade state. Stop before any card or paid-plan prompt.
+3. Identify the production Dawn OAuth database owner securely (without reading or printing credentials) and decide the shared, provider-independent database topology.
+4. Only after the shared database, data-plane identity, backup/restore, and provider access path are proven, deploy Northflank as an isolated preproduction Manager with writes disabled.
+5. Test MCP discovery, authenticated status/audit, OAuth registration/PKCE/token lifecycle, database outage handling, controlled writes, origin routing, failback, and rollback.
+6. Keep Northflank origin unset and the live Railway Manager unchanged until all gates pass.
