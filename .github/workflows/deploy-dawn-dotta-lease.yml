@@ -37,10 +37,12 @@ jobs:
         run: node --test failover/tests/*.test.mjs
       - name: Install Wrangler
         run: npm install --global wrangler@4
-      - name: Configure coordinator secret
+      - name: Deploy SQLite Durable Object coordinator with protected secret
         shell: bash
         run: |
-          set -eu
-          printf '%s' "$LEASE_CONTROL_TOKEN" | wrangler secret put LEASE_CONTROL_TOKEN --config failover/lease-control/wrangler.jsonc
-      - name: Deploy SQLite Durable Object coordinator
-        run: wrangler deploy --config failover/lease-control/wrangler.jsonc
+          set -euo pipefail
+          secret_file="$RUNNER_TEMP/momentum-movement-worker-secrets.env"
+          trap 'rm -f "$secret_file"' EXIT
+          umask 077
+          printf 'LEASE_CONTROL_TOKEN=%s\n' "$LEASE_CONTROL_TOKEN" > "$secret_file"
+          wrangler deploy --config failover/lease-control/wrangler.jsonc --secrets-file "$secret_file"
