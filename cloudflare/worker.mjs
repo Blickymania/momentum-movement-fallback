@@ -91,6 +91,31 @@ async function claimCoachingInteraction(request, env) {
     return json({ ok: true, claimed: payload.claimed, duplicate: !payload.claimed });
   } catch { return json({ error: "coaching_claim_unavailable" }, 503); }
 }
+async function healthCoachingIdempotency(request, env) {
+  const token = env.COACHING_IDEMPOTENCY_TOKEN || "";
+  if (typeof token !== "string" || token.length < 32 || token.length > 512) {
+    return json({ error: "coaching_idempotency_not_configured" }, 503);
+  }
+  const authorization = request.headers.get("authorization") || "";
+  const candidate = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!await sameSecret(candidate, token)) return json({ error: "unauthorized" }, 401);
+  let stub;
+  try { stub = coachingIdempotencyStub(env); }
+  catch { return json({ error: "coaching_idempotency_binding_missing" }, 503); }
+  try {
+    const response = await stub.fetch(new Request("https://coaching-idempotency.internal/healthz"));
+    let payload;
+    try { payload = await response.json(); }
+    catch { throw new Error("coaching_idempotency_health_response_invalid"); }
+    if (!response.ok || payload?.status !== "ok" ||
+        payload?.service !== "coaching-interaction-idempotency" || payload?.ready !== true) {
+      throw new Error("coaching_idempotency_not_ready");
+    }
+    return json({ status: "ok", service: "coaching-interaction-idempotency", ready: true });
+  } catch {
+    return json({ error: "coaching_idempotency_unavailable" }, 503);
+  }
+}
 async function internalFenceConfirm(stub, input) {
   const response = await stub.fetch(new Request("https://lease.internal/lease/fence/confirm", {
     method: "POST",
@@ -250,20 +275,23 @@ export default {
     const bootstrapRoute = path === "/lease/bootstrap";
     const fenceRequestRoute = path === "/fence";
     const coachingClaimRoute = path === "/coaching/interaction/claim";
+    const coachingHealthRoute = path === "/coaching/interaction/healthz";
 
-    if (!standardRoutes.has(path) && !bootstrapRoute && !fenceRequestRoute && !coachingClaimRoute) {
+    if (!standardRoutes.has(path) && !bootstrapRoute && !fenceRequestRoute &&
+        !coachingClaimRoute && !coachingHealthRoute) {
       return json({ error: "not_found" }, 404);
     }
 
-    if (path === "/lease/state" && request.method !== "GET") {
+    if ((path === "/lease/state" || coachingHealthRoute) && request.method !== "GET") {
       return json({ error: "method_not_allowed" }, 405);
     }
-    if (path !== "/lease/state" && request.method !== "POST") {
+    if (path !== "/lease/state" && !coachingHealthRoute && request.method !== "POST") {
       return json({ error: "method_not_allowed" }, 405);
     }
 
     if (fenceRequestRoute) return fenceCandidate(request, env);
     if (coachingClaimRoute) return claimCoachingInteraction(request, env);
+    if (coachingHealthRoute) return healthCoachingIdempotency(request, env);
 
     // Bootstrap is an operator-only path; Bot 005 and standby receive neither
     // this credential nor the Render API key.
