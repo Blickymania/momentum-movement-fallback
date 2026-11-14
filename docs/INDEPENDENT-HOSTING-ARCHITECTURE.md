@@ -133,3 +133,42 @@ The confirmed Render workspace is `My Workspace` (`tea-dbcqe7ss728c73fthlug`). I
 Render's current public pricing lists its smallest persistent service/background-worker compute at $7/month and its smallest paid Postgres compute at $6/month. That gives a reference floor of about $13/month for one persistent process plus one Postgres database, excluding usage or workspace-specific costs. Render's Free Postgres expires after 30 days, has no backups, and can be restarted/maintained at any time; Free web services have resource and instance-hour limits. Do not use those free resources as production failover coordination or an always-on standby. Sources: https://render.com/pricing and https://render.com/docs/free.
 
 No Render or Supabase resources have been created, upgraded, paused, or modified. No billing authorization has been given or used.
+
+
+## Gateway owner supervisor — source-only candidate
+
+The repository now contains `implementation/gateway-owner-supervisor.mjs`. It composes the shared lease module into a strict startup/shutdown sequence:
+
+1. Acquire the independent lease first.
+2. Do not call Gateway login when lease acquisition returns no row.
+3. Start heartbeat supervision and a bounded renewal timeout before login.
+4. Race Gateway login against lease-loss notification.
+5. Gate adapter side effects with `assertOwned()`; handler integration remains a separate required change.
+6. On renewal loss or timeout, immediately invoke the local Gateway destroy callback. If a late login resolves after lease loss, issue another destroy.
+7. On graceful shutdown, stop heartbeat, destroy the local Gateway, then release only the matching owner/fencing epoch.
+
+The heartbeat timer is referenced so an active owner process does not exit silently while supervising its lease. Every process instance must use a fresh unique owner ID. The destroy callback must tolerate invocation during connect and after a late connection completion.
+
+**This is not production integration.** The recovered Bot 005 startup still calls `client.login(token)` directly. The supervisor does not stop a different process or prove an already-open socket is closed; the external hard-stop controller is still required. It must not be deployed as an active standby owner.
+
+## Private coordination schema
+
+A source-only migration is committed at `migrations/001_gateway_ownership.sql`. It creates `failover.gateway_ownership` in a non-public schema, applies length and positive-epoch constraints, and revokes schema/table permissions from `PUBLIC`. Runtime SQL explicitly qualifies the private schema. No database has had this migration applied.
+
+The shared lease module now bootstraps the schema/table/revoke as separate SQL statements and provides atomic acquisition, owner/epoch-bound renewal/release, database-clock expiry, and fail-closed heartbeat behavior. Active leases cannot be reacquired even by the same owner ID.
+
+Local Node.js v22.16.0 isolated test result for the current lease + supervisor test set: 15 passed, 0 failed. A separate preflight suite previously passed 8/8. All use fake database responses or injected adapters; none proves live PostgreSQL serialization, real Gateway shutdown, or physical process fencing.
+
+## GitHub Actions diagnosis update
+
+The latest observed run `43552702634` for commit `35aa10ea525e02645a11bd0be3cc4c0c0098c1b8` still ended `startup_failure` with zero jobs. A browser attempt to inspect the private repository and Actions settings failed with `ERR_SOCKS_CONNECTION_FAILED`; its secure sign-in card expired. No exact startup reason or repository Actions permission setting was returned, and no settings were changed. Do not guess at a billing, policy, permissions, or YAML cause.
+
+## Updated failover blockers
+
+- No independent coordination database has been selected or connected.
+- Render service inventory remains inconclusive; Postgres and Key Value inventory results were empty.
+- Supabase Free already has two active OAuth-named projects; neither is to be repurposed.
+- Bot 005 has not been integrated with the supervisor and still contains a hard-coded Railway-internal coaching workflow URL.
+- The Discord Manager's `OAUTH_DATABASE_URL` host remains unknown; do not infer it is hosted on Railway.
+- No external hard-stop controller has been implemented or verified.
+- No standby runtime has been deployed, and no Gateway takeover or failback test has been run.
