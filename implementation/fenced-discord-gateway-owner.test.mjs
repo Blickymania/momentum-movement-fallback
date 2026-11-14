@@ -151,3 +151,37 @@ test("prepared gateway stays disconnected when Cloudflare denies its lease", asy
   assert.equal(prepared.ready, false);
   assert.equal(prepared.guards.revoked, true);
 });
+
+
+test("graceful shutdown aborts a pending Gateway login and releases the acquired lease", async () => {
+  const client = fakeClient();
+  let loginStartedResolve;
+  const loginStarted = new Promise(resolve => { loginStartedResolve = resolve; });
+  client.login = async () => {
+    client.loginCount++;
+    loginStartedResolve();
+    return new Promise(() => {});
+  };
+  const leaseTransport = makeLeaseTransport();
+  const prepared = prepareFencedDiscordGatewayOwner({
+    client,
+    botToken: "fake-bot-token-1234567890",
+    deploymentId: "candidate-deploy",
+    ownerId: "process-instance-shutdown",
+    leaseCoordinatorUrl: "https://lease.example.com",
+    leaseServiceToken: "x".repeat(48),
+    fetchFn: leaseTransport.fetch,
+    fetchTarget: fakeFetchTarget(),
+    heartbeatIntervalMs: 10000
+  });
+
+  const startPromise = prepared.start();
+  await loginStarted;
+  const stopped = await prepared.shutdown("SIGTERM");
+  assert.equal(stopped.released, true);
+  assert.equal(client.destroyCount, 1);
+  assert.equal(prepared.ready, false);
+  await assert.rejects(() => startPromise, /gateway_start_aborted/);
+  assert.equal(leaseTransport.calls.filter(x => x.path === "/lease/acquire").length, 1);
+  assert.equal(leaseTransport.calls.filter(x => x.path === "/lease/release").length, 1);
+});
