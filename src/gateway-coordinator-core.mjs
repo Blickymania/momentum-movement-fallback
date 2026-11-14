@@ -115,6 +115,7 @@ export class GatewayCoordinatorCore {
     scheduleAlarm,
     verifyIdentity = async () => true,
     fingerprintToken,
+    handlerRegistry,
     log = () => {},
   } = {}) {
     if (!storage || typeof storage.get !== "function" ||
@@ -125,6 +126,7 @@ export class GatewayCoordinatorCore {
         typeof scheduleAlarm !== "function" || typeof now !== "function" ||
         typeof random !== "function" || typeof verifyIdentity !== "function" ||
         (fingerprintToken !== undefined && typeof fingerprintToken !== "function") ||
+        (handlerRegistry !== undefined && typeof handlerRegistry.route !== "function") ||
         typeof log !== "function") {
       throw new TypeError("Gateway coordinator dependencies are incomplete");
     }
@@ -137,6 +139,7 @@ export class GatewayCoordinatorCore {
     this.random = random;
     this.scheduleAlarm = scheduleAlarm;
     this.verifyIdentity = verifyIdentity;
+    this.handlerRegistry = handlerRegistry ?? null;
     this.fingerprintToken = fingerprintToken ?? (async (token) => {
       const cryptoImpl = globalThis.crypto;
       if (!cryptoImpl?.subtle) throw new Error("Web Crypto is required for credential isolation");
@@ -474,14 +477,28 @@ export class GatewayCoordinatorCore {
           if (!session.sessionId || !Number.isSafeInteger(decision.sequence)) {
             throw new Error("gateway_dispatch_without_ready_session");
           }
-          try {
-            await inbox.enqueueDispatch({
-              guildId: this.getDefinition(id).guildId,
-              sessionId: session.sessionId,
-              sequence: decision.sequence,
+          const event = {
+            guildId: this.getDefinition(id).guildId,
+            sessionId: session.sessionId,
+            sequence: decision.sequence,
+            eventType: decision.eventType,
+            payload: frame.d ?? {},
+          };
+          const route = this.handlerRegistry?.route({
+            eventType: event.eventType,
+            payload: event.payload,
+          });
+          if (route?.status === "ignored") {
+            await inbox.advanceSequence(session.sessionId, decision.sequence);
+            this.log("gateway_dispatch_intentionally_ignored", {
+              clientId: id,
               eventType: decision.eventType,
-              payload: frame.d ?? {},
+              reason: route.reason,
             });
+            break;
+          }
+          try {
+            await inbox.enqueueDispatch(event);
           } catch (error) {
             if (error instanceof InboxFullError) {
               state.status = "queue_full";
