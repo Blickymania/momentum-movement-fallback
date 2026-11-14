@@ -128,7 +128,16 @@ test("verifies candidate running, suspends previous service, polls state, then c
   assert.equal(confirmations[0].candidateOwnerId, "standby-owner");
   assert.equal(confirmations[0].candidateDeploymentId, "standby-deploy");
   assert.equal(confirmations[0].provider, "render-service-suspended");
-  assert.match(confirmations[0].proofId, /render-suspend:primary-deploy:srv-primary-12345678:/);
+  assert.match(confirmations[0].proofId, /^render-suspend-v1:[a-f0-9]{64}$/);
+  assert.ok(confirmations[0].proofId.length <= 200);
+  const repeated = await fencer.fenceExpiredOwner({
+    leaseStore: { read: async () => inactiveLease() },
+    candidateOwnerId: "standby-owner",
+    candidateDeploymentId: "standby-deploy",
+    confirmFence: async input => { confirmations.push(input); return { ok: true }; }
+  });
+  assert.equal(repeated.stopProof.alreadySuspended, true);
+  assert.equal(confirmations[1].proofId, confirmations[0].proofId);
   assert.equal(render.calls.filter(x => x.method === "POST").length, 1);
 });
 
