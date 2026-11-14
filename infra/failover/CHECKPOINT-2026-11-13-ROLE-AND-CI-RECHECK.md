@@ -352,3 +352,38 @@ Continue investigating a genuine executable build path or a runner-side cause fo
 
 ### Next execution step
 Continue security review of OAuth client registration and persistence growth, then inspect the full source diff for any regression from request parsing, scope defaults, and router failover changes.
+
+
+## OAuth persistence-retention cycle — bounded request-driven cleanup
+
+### Implemented
+- Added indexes on login-request and authorization-code expiration timestamps.
+- Added a request-driven cleanup function guarded by a PostgreSQL transaction-scoped advisory lock. It is invoked at most once per 24 hours per Worker isolate after OAuth schema readiness; no cron, timer, queue, or scheduled process is used.
+- Cleanup deletes at most 250 rows per table per run:
+  - login requests expired for more than 1 day;
+  - authorization codes expired for more than 1 day;
+  - access tokens expired or revoked for more than 7 days;
+  - refresh tokens expired or revoked for more than 7 days.
+- Cleanup failure is logged and does not block OAuth requests. Client registrations are intentionally retained; this cleanup does not revoke or delete active credentials.
+- Source change commit: `807178351a6898825aed466ad99981fb13ba0f53`.
+- Added a static invariant test for advisory locking, bounded batches, 24-hour throttle, and best-effort failure behavior. Test commit: `2557a598a100810289bef5e7f44ac81fc47efd66`.
+
+### Tests
+- Executed the actual extracted cleanup function with mocked transaction/database dependencies:
+  - lock granted → transaction opens, lock query runs first, four bounded delete statements execute;
+  - lock denied → only the lock query runs and no deletes execute.
+- All four cleanup unit checks passed.
+- Re-executed all static source-test callbacks against current read-back Worker/router source: **32 executed, 32 passed, 0 failed**.
+- This is mocked cleanup logic and isolated V8 harness testing, not a real PostgreSQL integration test. Native Node test runner, TypeScript, Wrangler, and live OAuth DB tests remain unexecuted.
+
+### CI
+- Latest observed run: `43542871690`, commit `2557a598a100810289bef5e7f44ac81fc47efd66`, conclusion `startup_failure`, path `BuildFailed`.
+- Jobs returned: 0.
+- GitHub Actions continues to fail before job creation.
+
+### Production and scheduler
+- No production database or service was connected or modified; cleanup code is only in the isolated migration branch.
+- No scheduler, cron, reminder, monitor, or recurring automation was created. Cleanup is opportunistic on normal OAuth requests only.
+
+### Next execution step
+Run a full source diff review focused on OAuth cleanup, schema migration safety, request-local DB lifetime, and concurrency. Then continue seeking a real PostgreSQL test environment and actual Node/TypeScript/Wrangler execution.
