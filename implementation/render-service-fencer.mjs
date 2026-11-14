@@ -162,9 +162,21 @@ export function createRenderServiceFencer({
     const stopProof = await ensureSuspended(previousServiceId);
     // Deterministic for this exact former owner/epoch and candidate so a
     // retried confirmation is idempotent after an HTTP response is lost.
-    const proofId = "render-suspend:" + oldDeployment + ":" +
-      current.owner_id + ":" + current.fencing_epoch + ":" +
-      candidateDeployment + ":" + candidateOwner + ":" + stopProof.serviceId;
+    const proofMaterial = [
+      "render-suspend-v1",
+      oldDeployment,
+      current.owner_id,
+      current.fencing_epoch,
+      candidateDeployment,
+      candidateOwner,
+      stopProof.serviceId
+    ].join("\\n");
+    const digest = new Uint8Array(await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(proofMaterial)
+    ));
+    const proofId = "render-suspend-v1:" +
+      Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
 
     const confirmed = await confirmFence({
       scope: current.lease_scope,
