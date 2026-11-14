@@ -54,12 +54,19 @@ export function createCloudflareGatewayLeaseStore({
         signal
       });
 
-      if (response.status === 409) return null;
-      if (!response.ok) throw new Error("lease_coordinator_http_" + response.status);
-
       let payload;
       try { payload = await response.json(); }
       catch { throw new Error("lease_coordinator_response_invalid"); }
+
+      if (response.status === 409) {
+        if (payload?.reason === "lease_unavailable" || payload?.reason === "lease_not_owned") return null;
+        const reason = typeof payload?.reason === "string" &&
+          /^[a-z0-9_]{1,80}$/.test(payload.reason)
+          ? payload.reason
+          : "conflict";
+        throw new Error("lease_coordinator_" + reason);
+      }
+      if (!response.ok) throw new Error("lease_coordinator_http_" + response.status);
 
       if (payload?.ok !== true || (payload.lease !== null && typeof payload.lease !== "object")) {
         throw new Error("lease_coordinator_response_invalid");
@@ -67,7 +74,7 @@ export function createCloudflareGatewayLeaseStore({
       return payload.lease;
     } catch (error) {
       if (error instanceof Error &&
-          /^lease_coordinator_(http_\d{3}|response_invalid)$/.test(error.message)) {
+          /^lease_coordinator_(http_\d{3}|response_invalid|[a-z0-9_]{1,80})$/.test(error.message)) {
         throw error;
       }
       if (controller.signal.aborted) throw new Error("lease_coordinator_timeout");
