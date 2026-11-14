@@ -269,3 +269,12 @@ The Durable Object now enforces the deployment-prefixed owner ID directly at sto
 - `confirmFence` verifies the existing owner ID is bound to the current row's deployment and the candidate owner ID is bound to the candidate deployment before recording any proof.
 - A mismatched candidate or old owner is rejected before the fencing update.
 This prevents bypassing the Worker-only owner-prefix check by calling the Durable Object or internal routes directly.
+
+
+## Fence request timeout and source audit update
+
+The bot-facing Cloudflare fence requester now has a 30-second default timeout. The Worker-side Render fencer allows 15 seconds for suspension-state polling, and each Render service GET/POST call has its own 5-second abort timeout. This avoids a caller timing out at 10 seconds before the control plane completes its verified stop-and-fence operation. A timeout still fails closed and no Bot login occurs.
+
+A fresh full local Node.js 22.16.0 component run after this timeout change returned **65 passed, 0 failed**. It covered Durable Object/Render fencer, Worker, fence-request client, ownership guards, prepared owner, provider-neutral hard-stop controller, shared lease supervisor, and independent preflight tests. This remains multiple isolated/reconstructed local test directories, not a clean repository checkout or hosted/production integration.
+
+A complete scan of the recovered Bot 005 source found 55 uses of global fetch but no direct Node http/https request, raw net/tls/dgram socket call, undici import, or WebSocket constructor. The only Bun server calls are its two local health/metrics listeners. The current ownership guard wraps global fetch and discord.js REST request entry points, plus event listeners and login. This narrows known outbound paths but does not replace the pending exact Bun/discord.js version compatibility test or review of third-party package internals.
