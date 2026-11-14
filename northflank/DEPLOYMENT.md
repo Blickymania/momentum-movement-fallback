@@ -195,3 +195,15 @@ An isolated Neon Free staging project was created for connectivity experiments o
 This staging project is not a production database candidate yet. Still required: secure TLS app-runtime connection test, pooler test, network-access review, schema parity, measured usage, backup/restore test, OAuth authorization/PKCE/refresh/revocation/expiry tests, and successful integration across every intended Manager origin. No Railway variables or Northflank secrets were set.
 
 Production inventory also found two distinct Railway PostgreSQL services: `OAuth PostgreSQL` (1GB volume) and `Postgres` (5GB volume). Manager's OAuth variables are present but values are redacted. The live temporary diagnostic function uses `OAUTH_DB_*` variables and its historical SQL health checks returned HTTP 200, but its database target is not yet proven identical to the Manager's. Identify the exact reference before any migration or shared-database design decision.
+
+
+## Production PostgreSQL backup coverage finding (2026-11-14)
+
+Read-only Railway network-flow tracing identified two separate paths:
+
+- The temporary OAuth diagnostic function reaches the `OAuth PostgreSQL` service on private TCP 5432. Its destination address matches the source/listener address recorded by that Postgres service.
+- The existing `Postgres Daily Backup` worker reaches the separate `Postgres` service on private TCP 5432. Its destination address matches that service's recorded address.
+
+The existing daily backup worker's logs show successful custom-format dumps on Nov 11–13 (31,806 bytes each), with archive listing, remote object-size, and SHA-256 metadata checks. Those logs do not prove a full restore. No worker-to-`OAuth PostgreSQL` traffic was observed, and no other OAuth PostgreSQL backup/restore mechanism has been verified. Therefore **OAuth PostgreSQL backup coverage is an unresolved critical gate**; do not migrate or designate a new shared OAuth store until a restorable backup is proven.
+
+The Manager has the same OAUTH_DB_* variable names as the diagnostic function, but Railway redacts the values and they are not project shared-variable names. Same names do not prove same targets. The Manager's actual DB target remains unresolved pending an authorized safe diagnostic. No production service, DB, backup schedule, or credentials were changed.
