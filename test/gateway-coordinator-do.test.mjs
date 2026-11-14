@@ -186,7 +186,7 @@ test("fails closed on a bot application identity mismatch", async () => {
   });
 });
 
-test("reset-fatal uses an allowlisted client ID and starts only after explicit internal action", async () => {
+test("reset-fatal accepts only a configured client ID and resets only that fatal session", async () => {
   await withRuntime({ botId: "1565304619838742599" }, async ({ sockets }) => {
     const object = makeObject(new MemoryDOStorage());
     const first = await object.fetch(control("/start", "POST"));
@@ -226,22 +226,24 @@ test("alarm recovers the coordinator after object re-instantiation using durable
     const first = makeObject(storage);
     await first.fetch(control("/start", "POST"));
     const initial = sockets[0];
+    const firstCore = await first.corePromise;
     dispatch(initial, { op: 10, d: { heartbeat_interval: 30000 } });
-    await first.corePromise;
+    await firstCore.serial;
     dispatch(initial, { op: 0, s: 30, t: "READY", d: { session_id: "durable-session", resume_gateway_url: "wss://resume.durable.example" } });
-    await first.corePromise;
+    await firstCore.serial;
     dispatch(initial, { op: 0, s: 31, t: "MESSAGE_CREATE", d: { id: "persisted-event" } });
-    await first.corePromise;
+    await firstCore.serial;
 
-    initial.close(1006, "simulate DO restart");
-    await first.corePromise;
+    // Simulate object eviction with no graceful close callback. The next alarm
+    // must rebuild the core and resume from the last durably committed cursor.
     const second = makeObject(storage);
     await second.alarm();
     assert.equal(sockets.length, 2);
     const resumed = sockets[1];
     assert.ok(resumed.url.startsWith("wss://resume.durable.example/"));
     dispatch(resumed, { op: 10, d: { heartbeat_interval: 30000 } });
-    await second.corePromise;
+    const secondCore = await second.corePromise;
+    await secondCore.serial;
     assert.equal(resumed.sent[0].op, 6);
     assert.equal(resumed.sent[0].d.seq, 31);
   });
