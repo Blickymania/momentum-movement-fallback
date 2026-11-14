@@ -247,3 +247,19 @@ test("router readiness reports the selected origin actual database verification 
   assert.match(router, /oauthDatabaseVerified: selected\.oauthDatabaseVerified/);
   assert.match(router, /oauthDatabaseVerified: body\?\.oauthDatabaseVerified === true/);
 });
+
+test("router caches and coalesces short-lived readiness probes", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /PROBE_CACHE_TTL_MS = 5000/);
+  assert.match(router, /probeCache = new Map/);
+  assert.match(router, /probeInFlight = new Map/);
+  assert.match(router, /if \(pending\) return pending/);
+  assert.match(router, /cachedProbe\(candidate\)/);
+});
+
+test("router readiness exposes the selected origin's actual database verification state", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /oauthDatabaseVerified: status\.oauthDatabaseVerified/);
+  assert.match(router, /oauthDatabaseVerified: selected\.oauthDatabaseVerified/);
+  assert.match(router, /oauthDatabaseVerified: body\?\.oauthDatabaseVerified === true/);
+});
