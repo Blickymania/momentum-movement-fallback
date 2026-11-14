@@ -88,6 +88,24 @@ const tools = [
   {name:"discord_manager_audit",description:"Read-only guild health, forum, role, command and independence audit for this manager\u0027s authorized Discord server. Does not modify Discord.",inputSchema:{type:"object",properties:{},additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}}
 ];
 const reply=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}});
+async function readBoundedText(request:Request,maxBytes:number):Promise<string>{
+ const declared=request.headers.get("content-length");
+ if(declared!==null&&(!/^\\d+$/.test(declared)||Number(declared)>maxBytes))throw new Error("request_body_too_large");
+ const reader=request.body?.getReader();if(!reader)return "";
+ const chunks:Uint8Array[]=[];let total=0;
+ try{
+  while(true){
+   const {done,value}=await reader.read();if(done)break;
+   total+=value.byteLength;
+   if(total>maxBytes){await reader.cancel().catch(()=>{});throw new Error("request_body_too_large");}
+   chunks.push(value);
+  }
+ }finally{reader.releaseLock();}
+ const bytes=new Uint8Array(total);let offset=0;
+ for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+ return new TextDecoder().decode(bytes);
+}
+
 const text=(value,isError=false)=>({content:[{type:"text",text:typeof value==="string"?value:JSON.stringify(value)}],isError});
 const fail=(message)=>text({error:message},true);
 const config=()=>({token:runtimeEnv().DISCORD_BOT_TOKEN,guild:runtimeEnv().AUTHORIZED_GUILD_ID,writes:runtimeEnv().WRITES_ENABLED==="true",app:runtimeEnv().APPLICATION_ID});
@@ -311,13 +329,13 @@ async function mcpOAuthHandle(request,u){
  }
  if(path==="/register"&&request.method==="POST"){
   try{
-   await mcpOAuthEnsureSchema(); const body=await request.json(); const redirects=body?.redirect_uris;
+   await mcpOAuthEnsureSchema(); const body=JSON.parse(await readBoundedText(request,64*1024)); const redirects=body?.redirect_uris;
    if(!Array.isArray(redirects)||redirects.length<1||redirects.length>10||redirects.some(x=>typeof x!=="string"||!mcpOAuthSafeRedirect(x)))return mcpOAuthError("invalid_redirect_uri");
    const clientId="mcp_"+mcpOAuthRandom(24); const name=typeof body.client_name==="string"&&body.client_name.trim()?body.client_name.trim().slice(0,100):"MCP client";
    const unique=[...new Set(redirects)];
    await mcpOAuthQuery(mcpOAuthDb(),"INSERT INTO mcp_oauth_clients (client_id,client_name,redirect_uris) VALUES ($1,$2,$3)",clientId,name,JSON.stringify(unique));
    return mcpOAuthJson({client_id:clientId,client_id_issued_at:Math.floor(Date.now()/1000),client_name:name,redirect_uris:unique,grant_types:["authorization_code","refresh_token"],response_types:["code"],token_endpoint_auth_method:"none"},201);
-  }catch{return mcpOAuthError("invalid_client_metadata");}
+  }catch(e){const tooLarge=e?.message==="request_body_too_large";return mcpOAuthError(tooLarge?"request_body_too_large":"invalid_client_metadata",tooLarge?413:400);}
  }
  if(path==="/oauth/authorize"&&request.method==="GET"){
   try{
@@ -369,7 +387,7 @@ async function mcpOAuthHandle(request,u){
  }
  if(path==="/oauth/token"&&request.method==="POST"){
   try{
-   await mcpOAuthEnsureSchema();const form=new URLSearchParams(await request.text()),grant=form.get("grant_type")||"",clientId=form.get("client_id")||"";
+   await mcpOAuthEnsureSchema();const form=new URLSearchParams(await readBoundedText(request,16*1024)),grant=form.get("grant_type")||"",clientId=form.get("client_id")||"";
    if(grant==="authorization_code"){
     const code=form.get("code")||"",redirect=form.get("redirect_uri")||"",verifier=form.get("code_verifier")||"";
     if(!code||!clientId||!redirect||verifier.length<43||verifier.length>128)return mcpOAuthError("invalid_grant");
@@ -402,14 +420,14 @@ async function mcpOAuthHandle(request,u){
     return mcpOAuthJson({access_token:refreshed.access,token_type:"Bearer",expires_in:3600,refresh_token:refreshed.refresh,scope:refreshed.scope,resource:refreshed.resource});
    }
    return mcpOAuthError("unsupported_grant_type");
-  }catch(e){const err=String(e?.message||"");return mcpOAuthError(err==="invalid_target"?"invalid_target":"invalid_grant");}
+  }catch(e){const err=String(e?.message||"");if(err==="request_body_too_large")return mcpOAuthError("request_body_too_large",413);return mcpOAuthError(err==="invalid_target"?"invalid_target":"invalid_grant");}
  }
  if(path==="/oauth/revoke"&&request.method==="POST"){
   try{
-   await mcpOAuthEnsureSchema();const form=new URLSearchParams(await request.text()),token=form.get("token")||"",clientId=form.get("client_id")||"";
+   await mcpOAuthEnsureSchema();const form=new URLSearchParams(await readBoundedText(request,16*1024)),token=form.get("token")||"",clientId=form.get("client_id")||"";
    if(token){const hash=await mcpOAuthHash(token);await mcpOAuthQuery(mcpOAuthDb(),"UPDATE mcp_oauth_access_tokens SET revoked_at=now() WHERE token_hash=$1 AND ($2='' OR client_id=$2) AND revoked_at IS NULL",hash,clientId);await mcpOAuthQuery(mcpOAuthDb(),"UPDATE mcp_oauth_refresh_tokens SET revoked_at=now() WHERE token_hash=$1 AND ($2='' OR client_id=$2) AND revoked_at IS NULL",hash,clientId);}
    return new Response(null,{status:200,headers:{"cache-control":"no-store"}});
-  }catch{return mcpOAuthError("server_error",503);}
+  }catch(e){if(e?.message==="request_body_too_large")return mcpOAuthError("request_body_too_large",413);return mcpOAuthError("server_error",503);}
  }
  return null;
 }
@@ -456,7 +474,7 @@ async function handleRequest(request){
  if(u.pathname==="/healthz"&&request.method==="GET")return reply({status:"ok",manager:NAME,service:"cloudflare-workers"});
  if(u.pathname!=="/mcp"||request.method!=="POST")return reply({error:"Not found"},404);
  const provided=request.headers.get("authorization")||"";const secret=runtimeEnv().RAILWAY_SERVICE_KEY;const staticAuth=!!secret&&provided==="Bearer "+secret;let oauthAuth=null;if(!staticAuth&&provided.startsWith("Bearer ")){try{oauthAuth=await mcpOAuthAuthenticate(provided.slice(7));}catch{return reply({error:"OAuth authentication backend unavailable"},503);}}if(!staticAuth&&!oauthAuth)return mcpOAuthUnauthorized();
- let rpc;try{rpc=await request.json();}catch{return reply({error:"Invalid JSON"},400);}
+ let rpc;try{rpc=JSON.parse(await readBoundedText(request,2*1024*1024));}catch(error){const tooLarge=error instanceof Error&&error.message==="request_body_too_large";return reply({error:tooLarge?"Request body too large":"Invalid JSON"},tooLarge?413:400);}
  const id=rpc.id??null;const result=(v)=>reply({jsonrpc:"2.0",id,result:v});
  if(oauthAuth&&rpc.params?.name==="discord_guild_request"&&String(rpc.params?.arguments?.method||"GET").toUpperCase()!=="GET"&&!String(oauthAuth.scope).split(/\s+/).includes("mcp:write"))return reply({jsonrpc:"2.0",id,error:{code:-32003,message:"OAuth token lacks mcp:write scope"}},403);
  if(rpc.method==="server/discover")return result({supportedVersions:["2026-07-28"],capabilities:{tools:{}},serverInfo:{name:NAME,version:"1.0.0"}});
