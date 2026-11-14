@@ -67,8 +67,10 @@
 - Current Railway trial expiration means Railway cannot be treated as an available deployment target without a billing-plan change. Prefer the no-card independent path; never add a card or incur paid usage without user direction.
 
 ### Data protection
-- Only one PostgreSQL database has a verified daily backup chain. OAuth PostgreSQL backup coverage remains unverified.
-- Persistent volume backup coverage and a restore drill for the media bucket remain unverified.
+- Added detailed inventory at `failover/backups/INVENTORY.md`.
+- The daily backup worker has one PG connection set; one DB has a verified daily backup chain, but the exact service mapping needs confirmation. OAuth PostgreSQL backup coverage remains unverified.
+- Three non-Postgres `/data` volumes have no independent backup/restore evidence inspected; the two PostgreSQL volumes depend on DB dump coverage.
+- Media bucket worker logs show 26 source items and zero deletes, but complete object inventory and a restore drill remain outstanding.
 - Do not migrate, delete, or overwrite production data until independent backups and restore tests are complete.
 
 ## Exact next execution steps
