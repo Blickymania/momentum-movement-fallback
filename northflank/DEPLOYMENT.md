@@ -227,3 +227,8 @@ The deployed production Manager's SQL was compared with the candidate sources. T
 A regression test, `tests/oauth-schema-compat.test.mjs`, now freezes the five audited DDL definitions and checks candidate transaction/rotation/revocation invariants. Its exact source assertions were executed against the candidate sources: 10/10 passed. The actual Node test runner and build/CI remain unverified because GitHub Actions currently starts zero jobs.
 
 This establishes source-level schema/logic parity only. It does not prove that the production Manager's redacted `OAUTH_DATABASE_URL` points to `OAuth PostgreSQL` or to the separate `Postgres` service, nor that the Manager's OAuth dataset has a tested backup/restore path. Those remain mandatory gates before activating any fallback.
+
+
+## Current PostgreSQL storage metrics (2026-11-14)
+
+Railway's 24-hour service metrics (1,441 samples each) report current disk usage of approximately **0.069 GB** for `OAuth PostgreSQL` and **0.154 GB** for the separate `Postgres` service. These are service-level disk metrics, not exact logical database sizes or verified dump/restore sizes. They provide rough sizing context only. The existing `Postgres Daily Backup` worker is network-confirmed to connect to the separate `Postgres` service; no corresponding OAuth PostgreSQL backup/restore path has been verified.
