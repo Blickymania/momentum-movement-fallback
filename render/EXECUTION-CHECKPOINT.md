@@ -19,7 +19,7 @@ Last updated: 2026-11-14 (UTC)
 - Runtime/build: Docker, root build context, render/Dockerfile, Bun 1.4.4, port 10000
 - Auto deploy: OFF
 - Health check: /healthz (process liveness only; temporary until dependencies are configured)
-- Latest verified deployment: dep-dbs3v1qfngtc73blbr90, status live, commit d676decab4bb9536f2233bde467a780be0011272
+- Latest verified deployment: dep-dbs3vgl6e07s738oqtsg, status live, commit f201fffb52388d690967cb551165b4be7f223d2b
 - Blueprint: exs-dbs3tfafngtc73bl7li0; autoSync=false; status paused by design because automatic sync is disabled. Last sync observed 2026-11-14T10:58:18Z.
 
 ## Completed objectives and changes
@@ -35,7 +35,7 @@ Last updated: 2026-11-14 (UTC)
    - healthCheckPath: /healthz.
    - WRITES_ENABLED: "false".
 5. Approved the reviewed Blueprint sync; Render read-back confirms service health check path /healthz, plan free, autoDeploy off, and latest deploy live.
-6. Set non-secret Render variables: APPLICATION_ID, AUTHORIZED_GUILD_ID, DISCORD_OAUTH_REDIRECT_URI, OAUTH_ISSUER_URL, and OAUTH_RESOURCE_URL. The environment update triggered deployment dep-dbs3v1qfngtc73blbr90, now verified live. No secret values were added.
+6. Set non-secret Render variables: APPLICATION_ID, AUTHORIZED_GUILD_ID, DISCORD_OAUTH_CLIENT_ID (same Discord application ID), DISCORD_OAUTH_REDIRECT_URI, OAUTH_ISSUER_URL, and OAUTH_RESOURCE_URL. The environment update triggered deployment dep-dbs3vgl6e07s738oqtsg, now verified live. No secret values were added.
 7. Updated render/DEPLOYMENT.md to explain the interim liveness check and DB network constraint.
 8. No Render cron jobs, monitoring pings, or scheduled automation created.
 
