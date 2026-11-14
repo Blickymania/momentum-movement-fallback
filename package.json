@@ -7,7 +7,9 @@
     "typecheck": "tsc --noEmit",
     "dry-run": "wrangler deploy --dry-run",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "node --test",
+    "check": "npm run typecheck && npm test && npm run dry-run"
   },
   "dependencies": {
     "pg": "^8.16.3"
