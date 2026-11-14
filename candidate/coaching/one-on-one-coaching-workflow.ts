@@ -399,6 +399,8 @@ async function continueRequestForm(i,id){
 
 async function bootstrap(){
  try{
+  const botAuthSecret=Bun.env.COACHING_BOT005_AUTH_SECRET||"",relayAuthSecret=Bun.env.COACHING_RELAY_AUTH_SECRET||"";
+  if(botAuthSecret.length<32||botAuthSecret.length>512||relayAuthSecret.length<32||relayAuthSecret.length>512||botAuthSecret===relayAuthSecret)throw Error("Distinct Bot 005 and Relay authentication secrets are required");
   if(Bun.env.AUTHORIZED_GUILD_ID!==G||Bun.env.APPLICATION_ID!==APP||!token()||Bun.env.WRITES_ENABLED!=="true")throw Error("Guild, application, token, or write authorization mismatch");
   const [self,guild,request,management,voice]=await Promise.all([api("GET","/users/@me"),api("GET","/guilds/"+G),api("GET","/channels/"+REQUEST),api("GET","/channels/"+MANAGEMENT),api("GET","/channels/"+VOICE)]);
   if(self.id!==APP||guild.id!==G||request.guild_id!==G||management.guild_id!==G||voice.guild_id!==G||request.type!==0||management.type!==0||voice.type!==2)throw Error("Coaching channel identity/type verification failed");
