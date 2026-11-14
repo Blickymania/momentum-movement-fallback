@@ -116,3 +116,32 @@ test("invalid lease TTL and fencing epoch are rejected before database access", 
   }), /fencing_epoch_invalid/);
   assert.equal(db.calls.length, 0);
 });
+
+
+test("active lease cannot be reacquired even by a process reusing the same owner id", async () => {
+  const db = fakeDb((sql) => {
+    assert.match(sql, /WHERE gateway_ownership\\.lease_until <= clock_timestamp\\(\\)/);
+    assert.doesNotMatch(sql, /OR gateway_ownership\\.owner_id = EXCLUDED\\.owner_id/);
+    return [];
+  });
+  const result = await acquireGatewayLease(db, {
+    scope: "momentum-movement:discord-gateway",
+    ownerId: "reused-owner-id",
+    deploymentId: "same-deployment",
+    ttlSeconds: 30
+  });
+  assert.equal(result, null);
+});
+
+test("a hung heartbeat renewal times out and invokes fail-closed handling", async () => {
+  let reason = null;
+  const heartbeat = startLeaseHeartbeat({
+    intervalMs: 1000,
+    renewTimeoutMs: 250,
+    renew: () => new Promise(() => {}),
+    onLeaseLost: async value => { reason = value; }
+  });
+  await heartbeat.beat();
+  await heartbeat.beat();
+  assert.equal(reason, "lease_renewal_timeout");
+});
