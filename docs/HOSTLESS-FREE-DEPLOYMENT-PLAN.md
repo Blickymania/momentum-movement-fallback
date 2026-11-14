@@ -160,3 +160,18 @@ The V2 process keeps `panelId` in memory after initial publication. Its page/nav
 ### Next execution step
 
 Generate and commit `candidate/live-now-v2/bun.lock` using Bun 1.4.4 (`bun install --lockfile-only`), then run its frozen production install and the committed nine-case static test suite. Run a true no-token Bun standby boot and verify the HTTP health route; do not set `LIVE_V2_ACTIVE=true`. Next add the V2 workload's own independent ownership scope and prove the legacy process is physically stopped before any Gateway login. Keep production untouched until these gates pass.
+
+## LIVE NOW V2 ownership-fencing boundary
+
+Read-only source inspection of the current lease/control-plane code found that the existing implementation is intentionally Bot 005-specific:
+
+- `cloudflare/gateway-lease-coordinator.mjs` defines only `momentum-movement:bot-005-gateway` and rejects any other scope.
+- `cloudflare/worker.mjs` resolves a single `GATEWAY_LEASE_COORDINATOR` Durable Object using that fixed scope. The request path has one shared lease service/bootstrap credential pair and one Render fencer configuration.
+- `implementation/fenced-discord-gateway-owner.mjs` imports `GATEWAY_LEASE_SCOPE` and passes the Bot 005 scope directly to `startGatewayOwner`; it has no per-workload scope parameter.
+- `cloudflare/wrangler.jsonc` declares only the Bot 005 Gateway lease class and the separate coaching-idempotency class.
+
+Do **not** repurpose the Bot 005 scope for LIVE NOW V2. A safe V2 implementation needs a separately isolated lease namespace/class and migration, scope-specific Worker routes and credentials, a distinct deployment-to-service map, and tests proving Bot 005 and V2 lease rows cannot acquire, renew, release, read, or fence one another. Any V2 owner candidate must use the new scope before client listeners are registered and must keep all handlers/REST/fetch calls behind the ownership guard.
+
+The existing Worker fencer is Render-specific. It cannot hard-stop a V2 primary that remains on Railway. Because Railway operations are prohibited in this execution cycle, no physical stop can be established here. A valid future transition must first move the legacy primary to a provider with an independently verified stop/readback path, or require a separate authorized operator-controlled stop of the current Railway process; only after that proof may one new V2 Gateway session start.
+
+No lease coordinator, Durable Object, Worker, secret, or provider resource was deployed or changed by this inspection.
