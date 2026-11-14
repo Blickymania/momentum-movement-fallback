@@ -95,3 +95,6 @@ Then stage the patched Bot 005 source on the authorized non-Railway replacement 
 ### Exact next execution step
 
 Continue in Hostless using repository `Blickymania/momentum-movement-fallback`, branch `deploy/hostless-bot005-app`, Bun runtime, auto build, and the committed `hostless.yaml`. Create the app in standby with `AUTHORIZED_GUILD_ID=1565048205970767992`, `APPLICATION_ID=1565304619838742598`, and `BOT_GATEWAY_ACTIVE=false`; do not activate the Gateway until the old Railway process is known stopped.
+
+- Added a GitHub Actions regression workflow at `.github/workflows/bot005-roles-regression.yml` on the Hostless deployment branch. The workflow is configured to run the Node 22 test file on pushes/PRs, but GitHub returned no workflow run and no commit status for its creation commit; automated CI execution is therefore **not verified**.
+- Hostless branch latest workflow commit: `f21034a1c4335e42d5c4df9930eef566afa2124b`.
