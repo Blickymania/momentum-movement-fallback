@@ -182,6 +182,12 @@ export function prepareFencedDiscordGatewayOwner({
             if (typeof onLeaseLost === "function") await onLeaseLost(reason);
           }
         });
+        if (closed || loginAbortController.signal.aborted) {
+          if (supervisor.ok) await supervisor.shutdown("shutdown_during_start");
+          guards.revoke();
+          rejectReadiness("gateway_start_aborted");
+          return { ok: false, reason: "gateway_start_aborted" };
+        }
         if (!supervisor.ok) {
           guards.revoke();
           closed = true;
