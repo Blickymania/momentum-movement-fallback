@@ -33,7 +33,7 @@
 - Added event-driven GitHub Actions workflow `.github/workflows/dawn-dotta-failover-tests.yml`.
 - Added manual-only Cloudflare deployment workflow `.github/workflows/deploy-dawn-dotta-lease.yml`; it runs all tests before deployment and requires repository Actions secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `LEASE_CONTROL_TOKEN`. It deploys code and the lease secret together through a temporary protected secrets file and Wrangler `--secrets-file`.
 - Added `secrets.required: [LEASE_CONTROL_TOKEN]` to Wrangler config so a deployment without the lease secret fails closed.
-- Added provider-specific listener deployment instructions in `failover/listener/DEPLOYMENT.md`; both hosts must remain `LISTENER_RUNTIME_ACTIVE=false` until the old Railway listener is stopped.
+- Added provider-specific listener deployment instructions in `failover/listener/DEPLOYMENT.md`; both hosts remain `LISTENER_RUNTIME_ACTIVE=false` until the old Railway listener is stopped, then Botkeep must acquire first before Silly Development is enabled.
 - Public verification returned 404 for repository/workflow/commit, consistent with private/inaccessible repository; this does not establish whether the workflow ran. CI status remains unverified.
 
 ### Production diagnostics
