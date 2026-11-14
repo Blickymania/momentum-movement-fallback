@@ -53,11 +53,13 @@ export function installGatewayOwnershipGuards({
   function wrapListener(listener) {
     if (typeof listener !== "function") return listener;
     guardedListenerCount++;
-    return function guardedGatewayListener(...args) {
+    const guarded = function guardedGatewayListener(...args) {
       try { checkOwnership(); }
       catch { return undefined; }
       return listener.apply(this, args);
     };
+    guarded.listener = listener;
+    return guarded;
   }
 
   client.on = function guardedOn(event, listener) {
@@ -65,8 +67,8 @@ export function installGatewayOwnershipGuards({
   };
 
   client.once = function guardedOnce(event, listener) {
-    const guarded = wrapListener(listener);
-    if (typeof guarded !== "function") return originalOnce.call(this, event, listener);
+    if (typeof listener !== "function") return originalOnce.call(this, event, listener);
+    guardedListenerCount++;
     function onceWrapper(...args) {
       try { checkOwnership(); }
       catch { return undefined; }
