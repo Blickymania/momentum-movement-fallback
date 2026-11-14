@@ -167,3 +167,21 @@ test("router readiness reports verified upstream Discord identity", async () => 
   const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
   assert.match(router, /status: "ready", manager: MANAGER_NAME, discordVerified: true/);
 });
+
+test("OAuth redirect URIs are HTTPS or loopback and reject credentials/fragments", () => {
+  assert.match(source, /u\.username\|\|u\.password\|\|u\.hash/);
+  assert.match(source, /u\.protocol==="https:"/);
+  assert.match(source, /u\.protocol==="http:"&&\["localhost","127\.0\.0\.1","\[::1\]"\]\.includes\(u\.hostname\)/);
+});
+
+test("OAuth authorization requires an exact registered redirect and PKCE S256", () => {
+  assert.match(source, /redirects\.includes\(redirectUri\)/);
+  assert.match(source, /code_challenge_method\)!=="S256"/);
+  assert.match(source, /mcpOAuthPkce\(verifier\)!==row\.code_challenge/);
+});
+
+test("OAuth callback uses hashed, expiring, single-use state", () => {
+  assert.match(source, /state=mcpOAuthRandom\(32\)/);
+  assert.match(source, /mcpOAuthHash\(state\)/);
+  assert.match(source, /state_hash=\$1 AND expires_at>now\(\) AND consumed_at IS NULL/);
+});
