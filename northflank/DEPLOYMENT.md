@@ -177,3 +177,21 @@ Keep Railway production, its OAuth database, and existing MCP endpoint untouched
 ## External account steps
 
 A Northflank account/API connector is not connected in this execution environment. Repository changes can prepare the deployment, but project creation, secret injection, database creation, and live deployment require an authenticated Northflank account. Do not paste tokens or passwords into chat; use Northflank's secret manager or an authorized deployment workflow.
+
+
+## Neon staging account verification (2026-11-14)
+
+An isolated Neon Free staging project was created for connectivity experiments only:
+
+- Project: `momentum-movement-oauth-failover-staging` (`autumn-moon-71501044`)
+- Region: `aws-us-west-2`; PostgreSQL 18
+- Default branch/database/role: `staging` / `momentum_oauth_staging` / `momentum_oauth_staging`
+- Compute min/max: 0.25 CU
+- Read-only SQL connectivity and server-version check passed; the database has zero application tables.
+- No production OAuth data, clients, tokens, or schema were imported.
+
+**Important Free-plan limitation observed:** requesting a 300-second suspend timeout at project creation returned HTTP 412 because this account does not permit modifying the suspend interval. The created endpoint reports `suspend_timeout_seconds: 0`, so automatic scale-to-zero is not verified and must not be assumed. The endpoint was manually suspended after the SQL check and confirmed `idle`. Any later connection can wake it; explicitly suspend it after every test and monitor account usage. Do not connect a live service to this project until a safe idle/cost-control strategy is proven.
+
+This staging project is not a production database candidate yet. Still required: secure TLS app-runtime connection test, pooler test, network-access review, schema parity, measured usage, backup/restore test, OAuth authorization/PKCE/refresh/revocation/expiry tests, and successful integration across every intended Manager origin. No Railway variables or Northflank secrets were set.
+
+Production inventory also found two distinct Railway PostgreSQL services: `OAuth PostgreSQL` (1GB volume) and `Postgres` (5GB volume). Manager's OAuth variables are present but values are redacted. The live temporary diagnostic function uses `OAUTH_DB_*` variables and its historical SQL health checks returned HTTP 200, but its database target is not yet proven identical to the Manager's. Identify the exact reference before any migration or shared-database design decision.
