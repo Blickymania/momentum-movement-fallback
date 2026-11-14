@@ -113,49 +113,58 @@ export function createRulesAcceptanceHandler({
     throw new TypeError("notifyMember and clock must be functions");
   }
 
+  const pendingUsers = new Set();
   return async function handleRulesAcceptance(interaction) {
     if (!isRulesAcceptanceInteraction(interaction)) return false;
 
     await interaction.deferUpdate();
     const userId = interaction.user.id;
-    let acceptance;
+    if (pendingUsers.has(userId)) {
+      return { handled: true, persisted: false, changed: false, busy: true };
+    }
+    pendingUsers.add(userId);
     try {
-      const existing = await getMemberRecord(userId);
-      if (!existing || existing.userId !== userId) {
-        throw new Error("Member vault returned a mismatched record");
+      let acceptance;
+      try {
+        const existing = await getMemberRecord(userId);
+        if (!existing || existing.userId !== userId) {
+          throw new Error("Member vault returned a mismatched record");
+        }
+        acceptance = applyRulesAcceptance(existing, clock());
+        if (acceptance.changed) await saveMemberRecord(acceptance.record);
+      } catch (error) {
+        try {
+          await notifyMember(
+            interaction.user,
+            "Momentum Movement could not verify and save your rules acceptance. Please contact the Help Desk; your acceptance has not been recorded."
+          );
+        } catch {}
+        return { handled: true, persisted: false, changed: false, error };
       }
-      acceptance = applyRulesAcceptance(existing, clock());
-      if (acceptance.changed) await saveMemberRecord(acceptance.record);
-    } catch (error) {
-      try {
-        await notifyMember(
-          interaction.user,
-          "Momentum Movement could not verify and save your rules acceptance. Please contact the Help Desk; your acceptance has not been recorded."
-        );
-      } catch {}
-      return { handled: true, persisted: false, changed: false, error };
-    }
 
-    let notified = false;
-    if (acceptance.changed) {
-      try {
-        await notifyMember(
-          interaction.user,
-          "✅ Your Momentum Movement rules acceptance was recorded.\nRules version: " +
-            RULES_ACCEPTANCE_VERSION +
-            "\nAccepted: " + acceptance.acceptedAt +
-            "\nNo roles or channel permissions were changed."
-        );
-        notified = true;
-      } catch {}
-    }
+      let notified = false;
+      if (acceptance.changed) {
+        try {
+          await notifyMember(
+            interaction.user,
+            "✅ Your Momentum Movement rules acceptance was recorded.\\nRules version: " +
+              RULES_ACCEPTANCE_VERSION +
+              "\\nAccepted: " + acceptance.acceptedAt +
+              "\\nNo roles or channel permissions were changed."
+          );
+          notified = true;
+        } catch {}
+      }
 
-    return {
-      handled: true,
-      persisted: true,
-      changed: acceptance.changed,
-      acceptedAt: acceptance.acceptedAt,
-      notified
-    };
+      return {
+        handled: true,
+        persisted: true,
+        changed: acceptance.changed,
+        acceptedAt: acceptance.acceptedAt,
+        notified
+      };
+    } finally {
+      pendingUsers.delete(userId);
+    }
   };
 }
