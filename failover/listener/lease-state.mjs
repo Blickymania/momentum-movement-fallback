@@ -1,6 +1,13 @@
 export function acquireLeaseState(current, instanceId, nowMs, ttlMs) {
   assertInputs(instanceId, nowMs, ttlMs);
   if (current && current.expiresAtMs > nowMs) {
+    if (current.ownerId === instanceId) {
+      const state = { ...current, expiresAtMs: nowMs + ttlMs };
+      return {
+        state,
+        result: { acquired: true, fencingToken: String(state.fencingToken), expiresAtMs: state.expiresAtMs },
+      };
+    }
     return { state: current, result: { acquired: false, expiresAtMs: current.expiresAtMs } };
   }
   const fencingToken = current ? current.fencingToken + 1 : 1;
