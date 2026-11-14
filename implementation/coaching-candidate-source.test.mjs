@@ -154,3 +154,19 @@ test("candidate Coaching Workflow rejects reserved and non-public idempotency en
   assert.match(source, /idempotencyHost\.endsWith\("\.test"\)/);
   assert.match(source, /idempotencyHost\.startsWith\("\["\)/);
 });
+
+
+test("Coaching Workflow verifies live authenticated idempotency health before reporting ready", async () => {
+  const source = await readFile(workflowPath, "utf8");
+  const urlAt = source.indexOf('idempotencyUrl.pathname!=="/coaching/interaction/claim"');
+  const endpointAt = source.indexOf("coachingIdempotencyEndpoint=idempotencyUrl.href");
+  const healthAt = source.indexOf('idempotencyHealthUrl.pathname="/coaching/interaction/healthz"');
+  const fetchAt = source.indexOf("idempotencyHealthResponse=await fetch(idempotencyHealthUrl.href");
+  const readyAt = source.indexOf("ready=true;console.log");
+  assert.ok(urlAt >= 0 && endpointAt > urlAt);
+  assert.ok(healthAt > endpointAt);
+  assert.ok(fetchAt > healthAt);
+  assert.ok(readyAt > fetchAt);
+  assert.match(source, /authorization:"Bearer "\+idempotencyToken/);
+  assert.match(source, /idempotencyHealth\?\.service!=="coaching-interaction-idempotency"/);
+});
