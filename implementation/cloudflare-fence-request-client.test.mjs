@@ -12,7 +12,12 @@ test("fence requester accepts only a public HTTPS Worker URL and strong token", 
     "http://lease.example.com",
     "https://bot.railway.internal",
     "https://127.0.0.1",
-    "https://localhost."
+    "https://localhost.",
+    "https://lease.internal",
+    "https://lease.lan",
+    "https://lease.test",
+    "https://singlelabel",
+    "https://[::1]"
   ]) {
     assert.throws(() => createCloudflareFenceRequester({
       baseUrl,
