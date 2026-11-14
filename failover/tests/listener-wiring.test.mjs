@@ -10,7 +10,7 @@ test("isolated listener requires lease ownership before Discord operations", asy
   assert.match(source, /AbortSignal\.any\(\[AbortSignal\.timeout\(15000\),lease\.signal\]\)/);
   assert.match(source, /momentum-listener-standby-waiting-for-lease/);
   assert.match(source, /lease\?\.isHeld===true/);
-  const lostHandler = source.match(/onLost:async reason=>\\{([\\s\\S]*?)\\n \\},\\n onError:/);
+  const lostHandler = source.match(/onLost:async reason=>\{([\s\S]*?)\n \},\n onError:/);
   assert.ok(lostHandler, "lease-loss handler must be present");
   assert.ok(
     lostHandler[1].indexOf("await old.destroy()") < lostHandler[1].indexOf("if(client===old)client=null"),
