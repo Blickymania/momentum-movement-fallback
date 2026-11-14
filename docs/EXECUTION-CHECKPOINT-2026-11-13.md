@@ -498,3 +498,32 @@ This invocation used reconstructed local component folders, Node's SQLite engine
 6. Build the separate candidate Bot 005 source, install guards before every application listener, and connect actual Ready/guild identity verification to the prepared owner.
 7. Complete the manual Railway shutdown/verification plan and operator bootstrap authorization; never bootstrap before the old Gateway is provably closed.
 8. Deploy only authorized preproduction resources, then run Cloudflare edge, Render suspend/readback, expiry, stale epoch, lease-store outage, split-brain, late-login, duplicate-event, and rollback tests.
+
+
+## Cycle 13 — outbound egress audit and fence-request timeout alignment
+
+### Source inspection
+- Re-scanned the full recovered Bot 005 source (100,491 characters). Found 55 global fetch call sites.
+- No direct Node `http.request` / `https.request`, raw `net` / `tls` / `dgram` socket call, `undici` import, or WebSocket constructor was found.
+- The only Bun server calls are Bot 005's two local health/metrics listeners.
+- The ownership guard covers global fetch, discord.js REST request, Gateway login, and registered application event/once listeners; all Railway endpoints are rejected unconditionally.
+- This is a static source scan, not a runtime sandbox proof. It does not inspect every internal networking path of the actual discord.js dependency or Bun runtime.
+
+### Timeout repair
+- The bot-side `createCloudflareFenceRequester` default timeout was 10 seconds, shorter than the Worker-side Render suspension/readback envelope (up to 15 seconds polling plus service GET/POST request timeouts). That could cause an avoidable client abort while the Worker was still completing a safe transition.
+- Increased the bot-side default to 30 seconds, matching its configured maximum. Worker Render fencer remains bounded: 15-second suspension polling and 5-second per-request timeout.
+- Any HTTP/client timeout still fails closed: no standby lease is granted unless the Worker confirms the exact candidate and a service GET readback reports `suspended`.
+- Updated docs to record the timing envelope and source audit.
+
+### Verification
+- Ran one combined local Node.js v22.16.0 test command over reconstructed component directories after the timeout change.
+- **65 tests passed, 0 failed.**
+- Groups: Durable Object + Render fencer 14; Worker controller + fence requester + ownership guard 15; prepared owner 5; provider-neutral hard-stop controller 8; shared lease + Gateway supervisor + independent preflight 23.
+- Tests use Node SQLite, simulated Worker/DO boundaries, mocked Render HTTP and fake Discord clients. They do not constitute a clean checkout CI result, Cloudflare edge execution, real Render service suspension, or a production Discord Gateway test.
+
+### Status
+- Bot 005 and the Railway production service remain untouched.
+- No Cloudflare or Render resource, secret, plan, service, route, DNS, or billing setting has been created/changed.
+- GitHub Actions remains a zero-job startup failure; latest inspected run at this point was `43556643815`, with preceding runs `43556634163` and `43556557762` likewise returning no jobs. No runner/job logs exist and the root cause remains unknown.
+- Render service list remains inconclusive (`null`); Cloudflare dashboard authentication expired; actual account inventory/plan is unknown.
+- Initial Railway cutover still requires manually verified old Gateway shutdown and operator bootstrap. Worker-managed Render suspend/readback is only for subsequent Render-to-Render transfers after primary and standby run as distinct Render services.
