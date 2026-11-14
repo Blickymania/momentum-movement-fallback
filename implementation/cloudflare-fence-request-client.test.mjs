@@ -16,6 +16,9 @@ test("fence requester accepts only a public HTTPS Worker URL and strong token", 
     "https://lease.internal",
     "https://lease.lan",
     "https://lease.test",
+    "https://lease.invalid",
+    "https://lease.example",
+    "https://lease.onion",
     "https://singlelabel",
     "https://[::1]"
   ]) {
