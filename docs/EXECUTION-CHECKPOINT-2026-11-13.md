@@ -29,6 +29,13 @@ Railway is not a deployment dependency. Bot 005 remains the sole production Gate
 - No live failover test was attempted because it would be unsafe before both processes share a lease protocol.
 - No deployment was attempted. No Gateway session was opened. No production service was changed.
 
+## Cycle 2 — lease primitives (completed, source-only)
+- Added `implementation/shared-gateway-lease.mjs` with atomic PostgreSQL upsert acquisition, owner/epoch-scoped renewal and release, database-clock expiry, monotonic fencing epoch increment after expiry, and fail-closed heartbeat callback.
+- Added `implementation/shared-gateway-lease.test.mjs` with six focused tests.
+- Ran the focused Node test harness: 6 passed, 0 failed. Tests use a mocked SQL executor and do not prove live PostgreSQL concurrency, network partition handling, or physical Gateway fencing.
+- Re-read committed files and verified the digit-only fencing epoch validator, expired-lease epoch guard, and test assertion are present.
+- No live database schema was created and no service was deployed.
+
 ## Remaining objectives
 1. Confirm Render workspace scope: `My Workspace` (`tea-dbcqe7ss728c73fthlug`).
 2. Inspect existing Render services and determine persistent-worker availability and real pricing/limits.
@@ -54,7 +61,7 @@ Relevant automation inventory entries found (all disabled):
 No scheduler changes made. Do not create a duplicate. User's max-one-centralized-scheduler rule remains in force.
 
 ## Last verified state
-Bot 005 remains the only active Gateway owner. No independent standby deployment exists. No lease/fencing protocol exists in production. Railway-independent architecture is documented, not deployed.
+The lease module and mock-backed unit tests are committed, but are not deployed or connected to production. The current legacy Bot 005 still has no lease adapter; the module alone cannot safely fence an already-open Gateway socket. Bot 005 remains the only active Gateway owner. No independent standby deployment exists. No lease/fencing protocol exists in production. Railway-independent architecture is documented, not deployed.
 
 ## Exact next execution step
-After workspace confirmation, call Render `list_services` using the confirmed workspace ID, inspect any existing candidate service, and determine whether it can host a persistent Bun process without Railway. Do not create a service until plan cost and persistence behavior are known.
+After workspace confirmation, call Render `list_services` using the confirmed workspace ID, inspect any existing candidate service, and determine whether it can host a persistent Bun process without Railway. Do not create a service until plan cost and persistence behavior are known. In parallel after workspace access, design the hard-fencing/cutover controller and primary Bot 005 adapter; do not enable standby Gateway takeover until the legacy primary can be safely stopped before standby login.
