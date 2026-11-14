@@ -54,7 +54,7 @@ Last updated: 2026-11-14 (UTC)
   - mcp_oauth_access_tokens
   - mcp_oauth_refresh_tokens
 - Do NOT assume this blank Neon staging database contains production/active OAuth client registrations or tokens. Do not point Render to it until the intended data source and migration/re-registration plan are confirmed.
-- The intended database endpoint for the Cloudflare Worker has not yet been authoritatively identified. render/DEPLOYMENT.md now records this constraint.
+- The checked-in Cloudflare failover Worker only probes origins and has no database binding or URL; it does not identify the OAuth DB. No separate Dawn Dotta Cloudflare database Worker was found in the connected GitHub repositories. The intended DB endpoint therefore remains unidentified. render/DEPLOYMENT.md records this constraint.
 
 ## Runtime configuration still required
 Populate values through Render Dashboard Environment only; never paste secrets into chat or source control. Required keys include:
