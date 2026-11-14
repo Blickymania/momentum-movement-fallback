@@ -1,0 +1,13 @@
+{
+  "name": "momentum-movement-blickymania-bot-005",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run recovered-functions/blickymania-bot-005.ts",
+    "test": "node --test recovered-functions/tests/blickymania-bot-005-roles-dashboard.test.mjs"
+  },
+  "dependencies": {
+    "discord.js": "14.27.0"
+  }
+}
