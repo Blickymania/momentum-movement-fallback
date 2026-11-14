@@ -89,3 +89,35 @@ test("candidate Coaching Workflow verifies sender HMAC and timestamp before pars
   assert.match(source, /status:401/);
   assert.match(source, /x-coaching-signature/);
 });
+
+
+test("candidate Coaching Workflow requires a durable idempotency claim before dispatch", async () => {
+  const source = await readFile(workflowPath, "utf8");
+  assert.match(source, /COACHING_IDEMPOTENCY_URL/);
+  assert.match(source, /COACHING_IDEMPOTENCY_TOKEN/);
+  assert.match(source, /coaching-interaction\/claim/);
+  const routeAt = source.lastIndexOf('url.pathname==="/interaction"');
+  const claimAt = source.indexOf("claimResponse=await fetch(coachingIdempotencyEndpoint", routeAt);
+  const acceptedAt = source.indexOf("Response.json({accepted:true})", routeAt);
+  assert.ok(claimAt > routeAt);
+  assert.ok(acceptedAt > claimAt);
+  assert.match(source, /if\(!claimPayload\.claimed\)return Response\.json\(\{duplicate:true\}\)/);
+  assert.match(source, /COACHING_IDEMPOTENCY_TOKEN/);
+});
+
+test("Cloudflare Durable Object persists coaching interaction IDs separately from the Bot 005 lease row", async () => {
+  const coordinator = await readFile(new URL("../cloudflare/gateway-lease-coordinator.mjs", import.meta.url), "utf8");
+  assert.match(coordinator, /CREATE TABLE IF NOT EXISTS coaching_interaction_claims/);
+  assert.match(coordinator, /COACHING_INTERACTION_RETENTION_MS = 7 \* 24 \* 60 \* 60 \* 1000/);
+  assert.match(coordinator, /claimCoachingInteraction/);
+  assert.match(coordinator, /PRIMARY KEY/);
+  assert.match(coordinator, /ON CONFLICT \(interaction_id\) DO NOTHING/);
+});
+
+test("Cloudflare Worker protects the durable coaching claim route with a separate secret", async () => {
+  const worker = await readFile(new URL("../cloudflare/worker.mjs", import.meta.url), "utf8");
+  assert.match(worker, /COACHING_IDEMPOTENCY_TOKEN/);
+  assert.match(worker, /coaching\/interaction\/claim/);
+  assert.match(worker, /sameSecret\(candidate, token\)/);
+  assert.match(worker, /source !== "bot005" && body\.source !== "coaching-relay"/);
+});
