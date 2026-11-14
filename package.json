@@ -6,6 +6,10 @@
     "node": ">=20"
   },
   "scripts": {
+    "start": "node implementation/momentum-movement-independent-preflight.mjs",
     "test": "node --test implementation/*.test.mjs"
+  },
+  "dependencies": {
+    "postgres": "3.4.7"
   }
 }
