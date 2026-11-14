@@ -1,11 +1,11 @@
 // Shared PostgreSQL lease primitives for Momentum Movement Gateway ownership.
-// This module deliberately does NOT connect to Discord. The caller must acquire a
-// lease before Gateway login and destroy the Gateway immediately if renewal fails.
+// The caller must use a unique ownerId per process instance, acquire before login,
+// and destroy its Discord client immediately if renewal fails.
 //
 // IMPORTANT: A DB lease is coordination, not physical fencing of an already-open
 // Discord socket. Never enable standby takeover against the legacy Bot 005 process
-// until the primary is modified to use this exact protocol and an external cutover
-// controller can prove the old process/socket is stopped before standby login.
+// until the primary uses this protocol and an external controller proves the old
+// process/socket is stopped before standby login.
 
 const TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS gateway_ownership (
@@ -25,17 +25,11 @@ VALUES
    clock_timestamp(), $4)
 ON CONFLICT (lease_scope) DO UPDATE SET
   owner_id = EXCLUDED.owner_id,
-  fencing_epoch = CASE
-    WHEN gateway_ownership.owner_id = EXCLUDED.owner_id
-     AND gateway_ownership.lease_until > clock_timestamp()
-      THEN gateway_ownership.fencing_epoch
-    ELSE gateway_ownership.fencing_epoch + 1
-  END,
+  fencing_epoch = gateway_ownership.fencing_epoch + 1,
   lease_until = clock_timestamp() + make_interval(secs => $3::double precision),
   heartbeat_at = clock_timestamp(),
   deployment_id = EXCLUDED.deployment_id
 WHERE gateway_ownership.lease_until <= clock_timestamp()
-   OR gateway_ownership.owner_id = EXCLUDED.owner_id
 RETURNING lease_scope, owner_id, fencing_epoch::text AS fencing_epoch,
           lease_until, heartbeat_at, deployment_id`;
 
@@ -103,6 +97,8 @@ export async function acquireGatewayLease(db, {
     requiredTtl(ttlSeconds),
     requiredString(deploymentId, "deployment_id")
   ];
+  // Active leases can never be re-acquired, even by a process presenting the
+  // same ownerId. A process must generate a fresh unique ownerId on every start.
   return first(await db.unsafe(ACQUIRE_SQL, args));
 }
 
@@ -114,7 +110,7 @@ export async function renewGatewayLease(db, {
   ttlSeconds = 30
 }) {
   const epoch = String(fencingEpoch ?? "");
-  if (!/^\d{1,20}$/.test(epoch)) throw new TypeError("fencing_epoch_invalid");
+  if (!/^\\d{1,20}$/.test(epoch)) throw new TypeError("fencing_epoch_invalid");
   const args = [
     requiredString(scope, "scope"),
     requiredString(ownerId, "owner_id"),
@@ -127,7 +123,7 @@ export async function renewGatewayLease(db, {
 
 export async function releaseGatewayLease(db, { scope, ownerId, fencingEpoch }) {
   const epoch = String(fencingEpoch ?? "");
-  if (!/^\d{1,20}$/.test(epoch)) throw new TypeError("fencing_epoch_invalid");
+  if (!/^\\d{1,20}$/.test(epoch)) throw new TypeError("fencing_epoch_invalid");
   return first(await db.unsafe(RELEASE_SQL, [
     requiredString(scope, "scope"),
     requiredString(ownerId, "owner_id"),
@@ -139,12 +135,12 @@ export async function readGatewayLease(db, scope) {
   return first(await db.unsafe(READ_SQL, [requiredString(scope, "scope")]));
 }
 
-// A heartbeat failure is fail-closed: stop the timer and synchronously invoke
-// onLeaseLost so the adapter can destroy its Discord client and stop side effects.
-// The callback must be idempotent and must not attempt a second Gateway login.
+// A heartbeat failure is fail-closed. A slow/hung renewal must not leave the
+// Gateway alive indefinitely while its lease expires in the database.
 export function startLeaseHeartbeat({
   renew,
   intervalMs = 10000,
+  renewTimeoutMs = 7000,
   onLeaseLost,
   onHeartbeat
 }) {
@@ -153,6 +149,9 @@ export function startLeaseHeartbeat({
   }
   if (!Number.isInteger(intervalMs) || intervalMs < 1000 || intervalMs > 40000) {
     throw new RangeError("heartbeat_interval_invalid");
+  }
+  if (!Number.isInteger(renewTimeoutMs) || renewTimeoutMs < 250 || renewTimeoutMs > 60000) {
+    throw new RangeError("heartbeat_renew_timeout_invalid");
   }
 
   let stopped = false;
@@ -174,16 +173,27 @@ export function startLeaseHeartbeat({
   const beat = async () => {
     if (stopped || running) return;
     running = true;
+    let timeout;
     try {
-      const result = await renew();
+      const result = await Promise.race([
+        Promise.resolve().then(renew),
+        new Promise((_, reject) => {
+          timeout = setTimeout(() => reject(new Error("lease_renewal_timeout")), renewTimeoutMs);
+          timeout.unref?.();
+        })
+      ]);
       if (!result) {
         await lose("lease_not_renewed");
         return;
       }
       if (typeof onHeartbeat === "function") await onHeartbeat(result);
-    } catch {
-      await lose("lease_renewal_error");
+    } catch (error) {
+      const reason = error instanceof Error && error.message === "lease_renewal_timeout"
+        ? "lease_renewal_timeout"
+        : "lease_renewal_error";
+      await lose(reason);
     } finally {
+      if (timeout) clearTimeout(timeout);
       running = false;
     }
   };
