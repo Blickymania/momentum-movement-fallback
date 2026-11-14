@@ -10,7 +10,7 @@ Railway documents `railway connect --tunnel-only` as an SSH tunnel to a database
 
 ## Requirements
 
-- A trusted, continuously running Linux/macOS host with `railway`, `cloudflared`, and `nc` installed.
+- A trusted, continuously running Linux/macOS host with `railway`, `cloudflared` 2025.4.0 or later (for `--token-file`), and `nc` installed.
 - A Railway **project-scoped** token in `RAILWAY_TOKEN` (do not use a workspace token unless the CLI proves project-token access is insufficient).
 - The exact Dawn production project ID, production environment ID, and OAuth PostgreSQL service ID.
 - A remotely managed Cloudflare Tunnel token, stored as `CLOUDFLARE_TUNNEL_TOKEN`.
