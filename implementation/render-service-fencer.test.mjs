@@ -30,7 +30,7 @@ function fakeRender({ states, suspendResult = 202, transitionAfterPolls = 1 } = 
         authorization: init.headers.authorization
       });
       assert.equal(init.headers.authorization, "Bearer " + apiKey);
-      const serviceId = parsed.pathname.split("/").filter(Boolean)[3];
+      const serviceId = parsed.pathname.split("/").filter(Boolean)[2];
       if (init.method === "GET") {
         if (!serviceStates.has(serviceId)) {
           return new Response(JSON.stringify({ message: "not found" }), { status: 404 });
