@@ -19,6 +19,7 @@ function fakeClient() {
 function makeLeaseTransport({ denyAcquire = false } = {}) {
   let lease = null;
   let epoch = 0;
+  let fenceAllowed = false;
   const calls = [];
   return {
     calls,
@@ -31,7 +32,10 @@ function makeLeaseTransport({ denyAcquire = false } = {}) {
         const body = JSON.parse(init.body);
         const now = Date.now();
         if (lease && lease.lease_until_ms > now) {
-          return new Response(JSON.stringify({ ok: false }), { status: 409 });
+          return new Response(JSON.stringify({ ok: false, reason: "lease_unavailable" }), { status: 409 });
+        }
+        if (lease && lease.lease_until_ms <= now && !fenceAllowed) {
+          return new Response(JSON.stringify({ ok: false, reason: "hard_fence_required" }), { status: 409 });
         }
         epoch++;
         lease = {
@@ -42,6 +46,17 @@ function makeLeaseTransport({ denyAcquire = false } = {}) {
           lease_until_ms: now + body.ttlSeconds * 1000
         };
         return new Response(JSON.stringify({ ok: true, lease }), { status: 200 });
+      }
+      if (url.pathname === "/fence" && method === "POST") {
+        const body = JSON.parse(init.body);
+        fenceAllowed = true;
+        return new Response(JSON.stringify({
+          ok: true,
+          fenced: true,
+          candidateOwnerId: body.candidateOwnerId,
+          candidateDeploymentId: body.candidateDeploymentId,
+          stopProof: { state: "suspended", serviceId: "srv-previous-12345678" }
+        }), { status: 200 });
       }
       if (url.pathname === "/lease/renew" && method === "POST") {
         const body = JSON.parse(init.body);
@@ -91,6 +106,7 @@ test("prepared gateway cannot login or execute event side effects until lease ac
     ownerId: "candidate-deploy:process-instance-1",
     leaseCoordinatorUrl: "https://lease.example.com",
     leaseServiceToken: "x".repeat(48),
+    fenceRequestToken: "f".repeat(48),
     fetchFn: leaseTransport.fetch,
     fetchTarget,
     heartbeatIntervalMs: 10000
@@ -141,6 +157,7 @@ test("prepared gateway stays disconnected when Cloudflare denies its lease", asy
     ownerId: "candidate-deploy:process-instance-2",
     leaseCoordinatorUrl: "https://lease.example.com",
     leaseServiceToken: "x".repeat(48),
+    fenceRequestToken: "f".repeat(48),
     fetchFn: leaseTransport.fetch,
     fetchTarget: fakeFetchTarget()
   });
@@ -171,6 +188,7 @@ test("graceful shutdown aborts a pending Gateway login and releases the acquired
     ownerId: "candidate-deploy:process-instance-shutdown",
     leaseCoordinatorUrl: "https://lease.example.com",
     leaseServiceToken: "x".repeat(48),
+    fenceRequestToken: "f".repeat(48),
     fetchFn: leaseTransport.fetch,
     fetchTarget: fakeFetchTarget(),
     heartbeatIntervalMs: 10000
@@ -200,6 +218,7 @@ test("prepared owner rejects an owner ID that is not namespaced to its deploymen
     ownerId: "primary-deploy:wrong-owner",
     leaseCoordinatorUrl: "https://lease.example.com",
     leaseServiceToken: "x".repeat(48),
+    fenceRequestToken: "f".repeat(48),
     fetchFn: makeLeaseTransport().fetch,
     fetchTarget: fakeFetchTarget()
   }), /owner_id_must_be_bound_to_deployment/);
@@ -213,9 +232,53 @@ test("generated owner ID is unique and prefixed by the deployment identity", () 
     deploymentId: "standby-deploy",
     leaseCoordinatorUrl: "https://lease.example.com",
     leaseServiceToken: "x".repeat(48),
+    fenceRequestToken: "f".repeat(48),
     fetchFn: makeLeaseTransport().fetch,
     fetchTarget: fakeFetchTarget()
   });
   assert.match(prepared.ownerId, /^standby-deploy:[0-9a-f-]{36}$/i);
   assert.equal(prepared.scope, "momentum-movement:bot-005-gateway");
+});
+
+
+test("prepared Bot 005 owner requests Worker hard-stop before promoting after lease expiry", async () => {
+  const client = fakeClient();
+  const transport = makeLeaseTransport();
+  const oldOwner = prepareFencedDiscordGatewayOwner({
+    client,
+    botToken: "fake-bot-token-1234567890",
+    deploymentId: "primary-deploy",
+    ownerId: "primary-deploy:process-old",
+    leaseCoordinatorUrl: "https://lease.example.com",
+    leaseServiceToken: "x".repeat(48),
+    fenceRequestToken: "p".repeat(48),
+    fetchFn: transport.fetch,
+    fetchTarget: fakeFetchTarget(),
+    heartbeatIntervalMs: 10000
+  });
+  const primary = await oldOwner.start();
+  assert.equal(primary.ok, true);
+  await oldOwner.shutdown();
+
+  // Model expiry as a crashed old process: no old runtime remains to renew.
+  const leaseState = transport.calls;
+  const standbyClient = fakeClient();
+  const standby = prepareFencedDiscordGatewayOwner({
+    client: standbyClient,
+    botToken: "fake-bot-token-1234567890",
+    deploymentId: "standby-deploy",
+    ownerId: "standby-deploy:process-new",
+    leaseCoordinatorUrl: "https://lease.example.com",
+    leaseServiceToken: "x".repeat(48),
+    fenceRequestToken: "s".repeat(48),
+    fetchFn: transport.fetch,
+    fetchTarget: fakeFetchTarget(),
+    heartbeatIntervalMs: 10000
+  });
+  const promoted = await standby.start();
+  assert.equal(promoted.ok, true);
+  assert.equal(promoted.lease.fencing_epoch, "2");
+  assert.equal(standbyClient.loginCount, 1);
+  assert.equal(leaseState.some(x => x.path === "/fence"), true);
+  await standby.shutdown();
 });
