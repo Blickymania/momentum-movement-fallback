@@ -95,11 +95,11 @@ RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch,
 const RENEW_SQL = `
 UPDATE gateway_ownership
 SET lease_until_ms = ?,
-    heartbeat_at_ms = ?,
-    deployment_id = ?
+    heartbeat_at_ms = ?
 WHERE lease_scope = ?
   AND owner_id = ?
   AND fencing_epoch = ?
+  AND deployment_id = ?
   AND lease_until_ms > ?
 RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch, lease_until_ms,
           heartbeat_at_ms, deployment_id`;
@@ -284,6 +284,7 @@ export class GatewayLeaseCoordinator {
     if (normalizedScope !== LEASE_SCOPE) throw new TypeError("lease_scope_invalid");
     const owner = requiredString(ownerId, "owner_id");
     const deployment = requiredString(deploymentId, "deployment_id");
+    requireOwnerDeploymentBinding(owner, deployment, "owner_id");
     const ttl = requiredTtl(ttlSeconds);
     const epoch = requiredEpoch(fencingEpoch);
     const now = this.now();
@@ -291,10 +292,10 @@ export class GatewayLeaseCoordinator {
       RENEW_SQL,
       now + ttl * 1000,
       now,
-      deployment,
       normalizedScope,
       owner,
       Number(epoch),
+      deployment,
       now
     ));
   }
