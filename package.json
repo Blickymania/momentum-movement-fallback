@@ -1,0 +1,11 @@
+{
+  "name": "momentum-movement-failover-foundation",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test implementation/*.test.mjs"
+  }
+}
