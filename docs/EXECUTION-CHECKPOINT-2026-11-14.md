@@ -163,3 +163,13 @@ No Render, Cloudflare, Railway or Discord production resource was created, chang
 ## No production changes
 
 No Render, Cloudflare, Railway or Discord production resource was created, changed, stopped, suspended, redeployed or routed. No secrets were generated or provisioned. Bot 005 remains the current Railway primary. Failover is still unproven and not production-ready.
+
+### Cycle 22 — GitHub Actions pre-job failure diagnosis
+
+- Inspected latest Actions run 43564233582 for commit 3e528bd18f4ab57c9b2e6c9b3b5979eda1661c8e. Run metadata reports conclusion startup_failure and path BuildFailed.
+- The run jobs endpoint returns total_count 0 / jobs []. The commit check-runs endpoint returns total_count 0 / check_runs []. No job, runner, step or compiler output is available.
+- The repository Actions permissions endpoints were rejected by the GitHub fetch wrapper as unsupported endpoints. This prevents verifying whether Actions is enabled/restricted at repository level through the current integration.
+- Exact cause remains unknown. Do not claim this is a source failure, billing issue, repository setting or GitHub outage without additional evidence.
+- Workflow path filters now include implementation/**, cloudflare/**, candidate/**, package.json and the workflow. A pinned Wrangler 4.161.0 deploy --dry-run step is ready to execute after npm test, but no step has run because there is no runner/job.
+
+Production state remains unchanged; failover is not complete or production-ready.
