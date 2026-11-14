@@ -42,6 +42,18 @@ test("lease client only accepts public HTTPS coordinator URLs", () => {
     baseUrl: "https://localhost./",
     serviceToken: token
   }), /public_https/);
+  for (const baseUrl of [
+    "https://lease.internal",
+    "https://lease.lan",
+    "https://lease.test",
+    "https://singlelabel",
+    "https://[::1]"
+  ]) {
+    assert.throws(() => createCloudflareGatewayLeaseStore({
+      baseUrl,
+      serviceToken: token
+    }), /public_https/);
+  }
   assert.throws(() => createCloudflareGatewayLeaseStore({
     baseUrl: "https://lease.example.com",
     serviceToken: "too-short"
