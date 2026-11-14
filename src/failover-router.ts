@@ -56,8 +56,9 @@ async function probe(candidate: Candidate): Promise<ProbeResult> {
   }
 }
 
-async function chooseOrigin(env: RouterEnv): Promise<{ name: string; origin: string } | null> {
+async function chooseOrigin(env: RouterEnv, excluded: Set<string> = new Set()): Promise<{ name: string; origin: string } | null> {
   for (const candidate of candidates(env)) {
+    if (excluded.has(candidate.name)) continue;
     const origin = cleanOrigin(candidate.value);
     if (!origin) continue;
     const status = await probe(candidate);
@@ -109,17 +110,26 @@ export default {
       return json({ status: "ready", manager: MANAGER_NAME, selectedOrigin: selected.name });
     }
 
-    // Forward the incoming MCP/OAuth request to one selected origin exactly
-    // once. Never retry a timed-out POST: Discord may already have applied it.
-    try {
-      return await fetch(new Request(forwardUrl(request.url, selected.origin), request));
-    } catch (error) {
-      console.error(JSON.stringify({
-        event: "manager_origin_transport_failed",
-        selectedOrigin: selected.name,
-        errorType: error instanceof Error ? error.name : "unknown"
-      }));
-      return json({ error: "selected_manager_origin_transport_failed", selectedOrigin: selected.name }, 502);
+    // Forward writes to one selected origin exactly once. Only GET/HEAD may
+    // move to another verified origin after a transport failure.
+    const safeRead = request.method === "GET" || request.method === "HEAD";
+    const excluded = new Set<string>();
+    let current: { name: string; origin: string } | null = selected;
+    while (current) {
+      excluded.add(current.name);
+      try {
+        return await fetch(new Request(forwardUrl(request.url, current.origin), request));
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: "manager_origin_transport_failed",
+          selectedOrigin: current.name,
+          safeRead,
+          errorType: error instanceof Error ? error.name : "unknown"
+        }));
+        if (!safeRead) break;
+        current = await chooseOrigin(env, excluded);
+      }
     }
+    return json({ error: "selected_manager_origin_transport_failed", selectedOrigin: selected.name }, 502);
   }
 };
