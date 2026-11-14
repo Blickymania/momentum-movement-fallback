@@ -321,7 +321,8 @@ test("queue capacity failure does not advance sequence and requests replay", asy
 
   assert.equal((await h.core.getInbox("bot-alpha").getState()).sequence, 11);
   assert.equal((await h.core.getInbox("bot-alpha").getMetrics()).pendingEvents, 1);
-  assert.equal(h.core.sessions.get("bot-alpha").status, "queue_full");
+  assert.equal(h.core.sessions.get("bot-alpha").status, "reconnect_wait");
+  assert.equal(h.core.sessions.get("bot-alpha").lastError, "durable_gateway_inbox_full");
   assert.equal(socket.closed.at(-1).code, 4000);
 });
 
