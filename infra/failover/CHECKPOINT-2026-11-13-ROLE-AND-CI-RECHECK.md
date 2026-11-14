@@ -284,3 +284,25 @@ Review OAuth dynamic client registration and redirect URI normalization/validati
 
 ### Next execution step
 Audit the final repository diff and config files for type/runtime compatibility, then identify a reproducible way to run the actual Node/TypeScript/Wrangler toolchain without changing production or introducing paid infrastructure.
+
+
+## Full static test-harness execution and test repair
+
+- Executed every actual test callback in `tests/port-invariants.test.mjs` against the latest fetched Worker and router source using an isolated JavaScript harness that supplied the Node test/assert/readFile interfaces.
+- Result: **30 tests executed, 30 passed, 0 failed**.
+- One earlier static count reported 31 because it counted the substring `.test(` inside a string assertion as an additional test declaration. Correct actual test callback count is 30.
+- During the first harness run, one router test still expected the old single-origin expression and old no-while-loop condition. That test became stale after safe-read failover was introduced. Rewrote it to assert the current origin is forwarded once, unsafe methods stop after one failure, and safe reads select an alternate verified origin.
+- Test repair commit: `87a3f84a8a5a74be1b1bf6bda92c8942ca0bc5ab`.
+- Re-ran the entire harness after repair: 30/30 passed.
+- This harness executes the test callbacks and assertions against read-back source, but is not the project's native `node --test` invocation. It does not replace TypeScript compilation, Wrangler dry-runs, or integration tests.
+
+### CI remains blocked
+- Latest run metadata is recorded separately below; GitHub Actions has continued to report pre-job startup failure and no jobs.
+- No npm install, TypeScript, Wrangler, or Node test step has run in GitHub Actions.
+
+### Exact next execution step
+Continue repository/config compatibility audit and investigate any remaining source-level or deployment assumptions. Keep seeking a genuine Node/TypeScript/Wrangler runtime without exposing private source or using paid infrastructure.
+
+
+## Latest CI observation after test-harness repair
+- Run ID: `43542626232`; head SHA: `87a3f84a8a5a74be1b1bf6bda92c8942ca0bc5ab`; conclusion: `startup_failure`; path: `BuildFailed`; jobs returned: 0.
