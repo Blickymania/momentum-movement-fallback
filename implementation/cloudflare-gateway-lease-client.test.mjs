@@ -301,7 +301,7 @@ test("Cloudflare Worker + SQLite Durable Object + remote hard-stop controller re
   try {
     const primaryInput = {
       scope: GATEWAY_LEASE_SCOPE,
-      ownerId: "primary-process-unique",
+      ownerId: "primary-deploy:process-unique",
       deploymentId: "primary-deploy",
       ttlSeconds: 30
     };
@@ -343,7 +343,7 @@ test("Cloudflare Worker + SQLite Durable Object + remote hard-stop controller re
 
     const standbyDenied = await startGatewayOwner({
       ...common,
-      ownerId: "standby-process-unique",
+      ownerId: "standby-deploy:process-unique",
       deploymentId: "standby-deploy",
       loginGateway: async () => { standbyLogins++; }
     });
@@ -356,7 +356,7 @@ test("Cloudflare Worker + SQLite Durable Object + remote hard-stop controller re
     await assert.rejects(
       () => store.acquire({
         scope: GATEWAY_LEASE_SCOPE,
-        ownerId: "standby-process-unique",
+        ownerId: "standby-deploy:process-unique",
         deploymentId: "standby-deploy"
       }),
       /lease_coordinator_hard_fence_required/
@@ -365,7 +365,7 @@ test("Cloudflare Worker + SQLite Durable Object + remote hard-stop controller re
     const standby = await startGatewayOwner({
       ...common,
       leaseStore: fencedStore,
-      ownerId: "standby-process-unique",
+      ownerId: "standby-deploy:process-unique",
       deploymentId: "standby-deploy",
       loginGateway: async () => { standbyLogins++; }
     });
