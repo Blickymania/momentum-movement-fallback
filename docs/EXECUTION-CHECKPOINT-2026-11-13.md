@@ -285,3 +285,60 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 6. Build a reviewed candidate copy of Bot 005 source with the guard installed immediately after Client construction, before all listeners, and the prepared owner at startup. Do not modify the recovered production snapshot or deploy to production.
 7. Implement an independent hard-stop controller with process/service identity and positive termination confirmation.
 8. Complete real Cloudflare preproduction namespace testing, exact runtime compatibility, PostgreSQL/SQLite coordination outage testing, failover/failback, side-effect idempotency, and rollback before production cutover.
+
+
+## Cycle 9 — verified hard-stop takeover gate and application readiness (source-only)
+
+### Implemented
+- Added implementation/standby-hard-stop-controller.mjs and implementation/standby-hard-stop-controller.test.mjs.
+- The controller reads the Momentum Movement lease and refuses to stop an unexpected active owner.
+- It requires provider stop evidence that matches the exact primary owner ID, deployment ID, and process ID, with state=stopped, confirmed=true, and gatewayClosed=true.
+- If any field is missing, mismatched, false, or the provider adapter throws, the controller does not release the lease and does not invoke standby startup.
+- Once stop proof is exact, it releases only the matching old primary lease epoch, re-reads the lease, and refuses takeover if an active owner remains.
+- Only then does it invoke a standby callback. That callback must start through the fenced owner supervisor, not direct client.login.
+- Added application-level readiness signaling to implementation/fenced-discord-gateway-owner.mjs:
+  - markApplicationReady() must be called by the application only after verifying the expected bot identity and target guild.
+  - markApplicationNotReady() clears that state if the bot/guild verification is lost.
+  - waitUntilReady() allows the orchestration layer to wait for the application-level ready signal.
+  - The ready getter now requires both supervisor Gateway login completion and explicit application readiness.
+  - Lease loss/shutdown clears readiness and rejects outstanding readiness waiters.
+- The standby hard-stop controller accepts the standby only when the start callback returns an owner reporting ready=true. The callback must await the prepared owner's waitUntilReady() before returning that confirmation.
+
+### Tests and repair
+- Local Node.js v22.16.0 combined test suite: **35 passed, 0 failed**.
+  - 19 Cloudflare/SQLite coordinator and Worker/client tests.
+  - 6 Gateway ownership guard tests.
+  - 2 prepared owner/application readiness tests.
+  - 8 hard-stop controller tests.
+- Tests cover exact primary stop identity, explicit Gateway closure, unexpected owner denial, controller failure, expired lease handling, lease release/re-read, application READY gating, denied lease no-login, and egress revocation.
+- Tests use Node's SQLite engine for the local Durable Object simulation and fake Discord client / fake provider stop responses. They do not kill a real runtime process, connect to live Discord Gateway, or validate Cloudflare edge execution.
+- Updated the Cloudflare control-plane and independent-hosting architecture docs with the new contract and remaining limitations.
+
+### Physical stop integration status
+- No provider-specific processControl.stopAndConfirm adapter exists yet.
+- Render service inventory still returned null, so the exact runtime service identity/process API has not been resolved.
+- Existing Bot 005 still runs on the legacy Railway footprint. The locked policy does not allow future recovery/failover to depend on Railway.
+- A one-time controlled migration away from the existing Railway primary is distinct from the future failover mechanism; it must be manually/externally controlled and verified before any independent standby login.
+- The hard-stop controller is not usable for production until the exact host adapter can positively prove the old process is stopped and its Gateway connection has closed.
+
+### Latest verified state
+- Cloudflare Durable Object control-plane and client remain source-only, with 19 control-plane tests passing.
+- Gateway event/REST/fetch guards and prepared owner adapter are source-only; Bot 005 recovered source has not been patched.
+- Standby hard-stop orchestration is source-only, without provider API adapter.
+- Full local test suite: 35/35 passed.
+- GitHub Actions latest inspected push runs still fail with startup_failure and zero jobs; no runner logs exist. No claim of hosted CI success.
+- Cloudflare account plan/usage browser inspection run remains non-terminal after 510 seconds with no findings. No Cloudflare settings/resources were changed.
+- Render service inventory is inconclusive; Postgres and Key Value inventory returned no instances.
+- Supabase Free account remains with two active OAuth projects; no new project or upgrade.
+- No Cloudflare Worker, Durable Object namespace, secret, host service, database, or paid resource created.
+- Bot 005 remains sole production Gateway owner and has not been stopped, restarted, redeployed, or changed.
+
+### Next execution steps
+1. Resolve the read-only Cloudflare plan/resource inventory through a responsive account page or connector route; if not available, record as unavailable and do not change account settings.
+2. Resolve Render service inventory through a responsive dashboard/API route and identify whether a paid persistent Worker/Background Worker can be used.
+3. Determine exact Bot 005 runtime framework and discord.js version from a source/package artifact independent of Railway deployment data; verify guard interception against that exact version.
+4. Prepare a separate candidate copy of Bot 005 that installs ownership guards immediately after Client construction, before all event listeners, then calls the prepared owner adapter. Keep recovered production snapshot unchanged.
+5. Replace the coaching workflow Railway-internal URL with a required public HTTPS service endpoint after that service's migration and parity test.
+6. Implement the provider-specific stopAndConfirm adapter and verify it can terminate the old process by exact identity and report Gateway closure.
+7. Audit Discord Manager OAUTH_DATABASE_URL host without printing credentials.
+8. Only after provider plan/cost, hard-stop, runtime compatibility, independent coordination and rollback are verified should any preproduction deployment or production cutover be considered.
