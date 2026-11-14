@@ -54,3 +54,17 @@ test("Northflank cannot enter the router before shared OAuth data parity is prov
   assert.ok(deployment.includes("same logical OAuth data plane"));
   assert.ok(deployment.includes("a rehearsed restore path"));
 });
+
+test("Cloudflare Worker fallback verifies PostgreSQL before reporting database readiness", async () => {
+  const worker = await readFile(new URL("../src/index.ts", import.meta.url), "utf8");
+  const readinessStart = worker.indexOf('if(u.pathname==="/readyz"');
+  const dbCheck = worker.indexOf('await mcpOAuthQuery(mcpOAuthDb(),"SELECT 1 AS ok")', readinessStart);
+  const dbReadyFlag = worker.indexOf("oauthDatabaseVerified:true", readinessStart);
+  assert.ok(readinessStart >= 0 && dbCheck > readinessStart && dbReadyFlag > dbCheck);
+  assert.ok(worker.includes('reason:"oauth_backend_unavailable"'));
+});
+
+test("Northflank Manager OAuth database variable must point to the shared data plane", () => {
+  assert.ok(deployment.includes("connection string for the selected shared OAuth data plane"));
+  assert.ok(deployment.includes("must not point to an isolated Northflank-only production database"));
+});
