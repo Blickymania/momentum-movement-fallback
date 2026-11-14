@@ -75,6 +75,13 @@ export class CoachingInteractionIdempotency {
 
   async fetch(request) {
     const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/healthz") {
+      return json({
+        status: "ok",
+        service: "coaching-interaction-idempotency",
+        ready: true
+      });
+    }
     if (request.method !== "POST" || url.pathname !== "/claim") {
       return json({ error: "not_found" }, 404);
     }
