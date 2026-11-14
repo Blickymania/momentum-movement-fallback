@@ -42,7 +42,7 @@ export function createCoachingWorkflowClient({
 }) {
   const url = validateCoachingEndpoint(endpoint);
   const timeout = validateTimeout(timeoutMs);
-  if (typeof authSource !== "string" || !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(authSource) ||
+  if ((authSource !== "bot005" && authSource !== "coaching-relay") ||
       typeof authSecret !== "string" || authSecret.length < 32 || authSecret.length > 512) {
     throw new TypeError("coaching_workflow_authentication_required");
   }
