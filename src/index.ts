@@ -493,12 +493,12 @@ async function handleRequest(request){
     try{await mcpOAuthQuery(mcpOAuthDb(),"SELECT 1 AS ok");}
     catch{return reply({status:"not_ready",reason:"oauth_backend_unavailable"},503);}
    }
-   return reply({status:"ready",manager:NAME,discordVerified:true});
+   return reply({status:"ready",manager:NAME,discordVerified:true,oauthDatabaseVerified:true});
   }catch{return reply({status:"not_ready",reason:"readiness_timeout"},503);}
  }
  if(u.pathname==="/healthz"&&request.method==="GET")return reply({status:"ok",manager:NAME,service:"cloudflare-workers"});
  if(u.pathname!=="/mcp"||request.method!=="POST")return reply({error:"Not found"},404);
- const provided=request.headers.get("authorization")||"";const secret=runtimeEnv().RAILWAY_SERVICE_KEY;const staticAuth=!!secret&&provided==="Bearer "+secret;let oauthAuth=null;if(!staticAuth&&provided.startsWith("Bearer ")){try{oauthAuth=await mcpOAuthAuthenticate(provided.slice(7));}catch{return reply({error:"OAuth authentication backend unavailable"},503);}}if(!staticAuth&&!oauthAuth)return mcpOAuthUnauthorized();
+ const provided=request.headers.get("authorization")||"";const secret=runtimeEnv().MCP_INTERNAL_BEARER_TOKEN||runtimeEnv().RAILWAY_SERVICE_KEY;const staticAuth=!!secret&&provided==="Bearer "+secret;let oauthAuth=null;if(!staticAuth&&provided.startsWith("Bearer ")){try{oauthAuth=await mcpOAuthAuthenticate(provided.slice(7));}catch{return reply({error:"OAuth authentication backend unavailable"},503);}}if(!staticAuth&&!oauthAuth)return mcpOAuthUnauthorized();
  let rpc;try{rpc=JSON.parse(await readBoundedText(request,2*1024*1024));}catch(error){const tooLarge=error instanceof Error&&error.message==="request_body_too_large";return tooLarge?reply({error:"Request body too large"},413):reply({jsonrpc:"2.0",id:null,error:{code:-32700,message:"Parse error"}},400);}
  if(!validJsonRpcRequest(rpc))return reply({jsonrpc:"2.0",id:null,error:{code:-32600,message:"Invalid Request"}},400);
  if(!Object.prototype.hasOwnProperty.call(rpc,"id"))return new Response(null,{status:202});

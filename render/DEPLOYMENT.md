@@ -44,7 +44,7 @@ For these reasons, this is an emergency cold fallback, not an always-on producti
 
 - Do not change the existing Railway production service.
 - Do not enable writes until identity, database, OAuth, and read tests pass.
-- The health check validates the expected Discord application and guild and the OAuth database when OAuth is enabled.
+- The health check validates the expected Discord application and guild, and executes `SELECT 1` against PostgreSQL when OAuth is enabled. A ready response includes `oauthDatabaseVerified: true`.
 - The gateway/router must send an actual request to exactly one origin; never replay a timed-out POST.
 - If Render is asleep, allow cold-start time before considering it ready.
 - Keep the Cloudflare and Railway endpoints available for manual rollback.

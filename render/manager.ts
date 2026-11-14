@@ -374,7 +374,7 @@ Bun.serve({port:Number(Bun.env.PORT||3000),async fetch(request){
  const u=new URL(request.url);const oauthResponse=await mcpOAuthDispatch(request,u);if(oauthResponse)return oauthResponse;
  if(u.pathname==="/readyz"&&request.method==="GET"){
   const bot=Bun.env.DISCORD_BOT_TOKEN,guild=Bun.env.AUTHORIZED_GUILD_ID,expectedBot=Bun.env.APPLICATION_ID;
-  if(!bot||!/^\d{15,22}$/.test(guild||"")||!/^\d{15,22}$/.test(expectedBot||""))return reply({status:"not_ready",reason:"configuration"},503);
+  if(!bot||!/^\\d{15,22}$/.test(guild||"")||!/^\\d{15,22}$/.test(expectedBot||""))return reply({status:"not_ready",reason:"configuration"},503);
   try{
    const h={authorization:"Bot "+bot,"user-agent":"DiscordManagerReadiness/1.0"};
    const [identity,access]=await Promise.all([
@@ -384,12 +384,18 @@ Bun.serve({port:Number(Bun.env.PORT||3000),async fetch(request){
    if(!identity.ok||!access.ok)return reply({status:"not_ready",reason:"discord_unavailable"},503);
    const [who,server]=await Promise.all([identity.json(),access.json()]);
    if(String(who.id)!==String(expectedBot)||String(server.id)!==String(guild))return reply({status:"not_ready",reason:"scope_mismatch"},503);
-   return reply({status:"ready",manager:NAME,discordVerified:true});
+   let oauthDatabaseVerified=true;
+   if(Bun.env.MCP_OAUTH_ENABLED==="true"){
+    if(!mcpOAuthDb)return reply({status:"not_ready",reason:"oauth_database_unconfigured"},503);
+    try{await mcpOAuthDb.unsafe("SELECT 1 AS ok");}
+    catch{return reply({status:"not_ready",reason:"oauth_database_unavailable"},503);}
+   }
+   return reply({status:"ready",manager:NAME,discordVerified:true,oauthDatabaseVerified});
   }catch{return reply({status:"not_ready",reason:"readiness_timeout"},503);}
  }
- if(u.pathname==="/healthz"&&request.method==="GET")return reply({status:"ok",manager:NAME,service:"railway"});
+ if(u.pathname==="/healthz"&&request.method==="GET")return reply({status:"ok",manager:NAME,service:Bun.env.DEPLOYMENT_PLATFORM||"unknown"});
  if(u.pathname!=="/mcp"||request.method!=="POST")return reply({error:"Not found"},404);
- const provided=request.headers.get("authorization")||"";const secret=Bun.env.RAILWAY_SERVICE_KEY;const staticAuth=!!secret&&provided==="Bearer "+secret;let oauthAuth=null;if(!staticAuth&&provided.startsWith("Bearer ")){try{oauthAuth=await mcpOAuthAuthenticate(provided.slice(7));}catch{return reply({error:"OAuth authentication backend unavailable"},503);}}if(!staticAuth&&!oauthAuth)return mcpOAuthUnauthorized();
+ const provided=request.headers.get("authorization")||"";const secret=Bun.env.MCP_INTERNAL_BEARER_TOKEN||Bun.env.RAILWAY_SERVICE_KEY;const staticAuth=!!secret&&provided==="Bearer "+secret;let oauthAuth=null;if(!staticAuth&&provided.startsWith("Bearer ")){try{oauthAuth=await mcpOAuthAuthenticate(provided.slice(7));}catch{return reply({error:"OAuth authentication backend unavailable"},503);}}if(!staticAuth&&!oauthAuth)return mcpOAuthUnauthorized();
  let rpc;try{rpc=await request.json();}catch{return reply({error:"Invalid JSON"},400);}
  const id=rpc.id??null;const result=(v)=>reply({jsonrpc:"2.0",id,result:v});
  if(oauthAuth&&rpc.params?.name==="discord_guild_request"&&String(rpc.params?.arguments?.method||"GET").toUpperCase()!=="GET"&&!String(oauthAuth.scope).split(/\s+/).includes("mcp:write"))return reply({jsonrpc:"2.0",id,error:{code:-32003,message:"OAuth token lacks mcp:write scope"}},403);

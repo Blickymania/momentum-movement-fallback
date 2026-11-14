@@ -51,9 +51,13 @@ test("source contains no common embedded credential formats", () => {
 
 test("failover router probes verified Dawn Manager origins in priority order", async () => {
   const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
-  assert.match(router, /cloudflare-primary/);
-  assert.match(router, /railway-secondary/);
+  assert.match(router, /northflank-primary/);
+  assert.match(router, /railway-legacy-secondary/);
+  assert.match(router, /cloudflare-worker-tertiary/);
   assert.match(router, /render-cold-fallback/);
+  const priority = ["northflank-primary", "railway-legacy-secondary", "cloudflare-worker-tertiary", "render-cold-fallback"];
+  const positions = priority.map(name => router.indexOf(name));
+  assert.ok(positions.every((value, index) => value >= 0 && (index === 0 || value > positions[index - 1])));
   assert.match(router, /body\?\.manager === MANAGER_NAME/);
   assert.match(router, /body\?\.discordVerified === true/);
 });
@@ -165,7 +169,12 @@ test("router rewrites only the upstream origin and strips URL credentials", asyn
 
 test("router readiness reports verified upstream Discord identity", async () => {
   const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
-  assert.match(router, /status: "ready", manager: MANAGER_NAME, discordVerified: true/);
+  assert.match(router, /oauthDatabaseVerified: selected\.oauthDatabaseVerified/);
+  assert.match(router, /status: fullyReady \? "ready" : "degraded"/);
+  assert.match(router, /fullyReady \? 200 : 503/);
+  assert.match(router, /status: "ready"/);
+  assert.match(router, /manager: MANAGER_NAME/);
+  assert.match(router, /discordVerified: true/);
 });
 
 test("OAuth redirect URIs are HTTPS or loopback and reject credentials/fragments", () => {
@@ -200,4 +209,54 @@ test("OAuth expired-record cleanup is bounded, advisory-locked, and request-driv
 
 test("authorization-code consumption and token issuance share one transaction", () => {
   assert.match(source, /const context=await mcpOAuthDb\(\)\.begin\(async tx=>\{[\s\S]*?UPDATE mcp_oauth_authorization_codes SET consumed_at=now\(\)[\s\S]*?INSERT INTO mcp_oauth_access_tokens[\s\S]*?INSERT INTO mcp_oauth_refresh_tokens[\s\S]*?return row;/);
+});
+
+test("router requires explicit OAuth database readiness for new origins", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /body\?\.oauthDatabaseVerified === true/);
+  assert.match(router, /allowLegacyReadiness === true/);
+  assert.match(router, /railway-legacy-secondary/);
+});
+
+test("router may retry only safe reads on transient upstream gateway statuses", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /RETRYABLE_READ_STATUSES = new Set\(\[502, 503, 504\]\)/);
+  assert.match(router, /if \(safeRead && RETRYABLE_READ_STATUSES\.has\(response\.status\)\)/);
+  assert.match(router, /if \(!safeRead\) break/);
+});
+
+test("Manager readiness checks PostgreSQL when OAuth is enabled", () => {
+  assert.match(source, /MCP_OAUTH_ENABLED==="true"/);
+  assert.match(source, /mcpOAuthQuery\(mcpOAuthDb\(\),"SELECT 1 AS ok"\)/);
+  assert.match(source, /oauthDatabaseVerified:true/);
+});
+
+test("Manager supports provider-neutral internal bearer auth with legacy compatibility", () => {
+  assert.match(source, /MCP_INTERNAL_BEARER_TOKEN\|\|runtimeEnv\(\)\.RAILWAY_SERVICE_KEY/);
+});
+
+test("router caches short-lived health checks and coalesces concurrent probes", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /PROBE_CACHE_TTL_MS = 5000/);
+  assert.match(router, /probeCache = new Map/);
+  assert.match(router, /probeInFlight = new Map/);
+  assert.match(router, /if \(pending\) return pending/);
+  assert.match(router, /cachedProbe\(candidate\)/);
+});
+test("router readiness reports the selected origin actual database verification state", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /oauthDatabaseVerified: status\.oauthDatabaseVerified/);
+  assert.match(router, /oauthDatabaseVerified: selected\.oauthDatabaseVerified/);
+  assert.match(router, /oauthDatabaseVerified: body\?\.oauthDatabaseVerified === true/);
+});
+
+
+
+test("aggregate failover status reports degraded until a ready origin also verifies OAuth database", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /const managerAvailable = results\.some\(x => x\.ready\)/);
+  assert.match(router, /const fullyReady = results\.some\(x => x\.ready && x\.oauthDatabaseVerified\)/);
+  assert.match(router, /const status = fullyReady \? "ready" : managerAvailable \? "degraded" : "not_ready"/);
+  assert.match(router, /oauthDatabaseVerified: fullyReady/);
+  assert.match(router, /fullyReady \? 200 : 503/);
 });
