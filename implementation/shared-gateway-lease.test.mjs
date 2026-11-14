@@ -120,8 +120,8 @@ test("invalid lease TTL and fencing epoch are rejected before database access", 
 
 test("active lease cannot be reacquired even by a process reusing the same owner id", async () => {
   const db = fakeDb((sql) => {
-    assert.match(sql, /WHERE gateway_ownership\\.lease_until <= clock_timestamp\\(\\)/);
-    assert.doesNotMatch(sql, /OR gateway_ownership\\.owner_id = EXCLUDED\\.owner_id/);
+    assert.ok(sql.includes("WHERE gateway_ownership.lease_until <= clock_timestamp()"));
+    assert.ok(!sql.includes("OR gateway_ownership.owner_id = EXCLUDED.owner_id"));
     return [];
   });
   const result = await acquireGatewayLease(db, {
