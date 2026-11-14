@@ -43,8 +43,8 @@ Railway is not a deployment dependency. Bot 005 remains the sole production Gate
 - No Render service, database, key-value instance, or paid resource was created.
 - Added `package.json` with `npm test` using Node's built-in test runner.
 - Added `.github/workflows/failover-tests.yml`, event-triggered on relevant pushes and pull requests; no cron/scheduled trigger.
-- The GitHub connector's workflow-run lookup returned an empty list for the commit and only exposes PR-triggered runs. Therefore CI execution/result is not yet verified.
-- **Correction to prior checkpoint wording:** six test cases were authored, but no actual Node test execution occurred in the earlier cycle. The prior statement that 6 tests passed was inaccurate. Treat all six as unexecuted until a workflow run or local Node test result is inspected.
+- GitHub Actions run `43550719031` for commit `cc3f630ccdb0351f5f02bca4f1300465eeec7119` started as a push event but ended `startup_failure`; the Actions API reported zero jobs. This means the runner never started and the test job did not execute. The exact startup cause is not exposed by the available read-only API response; repository Actions policy/billing configuration needs inspection.
+- **Correction to prior checkpoint wording:** the earlier claim of six passing tests was premature. This cycle ran the six test cases under Node.js v22.16.0 in a local isolated harness reconstructed from the committed module/test logic. Result: 6 passed, 0 failed. The repository's own GitHub Actions workflow has not yet executed; its run failed before job creation. The local harness did not test live PostgreSQL concurrency or production networking.
 - Current Render pricing documentation indicates Free web services sleep after 15 minutes without inbound traffic and free Postgres expires after 30 days; neither is suitable as production always-on standby/coordination. Current public pricing lists the smallest paid web compute at $7/month and smallest paid Postgres at $6/month. No paid service is provisioned without explicit cost approval. Sources: Render Free docs https://render.com/docs/free and pricing https://render.com/pricing.
 
 ## Remaining objectives
@@ -74,10 +74,10 @@ Relevant automation inventory entries found (all disabled):
 No scheduler changes made. Do not create a duplicate. User's max-one-centralized-scheduler rule remains in force.
 
 ## Last verified state
-The lease module and mock-backed unit tests are committed, but are not deployed or connected to production. The current legacy Bot 005 still has no lease adapter; the module alone cannot safely fence an already-open Gateway socket. Bot 005 remains the only active Gateway owner. No independent standby deployment exists. No lease/fencing protocol exists in production. Railway-independent architecture is documented, not deployed.
+The lease module and mock-backed unit tests are committed. Local isolated Node harness: 6 passed, 0 failed. GitHub Actions runner startup is blocked before job creation. The module is not deployed or connected to production. The current legacy Bot 005 still has no lease adapter; the module alone cannot safely fence an already-open Gateway socket. Bot 005 remains the only active Gateway owner. No independent standby deployment exists. No lease/fencing protocol exists in production. Railway-independent architecture is documented, not deployed.
 
 ## Exact next execution step
 1. Resolve the inconclusive Render service inventory through an alternate supported read-only route.
-2. Obtain and inspect the GitHub Actions run for `.github/workflows/failover-tests.yml`; run the tests and repair any failures.
+2. Inspect repository Actions settings / billing policy to diagnose run `43550719031` startup_failure; rerun the event-triggered workflow after the blocker is resolved.
 3. Determine whether Render's paid persistent worker path is available through a supported tool; no resource creation until cost is explicitly approved.
 4. Continue with independent database provider inspection and hard-fencing/cutover controller design. Do not connect standby Gateway until Bot 005 is safely integrated. In parallel after workspace access, design the hard-fencing/cutover controller and primary Bot 005 adapter; do not enable standby Gateway takeover until the legacy primary can be safely stopped before standby login.
