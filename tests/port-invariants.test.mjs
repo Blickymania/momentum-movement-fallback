@@ -64,3 +64,31 @@ test("failover router forwards an actual request only once", async () => {
   assert.match(router, /Never retry a timed-out POST/);
   assert.doesNotMatch(router, /for\s*\([^)]*attempt|while\s*\(/);
 });
+
+test("OAuth schema initialization retries after a failed setup", () => {
+  assert.match(source, /mcpOAuthSchemaPromise=null;throw err/);
+  assert.match(source, /await mcpOAuthSchemaPromise/);
+});
+
+test("authorization codes are consumed once under a row lock", () => {
+  assert.match(source, /SELECT \* FROM mcp_oauth_authorization_codes WHERE code_hash=\$1 AND expires_at>now\(\) AND consumed_at IS NULL FOR UPDATE/);
+  assert.match(source, /UPDATE mcp_oauth_authorization_codes SET consumed_at=now\(\) WHERE code_hash=\$1/);
+});
+
+test("refresh-token rotation locks and revokes the prior token atomically", () => {
+  assert.match(source, /SELECT \* FROM mcp_oauth_refresh_tokens WHERE token_hash=\$1 AND expires_at>now\(\) AND revoked_at IS NULL FOR UPDATE/);
+  assert.match(source, /UPDATE mcp_oauth_refresh_tokens SET revoked_at=now\(\),replaced_by=\$1 WHERE token_hash=\$2/);
+  assert.match(source, /INSERT INTO mcp_oauth_refresh_tokens/);
+});
+
+test("OAuth bearer credentials are hashed before persistence", () => {
+  assert.match(source, /mcpOAuthHash = async value =>[\s\S]*crypto\.subtle\.digest\("SHA-256"/);
+  assert.match(source, /INSERT INTO mcp_oauth_access_tokens \(token_hash/);
+  assert.match(source, /INSERT INTO mcp_oauth_refresh_tokens \(token_hash/);
+});
+
+test("database client lifetime is request-scoped and closed in finally", () => {
+  assert.match(source, /new McpOAuthDatabase\(new Client\(/);
+  assert.match(source, /managerContext\.run\(\{ env, database \}/);
+  assert.match(source, /finally \{[\s\S]*await database\?\.close\(\)/);
+});
