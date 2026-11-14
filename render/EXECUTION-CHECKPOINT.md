@@ -61,7 +61,7 @@ Populate values through Render Dashboard Environment only; never paste secrets i
 - APPLICATION_ID
 - AUTHORIZED_GUILD_ID
 - DISCORD_BOT_TOKEN
-- MANAGER_SERVICE_KEY (prefer a new provider-neutral secret; do not copy old Railway secret without rotation/review)
+- MANAGER_SERVICE_KEY (use the same secret value as the current Railway RAILWAY_SERVICE_KEY during migration to preserve existing static-bearer clients; rotate only after all consumers are updated)
 - MCP_OAUTH_ENABLED
 - OAUTH_DATABASE_URL (only after intended, reachable, data-bearing DB is confirmed)
 - DISCORD_OAUTH_CLIENT_ID
@@ -104,4 +104,4 @@ Populate values through Render Dashboard Environment only; never paste secrets i
 9. Only after all checks pass, separately review failover router integration. Do not change production routing without an explicit cutover decision.
 
 ## Exact next execution step
-External/user-only blocker: choose the OAuth database source before entering credentials. Option 1 is preserve the existing Railway OAuth PostgreSQL data by arranging a supported, secure migration to a database reachable from Render; do not expose the private Railway hostname. Option 2 is deliberately start with the empty Neon staging database and accept that existing OAuth client registrations, tokens, and grants will not be present and clients may need re-registration. The checked-in Cloudflare router has no database binding; a separate Worker configuration was not available in the connected GitHub repositories. Once the database decision is made, add its connection string, Discord bot token, Discord OAuth client secret, and manager service key directly in Render Dashboard Environment (never in chat or GitHub), register the exact Render callback in Discord Developer Portal, then validate /readyz and OAuth. Do not add Render to router config or change production traffic while this remains unresolved.
+External/user-only blocker: choose the OAuth database source before entering credentials. Option 1 is preserve the existing Railway OAuth PostgreSQL data by arranging a supported, secure migration to a database reachable from Render; do not expose the private Railway hostname. Option 2 is deliberately start with the empty Neon staging database and accept that existing OAuth client registrations, tokens, and grants will not be present and clients may need re-registration. The checked-in Cloudflare router has no database binding; a separate Worker configuration was not available in the connected GitHub repositories. Once the database decision is made, add its connection string, Discord bot token, Discord OAuth client secret, and the current Railway shared manager key as MANAGER_SERVICE_KEY directly in Render Dashboard Environment (never in chat or GitHub). Register the exact Render callback in Discord Developer Portal, then validate /readyz and OAuth. Do not add Render to router config or change production traffic while this remains unresolved.
