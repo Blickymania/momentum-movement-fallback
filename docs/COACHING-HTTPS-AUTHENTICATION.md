@@ -21,7 +21,7 @@ Bot 005 and the independent Coaching Interaction Relay MUST use different secret
 | Bot 005 | `bot005` | `COACHING_WORKFLOW_SOURCE=bot005`, `COACHING_WORKFLOW_AUTH_SECRET` | `COACHING_BOT005_AUTH_SECRET` |
 | Coaching Interaction Relay | `coaching-relay` | `COACHING_WORKFLOW_SOURCE=coaching-relay`, `COACHING_WORKFLOW_AUTH_SECRET` | `COACHING_RELAY_AUTH_SECRET` |
 
-Each sender secret must be independently generated with at least 32 random bytes, provisioned through the hosting provider's secret store, and never committed to this repository or printed in logs. Generate locally with:
+Each sender secret must be independently generated with at least 32 random bytes, provisioned through the hosting provider's secret store, and never committed to this repository or printed in logs. The candidates enforce the exact sender identity and reject a sender secret that matches the Discord bot token; the workflow receiver also rejects equal sender secrets and requires the idempotency token to be distinct from both sender secrets and the bot token. Generate locally with:
 
 ```sh
 openssl rand -hex 32
