@@ -263,4 +263,9 @@ test("requires per-source authentication configuration before exposing the clien
     authSource: "bot005",
     authSecret: "short"
   }), /coaching_workflow_authentication_required/);
+  assert.throws(() => createCoachingWorkflowClient({
+    endpoint: "https://coaching.example.com/interaction",
+    authSource: "other-service",
+    authSecret: "local-test-auth-secret-at-least-thirty-two-chars"
+  }), /coaching_workflow_authentication_required/);
 });
