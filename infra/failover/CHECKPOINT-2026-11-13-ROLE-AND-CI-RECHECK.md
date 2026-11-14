@@ -255,3 +255,32 @@ Inspect and validate router status/readiness semantics, origin allowlisting, URL
 
 ### Next execution step
 Review OAuth dynamic client registration and redirect URI normalization/validation, OAuth error redirects, and MCP response semantics. Continue to seek an executable test path; do not represent source checks as full tests.
+
+
+## OAuth redirect and PKCE review cycle — verified source invariants
+
+### Reviewed protections
+- Dynamic client registration accepts only HTTPS redirect URIs or HTTP loopback (localhost, 127.0.0.1, [::1]); rejects embedded credentials and fragments.
+- Authorization requires an exact match against the client's registered redirect URI.
+- PKCE requires S256 and checks the verifier-derived challenge at token exchange.
+- OAuth state is generated randomly, stored as a hash, expires, and is checked as unconsumed before callback processing; final consumption occurs under a row lock.
+- No redirect or OAuth source change was needed in this cycle.
+
+### Tests
+- Added three static test cases for redirect policy, exact redirect matching/PKCE, and hashed expiring state.
+- Corrected a test matcher after the first source assertion failed because the test pattern did not match the actual URLSearchParams call. The source behavior itself matched the intended S256 policy.
+- Latest test commit: `d83aa935d8bd10397a6cc1eab2e1f3a311e7b81f`.
+- Read-back confirms 31 test cases; all five OAuth redirect/PKCE/state source assertions passed.
+- Test module syntax parsing had passed in the prior cycle; no source runtime test or Node test runner was executed here.
+
+### CI
+- Latest observed push run: `43542551525`, commit `d83aa935d8bd10397a6cc1eab2e1f3a311e7b81f`, conclusion `startup_failure`, path `BuildFailed`.
+- Jobs returned: 0.
+- No passing CI evidence.
+
+### Production and scheduler
+- No production resources, databases, Discord resources, Cloudflare resources, secrets, DNS, billing, or scheduled processes changed.
+- No scheduler, cron, reminder, recurring automation, or monitor created.
+
+### Next execution step
+Audit the final repository diff and config files for type/runtime compatibility, then identify a reproducible way to run the actual Node/TypeScript/Wrangler toolchain without changing production or introducing paid infrastructure.
