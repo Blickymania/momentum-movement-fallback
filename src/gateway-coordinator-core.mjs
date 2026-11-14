@@ -19,6 +19,7 @@ function validateDefinitions(definitions) {
     throw new RangeError("Gateway coordinator requires between 1 and 12 client definitions");
   }
   const ids = new Set();
+  const applicationIds = new Set();
   const tokenReferences = new Set();
   for (const def of definitions) {
     if (!def || typeof def !== "object" ||
@@ -29,6 +30,10 @@ function validateDefinitions(definitions) {
       throw new TypeError("Gateway client definition has invalid identity or intents");
     }
     if (ids.has(def.id)) throw new TypeError("Gateway client IDs must be unique");
+    if (applicationIds.has(def.applicationId)) {
+      throw new TypeError("Each Discord application may have only one active Gateway session until sharding is implemented");
+    }
+    applicationIds.add(def.applicationId);
     if (tokenReferences.has(def.tokenRef)) {
       throw new TypeError("Each Gateway identity must have a unique token reference");
     }
