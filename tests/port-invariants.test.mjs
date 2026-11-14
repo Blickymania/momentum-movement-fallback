@@ -48,3 +48,19 @@ test("source contains no common embedded credential formats", () => {
   assert.doesNotMatch(source, /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/);
   assert.doesNotMatch(source, /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/);
 });
+
+test("failover router probes verified Dawn Manager origins in priority order", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /cloudflare-primary/);
+  assert.match(router, /railway-secondary/);
+  assert.match(router, /render-cold-fallback/);
+  assert.match(router, /body\?\.manager === MANAGER_NAME/);
+  assert.match(router, /body\?\.discordVerified === true/);
+});
+
+test("failover router forwards an actual request only once", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /fetch\(new Request\(forwardUrl\(request\.url, selected\.origin\), request\)\)/);
+  assert.match(router, /Never retry a timed-out POST/);
+  assert.doesNotMatch(router, /for\s*\([^)]*attempt|while\s*\(/);
+});
