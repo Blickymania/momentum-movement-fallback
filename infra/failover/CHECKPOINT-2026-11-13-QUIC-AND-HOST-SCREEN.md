@@ -42,6 +42,8 @@ Files fetched back from GitHub:
 - Exact fetched connector script and test reconstructed in an isolated temporary directory and executed with native Node.js 22 `node --test`: **5/5 passed**.
 - `sh -n`: passed.
 - Tests cover shell syntax, minimum cloudflared version guard, secret/log handling, explicit QUIC, and no public Railway TCP proxy.
+- Executed the connector's exact AWK version comparator against 2025.6.99, 2025.7.0, 2025.7.1, 2026.0.0, and 2024.12.99: all five expected accept/reject outcomes passed.
+- Read-only Railway TCP proxy inventory for OAuth PostgreSQL returned zero proxies.
 - These are connector-script tests only; they do not prove real UDP egress, tunnel connection, VPC route, Hyperdrive, or DB integration.
 
 ## Additional host assessment
