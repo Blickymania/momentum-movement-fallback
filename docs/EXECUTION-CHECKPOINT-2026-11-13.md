@@ -81,7 +81,7 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 - Render workspace confirmed; services inventory inconclusive; no Render Postgres or Key Value instances listed.
 - No independent coordination database is connected. Supabase Free already has two active OAuth-named projects; Render has no listed Postgres/Key Value store and its service inventory response is inconclusive.
 - No independent standby runtime is deployed.
-- Production Bot 005 remains the sole Gateway owner.
+- Production Bot 005 remains the Gateway owner for its own workload; five other live Gateway workloads are separately scoped.
 - No production lease/fencing integration or hard-stop/fencing controller exists yet.
 - No live failover/failback test has been attempted.
 - No paid resource or billing change has been authorized or made.
@@ -566,3 +566,51 @@ The former assumption that Bot 005 was the sole Gateway-connected runtime in the
 The Coaching Workflow and Coaching Interaction Relay form a coupled dependency: Bot 005 directly forwards selected coach: interactions, and the separate raw Gateway Relay also forwards INTERACTION_CREATE events to the same workflow. Any future coaching migration must move or intentionally retire the Relay as well as update Bot 005's endpoint. The workflow's recovered source stores case/profile information through Discord channel message REST operations and has an in-memory seenInteractions dedupe map; source contains no DATABASE_URL reference despite that variable name being present in the service environment.
 
 The exact service IDs, latest deployment timestamps and scope rules are documented in docs/MOMENTUM-MOVEMENT-GATEWAY-WORKLOAD-INVENTORY.md. No service was stopped, changed or redeployed during the audit.
+
+
+## Cycle 15 — multi-Gateway production inventory and workload scoping
+
+### Read-only live service discovery
+A read-only Railway audit decoded the configured service payloads and checked current service metadata. Six distinct Gateway-connected services are live and their latest deployments report SUCCESS:
+1. Bot 005 — discord.js Client.login(), primary command/interaction workload.
+2. Dawn Dotta Social Owner Console — separate discord.js client and interaction workload.
+3. LIVE NOW V2 Shadow Engine — separate discord.js client, LIVE NOW/voice/message/interaction workload.
+4. Momentum Movement Discord Engagement Engine — separate discord.js client, engagement/message/interaction workload.
+5. Dawn Dotta TikTok Fan Club Level-Up Management — separate discord.js client, Fan Club interaction workload.
+6. 1-on-1 Coaching Interaction Relay — raw Discord Gateway WebSocket, receives INTERACTION_CREATE and forwards coaching events.
+
+Service IDs, deployment timestamps and the token identity caveat are documented in docs/MOMENTUM-MOVEMENT-GATEWAY-WORKLOAD-INVENTORY.md. All six environment configs expose a DISCORD_BOT_TOKEN variable name, but values are redacted, so identical token values cannot be asserted. Several sources explicitly contain the expected Momentum Movement guild/application IDs; LIVE NOW V2 and Fan Club Level-Up use environment-supplied IDs.
+
+### Lease scope correction
+- Earlier assumption that Bot 005 is the only Gateway-connected service in the Railway project was incorrect and is superseded.
+- The Cloudflare DO scope is strictly momentum-movement:bot-005-gateway.
+- The Bot 005 lease coordinates only the Bot 005 primary/standby pair.
+- The other five Gateway clients remain out of scope and are not permitted to acquire, renew, release or confirm a fence through the Bot 005 lease.
+- Do not build a global Gateway mutex for the project. Each future workload needs its own identity, scope, primary/standby service mapping, hard-stop proof, idempotency and rollback.
+- The separate Coaching Interaction Relay is coupled to Bot 005's coaching ingress; both callers must be migrated or intentionally retired together.
+
+### Coaching service source recovery
+- Added read-only recovered snapshots for the 1-on-1 Coaching Workflow and Interaction Relay, in addition to the four separate Gateway client snapshots.
+- Bot 005 and Relay both forward coaching interactions to the same /interaction workflow endpoint.
+- The Workflow keeps an in-memory seenInteractions deduplication map and persists coaching case/profile data through Discord channel/message REST operations. Its recovered source has no database client reference; environment variable names alone do not establish runtime DB usage.
+- The OAuth PostgreSQL host remains unverified because Railway environment variable values are redacted.
+
+### Coaching HTTPS transport source
+- Added implementation/coaching-workflow-client.mjs and implementation/coaching-workflow-client.test.mjs.
+- Client requires a public HTTPS /interaction endpoint; blocks Railway/internal/local/private targets; preserves the interaction payload; sends once without retries to avoid duplicate interactions; has a bounded timeout and payload-size limit; uses global fetch at call time so the ownership guard can intercept it.
+- Local Node.js 22.16.0 coaching client suite: 8 passed, 0 failed.
+- This is not integrated into live Bot 005 or the Relay. The coaching service host is still on Railway and no new public endpoint has been selected or deployed.
+
+### Current combined local tests
+- A combined Node.js v22.16.0 command over 14 selected isolated component test files returned 97 tests, 97 passed, 0 failed (duration approximately 7.8 seconds).
+- This includes the previously reconstructed lease/DO, Worker/fencer, ownership guard, prepared owner, hard-stop, preflight and coaching transport tests. Some test files overlap in purpose; 97 is the number of cases in this exact invocation, not a deduplicated coverage count.
+- This is not a clean checkout npm test, GitHub Actions run, Cloudflare edge integration test, actual Render suspension, or production Discord Gateway failover.
+
+### Exact boundaries still outstanding
+- No Cloudflare Worker/DO deployed and account plan/usage still unknown after dashboard authentication expired.
+- Render service inventory connector continues to return null; authenticated dashboard requires sign-in. No Render services or secrets have been provisioned.
+- Existing Bot 005 and the other five Gateway clients are still live on Railway; no service or Gateway session was stopped or changed.
+- The Render hard-stop controller cannot stop today's Railway primary. First Bot 005 cutover requires a separately verified manual stop followed by operator bootstrap; later Render-to-Render moves can use Render suspend/readback.
+- Coaching workflow and Relay remain Railway-dependent, and the new HTTPS client is source-only.
+- Discord Manager OAUTH_DATABASE_URL host remains unknown because the value is redacted.
+- GitHub Actions continues to fail before any jobs are created; exact root cause unavailable and no hosted runner logs.
