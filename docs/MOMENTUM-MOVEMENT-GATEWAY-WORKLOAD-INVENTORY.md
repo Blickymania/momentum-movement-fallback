@@ -79,3 +79,11 @@ Do not point multiple unrelated service pairs at the Bot 005 scope. The lease is
 - No secret variable values were returned or emitted.
 - No Railway, Render, Cloudflare, Discord, DNS, deployment or billing changes were made.
 - This audit describes code paths and deployment metadata; it does not prove the Gateway connections are currently established at this exact instant or that all six token values are identical.
+
+## Additional recovered Gateway-capable source — scope unresolved (2026-11-14)
+
+The Hostless migration branch also contains a recovered LIVE NOW / Upcoming Events Function source associated with Railway service ID `75ec092b-7f53-465d-b46a-9f01a2b155a2`. Its `index.tsx` creates a Discord.js client and executes Gateway login only when `LISTENER_RUNTIME_ACTIVE=true`. Its `/preflight` route uses read-only Discord REST calls and reports `writesOnPreflight=false`.
+
+This source was not one of the six confirmed Gateway-connected services in the table above. Its production environment variable values were redacted, so the current value of `LISTENER_RUNTIME_ACTIVE` and whether it actually held a live Gateway session at audit time are unknown. It may be a separate seventh Gateway-capable service or may overlap operationally with the LIVE NOW V2 Shadow Engine. Do not count it as either definitely active or definitely inactive until the deployment identity and production state are independently reconciled.
+
+For migration planning, use **six confirmed Gateway workloads plus one unresolved Gateway-capable source**. The Hostless listener itself remains a disconnected standby candidate: no `DISCORD_BOT_TOKEN` and no `LISTENER_RUNTIME_ACTIVE=true`.
