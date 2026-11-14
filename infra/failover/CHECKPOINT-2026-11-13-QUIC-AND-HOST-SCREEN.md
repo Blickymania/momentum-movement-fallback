@@ -25,6 +25,7 @@ Updated files on `infra/dawn-dotta-cloudflare-worker`:
 - `infra/connector/railway-cloudflare-tunnel.sh`: explicitly starts `cloudflared tunnel --protocol quic`, preventing fallback to HTTP/2 that Workers VPC does not support.
 - `tests/connector-script.test.mjs`: added a test asserting QUIC is explicitly forced.
 - `infra/connector/README.md`: updated TCP VPC Service example to use `--ipv4 127.0.0.1`, documents UDP 7844 egress, QUIC transport, and the VPC-compatible cloudflared version floor.
+- `infra/connector/LOCAL-HOST-TEST.md`: added a no-secret operator test plan separating host trust, cloudflared diagnostics, disposable local PostgreSQL VPC smoke test, and a future non-production Railway SSH tunnel test. It explicitly forbids substituting production OAuth PostgreSQL for a non-production test target.
 
 Latest relevant commits:
 - QUIC connector: `ea6138ca4ade4e558286391bb851952d0d619420`
@@ -68,6 +69,7 @@ Railway production environment was rechecked on 2026-11-13:
 - Dawn Dotta Gallery Discovery Engine most recent run succeeded.
 - The only reported issue remains Dawn Dotta News Forum 24h Retention Cleanup: crashed old deployment `582277d8-108d-4d22-b214-0286be447404`, 0/1 replicas, one critical issue. Its known cause remains the retired forum target returning Discord 404. No redeploy or config change was made.
 - GitHub Actions run `43543501851` still reports an empty job list; no CI pass is claimed.
+- Railway `list_tcp_proxies` for OAuth PostgreSQL returned an empty array: no public TCP proxy currently exposes that database.
 
 ## Safety and deployment status
 
