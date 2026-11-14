@@ -2,6 +2,7 @@ import {
   GatewayLeaseCoordinator,
   GATEWAY_LEASE_SCOPE
 } from "./gateway-lease-coordinator.mjs";
+import { createRenderServiceFencer } from "../implementation/render-service-fencer.mjs";
 
 export { GatewayLeaseCoordinator };
 
@@ -28,6 +29,139 @@ function json(data, status = 200) {
   });
 }
 
+function objectStub(env) {
+  const namespace = env.GATEWAY_LEASE_COORDINATOR;
+  if (!namespace) throw new Error("lease_coordinator_binding_missing");
+  const id = namespace.idFromName(GATEWAY_LEASE_SCOPE);
+  return namespace.get(id);
+}
+
+async function internalLeaseRead(stub) {
+  const response = await stub.fetch(new Request("https://lease.internal/lease/state"));
+  let payload;
+  try { payload = await response.json(); }
+  catch { throw new Error("lease_state_response_invalid"); }
+  if (!response.ok || payload?.ok !== true) throw new Error("lease_state_unavailable");
+  return payload.lease;
+}
+
+async function internalFenceConfirm(stub, input) {
+  const response = await stub.fetch(new Request("https://lease.internal/lease/fence/confirm", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input)
+  }));
+  let payload;
+  try { payload = await response.json(); }
+  catch { throw new Error("lease_fence_response_invalid"); }
+  if (!response.ok || payload?.ok !== true) {
+    const reason = typeof payload?.reason === "string" && /^[a-z0-9_]{1,80}$/.test(payload.reason)
+      ? payload.reason
+      : "lease_fence_not_confirmed";
+    throw new Error(reason);
+  }
+  return payload.lease;
+}
+
+async function fenceCandidate(request, env) {
+  const requestToken = env.FENCE_REQUEST_TOKEN || "";
+  if (typeof requestToken !== "string" || requestToken.length < 32 || requestToken.length > 512) {
+    return json({ error: "fence_controller_not_configured" }, 503);
+  }
+  const authorization = request.headers.get("authorization") || "";
+  const candidate = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!await sameSecret(candidate, requestToken)) return json({ error: "unauthorized" }, 401);
+
+  let body;
+  try {
+    const raw = await request.text();
+    if (raw.length > 4096) return json({ error: "request_too_large" }, 413);
+    body = JSON.parse(raw);
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      Object.keys(body).sort().join(",") !== "candidateDeploymentId,candidateOwnerId") {
+    return json({ error: "fence_request_invalid" }, 400);
+  }
+
+  const apiKey = env.RENDER_API_KEY || "";
+  const serviceMapRaw = env.RENDER_SERVICE_IDS_JSON || "";
+  if (typeof apiKey !== "string" || apiKey.length < 20 || apiKey.length > 512 ||
+      typeof serviceMapRaw !== "string" || serviceMapRaw.length > 4096) {
+    return json({ error: "render_fencer_not_configured" }, 503);
+  }
+
+  let serviceIdsByDeployment;
+  try {
+    serviceIdsByDeployment = JSON.parse(serviceMapRaw);
+  } catch {
+    return json({ error: "render_service_map_invalid" }, 503);
+  }
+  if (!serviceIdsByDeployment || typeof serviceIdsByDeployment !== "object" ||
+      Array.isArray(serviceIdsByDeployment)) {
+    return json({ error: "render_service_map_invalid" }, 503);
+  }
+
+  let stub;
+  try { stub = objectStub(env); }
+  catch { return json({ error: "lease_coordinator_binding_missing" }, 503); }
+
+  try {
+    const fencer = createRenderServiceFencer({
+      apiKey,
+      serviceIdsByDeployment,
+      fetchFn: fetch,
+      timeoutMs: 15000,
+      pollIntervalMs: 500,
+      requestTimeoutMs: 5000
+    });
+    const result = await fencer.fenceExpiredOwner({
+      leaseStore: { read: () => internalLeaseRead(stub) },
+      candidateOwnerId: body.candidateOwnerId,
+      candidateDeploymentId: body.candidateDeploymentId,
+      confirmFence: input => internalFenceConfirm(stub, input)
+    });
+    return json({
+      ok: true,
+      fenced: true,
+      previousDeploymentId: result.previousDeploymentId,
+      candidateDeploymentId: result.candidateDeploymentId,
+      previousServiceId: result.previousServiceId,
+      candidateServiceId: result.candidateServiceId,
+      stopProof: {
+        serviceId: result.stopProof.serviceId,
+        state: result.stopProof.state,
+        alreadySuspended: result.stopProof.alreadySuspended,
+        verifiedAt: result.stopProof.verifiedAt,
+        renderUpdatedAt: result.stopProof.renderUpdatedAt
+      },
+      fenceConfirmation: {
+        fencedOwnerId: result.fenceConfirmation.fenced_owner_id,
+        fencedEpoch: result.fenceConfirmation.fenced_epoch,
+        candidateOwnerId: result.fenceConfirmation.fence_target_owner_id,
+        candidateDeploymentId: result.fenceConfirmation.fence_target_deployment_id,
+        provider: result.fenceConfirmation.fence_provider,
+        proofId: result.fenceConfirmation.fence_proof_id
+      }
+    });
+  } catch (error) {
+    const reason = error instanceof Error && /^[a-z0-9_]{1,80}$/.test(error.message)
+      ? error.message
+      : "fence_operation_failed";
+    const conflicts = new Set([
+      "lease_bootstrap_required",
+      "lease_still_active",
+      "render_deployment_mapping_missing",
+      "render_owner_services_must_be_distinct",
+      "render_candidate_service_suspended",
+      "render_suspend_state_unverified",
+      "lease_fence_not_confirmed"
+    ]);
+    return json({ ok: false, reason }, conflicts.has(reason) ? 409 : 503);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -37,7 +171,7 @@ export default {
       return json({
         status: "ok",
         service: "momentum-movement-gateway-lease",
-        mode: "control-plane-only"
+        mode: "control-plane-and-fencing-control"
       });
     }
 
@@ -45,9 +179,9 @@ export default {
       "/lease/state", "/lease/acquire", "/lease/renew", "/lease/release"
     ]);
     const bootstrapRoute = path === "/lease/bootstrap";
-    const fenceRoute = path === "/lease/fence/confirm";
+    const fenceRequestRoute = path === "/fence";
 
-    if (!standardRoutes.has(path) && !bootstrapRoute && !fenceRoute) {
+    if (!standardRoutes.has(path) && !bootstrapRoute && !fenceRequestRoute) {
       return json({ error: "not_found" }, 404);
     }
 
@@ -58,32 +192,25 @@ export default {
       return json({ error: "method_not_allowed" }, 405);
     }
 
-    // Bootstrap and hard-fence confirmation use different credentials from
-    // ordinary lease operations. Candidate bot processes must never possess them.
+    if (fenceRequestRoute) return fenceCandidate(request, env);
+
+    // Bootstrap is an operator-only path; Bot 005 and standby receive neither
+    // this credential nor the Render API key.
     const token = bootstrapRoute
       ? env.LEASE_BOOTSTRAP_TOKEN || ""
-      : fenceRoute
-        ? env.FENCE_CONTROLLER_TOKEN || ""
-        : env.LEASE_SERVICE_TOKEN || "";
+      : env.LEASE_SERVICE_TOKEN || "";
 
     if (typeof token !== "string" || token.length < 32 || token.length > 512) {
       return json({ error: "lease_route_not_configured" }, 503);
     }
 
     const authorization = request.headers.get("authorization") || "";
-    const prefix = "Bearer ";
-    const candidate = authorization.startsWith(prefix) ? authorization.slice(prefix.length) : "";
-    if (!await sameSecret(candidate, token)) {
-      return json({ error: "unauthorized" }, 401);
-    }
+    const candidate = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+    if (!await sameSecret(candidate, token)) return json({ error: "unauthorized" }, 401);
 
-    const namespace = env.GATEWAY_LEASE_COORDINATOR;
-    if (!namespace) {
-      return json({ error: "lease_coordinator_binding_missing" }, 503);
-    }
-
-    const id = namespace.idFromName(GATEWAY_LEASE_SCOPE);
-    const stub = namespace.get(id);
+    let stub;
+    try { stub = objectStub(env); }
+    catch { return json({ error: "lease_coordinator_binding_missing" }, 503); }
     return stub.fetch(request);
   }
 };
