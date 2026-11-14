@@ -2,6 +2,26 @@ const LEASE_SCOPE = "momentum-movement:bot-005-gateway";
 const DEFAULT_TTL_SECONDS = 30;
 const MIN_TTL_SECONDS = 10;
 const MAX_TTL_SECONDS = 120;
+const COACHING_INTERACTION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
+const COACHING_IDEMPOTENCY_SQL = `
+CREATE TABLE IF NOT EXISTS coaching_interaction_claims (
+  interaction_id TEXT PRIMARY KEY
+    CHECK (length(interaction_id) BETWEEN 17 AND 22),
+  source TEXT NOT NULL
+    CHECK (source IN ('bot005', 'coaching-relay')),
+  claimed_at_ms INTEGER NOT NULL
+)`;
+
+const COACHING_CLAIM_SQL = `
+INSERT INTO coaching_interaction_claims (interaction_id, source, claimed_at_ms)
+VALUES (?, ?, ?)
+ON CONFLICT (interaction_id) DO NOTHING
+RETURNING interaction_id, source, claimed_at_ms`;
+
+const COACHING_CLAIM_PRUNE_SQL = `
+DELETE FROM coaching_interaction_claims
+WHERE claimed_at_ms <= ?`;
 
 const TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS gateway_ownership (
@@ -180,6 +200,7 @@ export class GatewayLeaseCoordinator {
     // Do not serve any request until the durable schema is ready.
     ctx.blockConcurrencyWhile(() => {
       this.sql.exec(TABLE_SQL);
+      this.sql.exec(COACHING_IDEMPOTENCY_SQL);
     });
   }
 
@@ -316,6 +337,18 @@ export class GatewayLeaseCoordinator {
     ));
   }
 
+  claimCoachingInteraction({ interactionId, source }) {
+    const id = requiredString(interactionId, "interaction_id");
+    if (!/^\\d{17,22}$/.test(id)) throw new TypeError("interaction_id_invalid");
+    if (source !== "bot005" && source !== "coaching-relay") {
+      throw new TypeError("coaching_source_invalid");
+    }
+    const now = this.now();
+    this.sql.exec(COACHING_CLAIM_PRUNE_SQL, now - COACHING_INTERACTION_RETENTION_MS);
+    const inserted = first(this.sql.exec(COACHING_CLAIM_SQL, id, source, now));
+    return Object.freeze({ claimed: Boolean(inserted) });
+  }
+
   read(scope = LEASE_SCOPE) {
     const normalizedScope = requiredString(scope, "scope");
     if (normalizedScope !== LEASE_SCOPE) throw new TypeError("lease_scope_invalid");
@@ -331,6 +364,31 @@ export class GatewayLeaseCoordinator {
     if (url.pathname === "/lease/state") {
       if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
       return json({ ok: true, lease: this.read() });
+    }
+
+    if (url.pathname === "/coaching/interaction/claim") {
+      if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+      let body;
+      try {
+        const raw = await request.text();
+        if (raw.length > 4096) return json({ error: "request_too_large" }, 413);
+        body = JSON.parse(raw);
+      } catch {
+        return json({ error: "invalid_json" }, 400);
+      }
+      if (!body || typeof body !== "object" || Array.isArray(body) ||
+          Object.keys(body).sort().join(",") !== "interactionId,source") {
+        return json({ error: "coaching_claim_invalid" }, 400);
+      }
+      try {
+        const result = this.claimCoachingInteraction(body);
+        return json({ ok: true, claimed: result.claimed });
+      } catch (error) {
+        const reason = error instanceof Error && /^[a-z0-9_]{1,80}$/.test(error.message)
+          ? error.message
+          : "coaching_claim_invalid";
+        return json({ ok: false, reason }, 400);
+      }
     }
 
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -385,7 +443,10 @@ export const leaseCoordinatorSqlForTests = Object.freeze({
   FENCE_CONFIRM_SQL,
   RENEW_SQL,
   RELEASE_SQL,
-  READ_SQL
+  READ_SQL,
+  COACHING_IDEMPOTENCY_SQL,
+  COACHING_CLAIM_SQL,
+  COACHING_CLAIM_PRUNE_SQL
 });
 
 export const GATEWAY_LEASE_SCOPE = LEASE_SCOPE;
