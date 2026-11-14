@@ -19,6 +19,10 @@ VALUES (?, ?, ?)
 ON CONFLICT (interaction_id) DO NOTHING
 RETURNING interaction_id, source, claimed_at_ms`;
 
+const COACHING_CLAIM_INDEX_SQL = `
+CREATE INDEX IF NOT EXISTS coaching_interaction_claims_claimed_at_idx
+ON coaching_interaction_claims (claimed_at_ms)`;
+
 const COACHING_CLAIM_PRUNE_SQL = `
 DELETE FROM coaching_interaction_claims
 WHERE claimed_at_ms <= ?`;
@@ -201,6 +205,7 @@ export class GatewayLeaseCoordinator {
     ctx.blockConcurrencyWhile(() => {
       this.sql.exec(TABLE_SQL);
       this.sql.exec(COACHING_IDEMPOTENCY_SQL);
+      this.sql.exec(COACHING_CLAIM_INDEX_SQL);
     });
   }
 
@@ -446,6 +451,7 @@ export const leaseCoordinatorSqlForTests = Object.freeze({
   READ_SQL,
   COACHING_IDEMPOTENCY_SQL,
   COACHING_CLAIM_SQL,
+  COACHING_CLAIM_INDEX_SQL,
   COACHING_CLAIM_PRUNE_SQL
 });
 
