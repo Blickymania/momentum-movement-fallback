@@ -293,6 +293,18 @@ const mcpOAuthRandom = (n=32) => { const b=new Uint8Array(n); crypto.getRandomVa
 const mcpOAuthHash = async value => { const b=new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(String(value)))); return Array.from(b,x=>x.toString(16).padStart(2,"0")).join(""); };
 const mcpOAuthPkce = async verifier => mcpOAuthB64(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(verifier))));
 const mcpOAuthQuery = (db,sql,...values) => db.unsafe(sql,values);
+
+let mcpOAuthCleanupLastRun=0;
+async function mcpOAuthCleanupExpired(){
+ await mcpOAuthDb().begin(async tx=>{
+  const lock=await mcpOAuthQuery(tx,"SELECT pg_try_advisory_xact_lock(hashtext($1)::bigint) AS acquired","momentum-movement-oauth-cleanup");
+  if(lock[0]?.acquired!==true)return;
+  await mcpOAuthQuery(tx,"WITH stale AS (SELECT ctid FROM mcp_oauth_login_requests WHERE expires_at < now() - interval '1 day' LIMIT 250) DELETE FROM mcp_oauth_login_requests WHERE ctid IN (SELECT ctid FROM stale)");
+  await mcpOAuthQuery(tx,"WITH stale AS (SELECT ctid FROM mcp_oauth_authorization_codes WHERE expires_at < now() - interval '1 day' LIMIT 250) DELETE FROM mcp_oauth_authorization_codes WHERE ctid IN (SELECT ctid FROM stale)");
+  await mcpOAuthQuery(tx,"WITH stale AS (SELECT ctid FROM mcp_oauth_access_tokens WHERE expires_at < now() - interval '7 days' OR revoked_at < now() - interval '7 days' LIMIT 250) DELETE FROM mcp_oauth_access_tokens WHERE ctid IN (SELECT ctid FROM stale)");
+  await mcpOAuthQuery(tx,"WITH stale AS (SELECT ctid FROM mcp_oauth_refresh_tokens WHERE expires_at < now() - interval '7 days' OR revoked_at < now() - interval '7 days' LIMIT 250) DELETE FROM mcp_oauth_refresh_tokens WHERE ctid IN (SELECT ctid FROM stale)");
+ });
+}
 const mcpOAuthIssuer = () => { const u=new URL(runtimeEnv().OAUTH_ISSUER_URL||runtimeEnv().DISCORD_OAUTH_REDIRECT_URI||"https://invalid.invalid"); if(u.protocol!=="https:")throw new Error("invalid_issuer"); return u.origin; };
 const mcpOAuthResource = () => { const u=new URL(runtimeEnv().OAUTH_RESOURCE_URL||(mcpOAuthIssuer()+"/mcp")); if(u.protocol!=="https:"||u.search||u.hash||u.username||u.password)throw new Error("invalid_resource"); return u.origin+(u.pathname==="/"?"/mcp":u.pathname.replace(/\/+$/,"")); };
 const mcpOAuthDiscordRedirect = () => { const u=new URL(runtimeEnv().DISCORD_OAUTH_REDIRECT_URI||(mcpOAuthIssuer()+"/oauth/callback")); if(u.protocol!=="https:"||u.username||u.password||u.hash)throw new Error("invalid_discord_redirect"); return u.toString(); };
@@ -307,11 +319,17 @@ async function mcpOAuthEnsureSchema(){
    await mcpOAuthQuery(mcpOAuthDb(),"CREATE TABLE IF NOT EXISTS mcp_oauth_authorization_codes (code_hash text PRIMARY KEY, client_id text NOT NULL, redirect_uri text NOT NULL, code_challenge text NOT NULL, user_id text NOT NULL, guild_id text NOT NULL, scope text NOT NULL, resource text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz NOT NULL, consumed_at timestamptz)");
    await mcpOAuthQuery(mcpOAuthDb(),"CREATE TABLE IF NOT EXISTS mcp_oauth_access_tokens (token_hash text PRIMARY KEY, client_id text NOT NULL, user_id text NOT NULL, guild_id text NOT NULL, scope text NOT NULL, resource text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz NOT NULL, revoked_at timestamptz)");
    await mcpOAuthQuery(mcpOAuthDb(),"CREATE TABLE IF NOT EXISTS mcp_oauth_refresh_tokens (token_hash text PRIMARY KEY, client_id text NOT NULL, user_id text NOT NULL, guild_id text NOT NULL, scope text NOT NULL, resource text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz NOT NULL, revoked_at timestamptz, replaced_by text)");
+   await mcpOAuthQuery(mcpOAuthDb(),"CREATE INDEX IF NOT EXISTS mcp_oauth_login_expiry_idx ON mcp_oauth_login_requests (expires_at)");
+   await mcpOAuthQuery(mcpOAuthDb(),"CREATE INDEX IF NOT EXISTS mcp_oauth_code_expiry_idx ON mcp_oauth_authorization_codes (expires_at)");
    await mcpOAuthQuery(mcpOAuthDb(),"CREATE INDEX IF NOT EXISTS mcp_oauth_access_expiry_idx ON mcp_oauth_access_tokens (expires_at)");
    await mcpOAuthQuery(mcpOAuthDb(),"CREATE INDEX IF NOT EXISTS mcp_oauth_refresh_expiry_idx ON mcp_oauth_refresh_tokens (expires_at)");
   })().catch(err=>{mcpOAuthSchemaPromise=null;throw err;});
  }
  await mcpOAuthSchemaPromise;
+ if(Date.now()-mcpOAuthCleanupLastRun>24*60*60*1000){
+  mcpOAuthCleanupLastRun=Date.now();
+  try{await mcpOAuthCleanupExpired();}catch(error){console.error(JSON.stringify({event:"oauth_expired_record_cleanup_failed",errorType:error?.name||"unknown"}));}
+ }
 }
 const mcpOAuthError=(error,status=400)=>mcpOAuthJson({error},status);
 const mcpOAuthRedirect=(target,params)=>{const u=new URL(target);for(const [k,v] of Object.entries(params))if(v!==undefined&&v!==null)u.searchParams.set(k,String(v));return new Response(null,{status:302,headers:{location:u.toString(),"cache-control":"no-store"}});};
