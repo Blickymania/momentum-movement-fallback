@@ -1294,10 +1294,12 @@ return Response.json({guild:G,verified:unexpected===0,asOf:new Date().toISOStrin
 if(path==="/healthz")return Response.json({service:"Blickymania Bot 005",community:"Momentum Movement",gatewayReady:ready,guildVerified,readOnly,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",commandRegistryExecutor:true,supportedRecoveredCommands:SAFE.size,originalFeatureParity:false,commandsResponded,uptimeSeconds:Math.floor((Date.now()-started)/1000),errorKind:lastError},{status:ready&&guildVerified?200:503});
 return Response.json({error:"not-found"},{status:404});
 };
-runtimeServers = [
-  Bun.serve({hostname:"0.0.0.0",port:Number(Bun.env.PORT||8080),fetch:momentumHttpHandler}),
+runtimeServers.push(
+  Bun.serve({hostname:"0.0.0.0",port:Number(Bun.env.PORT||8080),fetch:momentumHttpHandler})
+);
+runtimeServers.push(
   Bun.serve({hostname:"::",port:8081,fetch:momentumHttpHandler})
-];
+);
 process.on("SIGTERM", () => { void shutdownRuntime("sigterm").catch(error => log("shutdown_failed",{kind:error?.name||"unknown"})); });
 process.on("SIGINT", () => { void shutdownRuntime("sigint").catch(error => log("shutdown_failed",{kind:error?.name||"unknown"})); });
 try {
