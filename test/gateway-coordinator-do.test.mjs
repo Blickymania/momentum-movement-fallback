@@ -309,11 +309,20 @@ test("alarm recovers the coordinator after object re-instantiation using durable
     await firstCore.serial;
     dispatch(initial, { op: 0, s: 30, t: "READY", d: { session_id: "durable-session", resume_gateway_url: "wss://resume.durable.example" } });
     await firstCore.serial;
-    dispatch(initial, { op: 0, s: 31, t: "MESSAGE_CREATE", d: { id: "persisted-event" } });
+    dispatch(initial, { op: 0, s: 31, t: "MESSAGE_CREATE", d: {
+      id: "persisted-event",
+      guild_id: GUILD_ID,
+      channel_id: "1565643996624199760",
+      content: "A qualifying interaction message for the engagement consumer.",
+    } });
     await firstCore.serial;
+    const firstPending = await firstCore.getInbox("bot-alpha").listPending();
+    assert.equal(firstPending.length, 1);
+    assert.equal(firstPending[0].payload.id, "persisted-event");
 
     // Simulate object eviction with no graceful close callback. The next alarm
-    // must rebuild the core and resume from the last durably committed cursor.
+    // must rebuild the core, resume from the last committed cursor, and retain
+    // the unacknowledged feature event.
     const second = makeObject(storage);
     await second.alarm();
     assert.equal(sockets.length, 2);
@@ -324,5 +333,8 @@ test("alarm recovers the coordinator after object re-instantiation using durable
     await secondCore.serial;
     assert.equal(resumed.sent[0].op, 6);
     assert.equal(resumed.sent[0].d.seq, 31);
+    const resumedPending = await secondCore.getInbox("bot-alpha").listPending();
+    assert.equal(resumedPending.length, 1);
+    assert.equal(resumedPending[0].payload.id, "persisted-event");
   });
 });
