@@ -99,3 +99,37 @@ The automation inventory contained 25 tasks. Relevant five-server/Dawn/Momentum 
 ## Existing maintenance process policy
 
 No new scheduler has been created. Reuse at most one existing centralized project maintenance/recovery process if the user's existing automation inventory and authorization permit it.
+
+
+## Additional dependency audit — verified source references
+
+A full-string scan of the recovered Bot 005 source found one direct Railway-internal runtime call:
+- Bot 005 forwards coaching interactions to `http://coaching-workflow.railway.internal:3000/interaction`.
+- This is a hard-coded in-cluster dependency, not an environment-configurable external URL. It must be migrated to an independently hosted coaching service or replaced with an independently reachable endpoint before claiming the full Momentum Movement runtime is Railway-independent.
+- No evidence was found in the Bot 005 source scan for a `DATABASE_URL` dependency; do not infer its database usage from the generic architecture alone.
+
+The recovered Dawn Dotta Discord Manager source also has platform-specific configuration:
+- It reads `RAILWAY_SERVICE_KEY` for static bearer authentication.
+- It reads `OAUTH_DATABASE_URL` for its OAuth database; the actual configured host is not in the recovered source and must be inspected without printing credentials.
+- Its health response identifies the service as `railway`, and its write-guard error text refers to a Railway service.
+- These references are not proof that the OAuth database itself is hosted on Railway. The database hostname must be checked in the deployment environment before migration.
+- The recovered Core Shadow source contains no `.railway.internal` or `DATABASE_URL` string in its source body; it performs read-only Discord API probes and exposes `/healthz` and `/readyz`.
+
+## External database account audit
+
+The connected Supabase organization `Blickymania` is on the Free tier. It currently has two projects, both `ACTIVE_HEALTHY`:
+- `discord-oauth-control-plane` — `zoufxdgxjjwiieqitnxf`
+- `blickymania-discord-oauth` — `ecjpniihtxernirygcbq`
+
+The inspected `public` and `private` schemas had no tables in either project. These projects are OAuth-named control-plane resources and were not repurposed for Momentum Movement. Supabase Free currently permits two active projects, and Free projects can pause after one week of inactivity; its published Pro plan starts at $25/month with additional projects from $10/month. Any separate project would require a paid-plan/cost review or a different provider. Source: https://supabase.com/pricing.
+
+## Render production-tier cost and free-tier suitability
+
+The confirmed Render workspace is `My Workspace` (`tea-dbcqe7ss728c73fthlug`). Inventory reads returned:
+- Services: literal `null` on repeated calls (including preview-inclusive and preview-excluded); service inventory remains unknown.
+- Postgres: no Postgres instances found.
+- Key Value: no Key Value instances found.
+
+Render's current public pricing lists its smallest persistent service/background-worker compute at $7/month and its smallest paid Postgres compute at $6/month. That gives a reference floor of about $13/month for one persistent process plus one Postgres database, excluding usage or workspace-specific costs. Render's Free Postgres expires after 30 days, has no backups, and can be restarted/maintained at any time; Free web services have resource and instance-hour limits. Do not use those free resources as production failover coordination or an always-on standby. Sources: https://render.com/pricing and https://render.com/docs/free.
+
+No Render or Supabase resources have been created, upgraded, paused, or modified. No billing authorization has been given or used.
