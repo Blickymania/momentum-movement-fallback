@@ -108,6 +108,10 @@ test("Worker health is public but lease routes require bearer authentication", a
 
   const unconfigured = await worker.fetch(new Request("https://lease.example.com/lease/state"), {});
   assert.equal(unconfigured.status, 503);
+  const weakToken = await worker.fetch(new Request("https://lease.example.com/lease/state"), {
+    LEASE_SERVICE_TOKEN: "weak-token"
+  });
+  assert.equal(weakToken.status, 503);
 });
 
 test("Worker proxies authenticated state and mutation calls to one deterministic Durable Object", async () => {
