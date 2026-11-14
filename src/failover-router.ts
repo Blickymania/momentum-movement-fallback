@@ -70,12 +70,43 @@ async function probe(candidate: Candidate): Promise<ProbeResult> {
   }
 }
 
+// Readiness probes call the Manager's Discord and database checks. Cache only
+// their result for a short interval, and coalesce concurrent probes per origin.
+// This cache is an optimization, never an ownership or authorization primitive.
+const PROBE_CACHE_TTL_MS = 5000;
+const probeCache = new Map<string, { expiresAt: number; result: ProbeResult }>();
+const probeInFlight = new Map<string, Promise<ProbeResult>>();
+
+async function cachedProbe(candidate: Candidate): Promise<ProbeResult> {
+  const origin = cleanOrigin(candidate.value);
+  if (!origin) return probe(candidate);
+  const key = candidate.name + ":" + origin;
+  const now = Date.now();
+  const cached = probeCache.get(key);
+  if (cached && cached.expiresAt > now) return cached.result;
+  const pending = probeInFlight.get(key);
+  if (pending) return pending;
+
+  const task = probe(candidate).then(result => {
+    probeCache.set(key, { expiresAt: Date.now() + PROBE_CACHE_TTL_MS, result });
+    if (probeCache.size > 16) {
+      const firstKey = probeCache.keys().next().value;
+      if (firstKey) probeCache.delete(firstKey);
+    }
+    return result;
+  }).finally(() => {
+    probeInFlight.delete(key);
+  });
+  probeInFlight.set(key, task);
+  return task;
+}
+
 async function chooseOrigin(env: RouterEnv, excluded: Set<string> = new Set()): Promise<{ name: string; origin: string; oauthDatabaseVerified: boolean } | null> {
   for (const candidate of candidates(env)) {
     if (excluded.has(candidate.name)) continue;
     const origin = cleanOrigin(candidate.value);
     if (!origin) continue;
-    const status = await probe(candidate);
+    const status = await cachedProbe(candidate);
     if (status.ready) return { name: candidate.name, origin, oauthDatabaseVerified: status.oauthDatabaseVerified };
   }
   return null;
@@ -83,7 +114,7 @@ async function chooseOrigin(env: RouterEnv, excluded: Set<string> = new Set()): 
 
 async function inspectOrigins(env: RouterEnv): Promise<ProbeResult[]> {
   const results: ProbeResult[] = [];
-  for (const candidate of candidates(env)) results.push(await probe(candidate));
+  for (const candidate of candidates(env)) results.push(await cachedProbe(candidate));
   return results;
 }
 
