@@ -208,3 +208,21 @@ Scope: Dawn Dotta / Momentum Movement only. No other Discord community or projec
 - Existing Worker code can retain the PostgreSQL Hyperdrive binding contract; actual IDs must be populated only after Cloudflare resources exist.
 - Current production state unchanged. Code remains isolated and unbuilt/unverified.
 - Exact next step: inspect Cloudflare Workers VPC dashboard/role and create a Dawn-only Tunnel only after a persistent connector host is available; Railway trial expiry remains the deployment blocker.
+
+
+## Follow-up execution cycle — fallback artifact parity audit
+
+### Render cold-fallback package
+- Compared `render/manager.ts` against the recovered live Railway Manager source in `recovered/railway/dawn-dotta-discord-manager.ts`, excluding the Markdown recovery header.
+- Result: source bodies are identical except for one trailing newline (44,479 characters vs. 44,478 after trimming the recovered file's trailing newline).
+- Verified the Render Dockerfile copies `render/manager.ts` to `/app/manager.ts` and starts it with Bun.
+- Verified the Render deployment notes specify `/readyz` as health check and document the required Discord/OAuth environment variable names.
+- This is a source-parity audit only. No Render workspace was selected, no service was created, and no Render build/deploy/runtime test was run.
+- Render remains a cold fallback only: free service sleep/cold-start behavior makes it unsuitable as an always-on primary, and it still requires the same reachable Dawn-only database path.
+
+### Cycle result
+- Fallback source parity: verified, with only a trailing newline difference.
+- Dockerfile source path and startup command: statically verified.
+- Render runtime: unverified.
+- No production or cloud resources changed.
+- Next: continue source-level reliability review and keep runtime deployment blocked until a persistent private DB tunnel connector and an authorized no-cost deployment environment are available.
