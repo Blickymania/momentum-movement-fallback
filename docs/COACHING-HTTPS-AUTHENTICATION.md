@@ -36,14 +36,20 @@ The value generated for Bot 005 must be copied only to Bot 005's `COACHING_WORKF
 - `implementation/coaching-workflow-client.mjs`: signed sender client; readiness stays read-only.
 - `candidate/bot-005/blickymania-bot-005.ts`: Bot 005 caller; requires the `bot005` identity and its own secret.
 - `candidate/coaching/one-on-one-coaching-interaction-relay.ts`: Relay caller; requires the `coaching-relay` identity and its own secret.
-- `candidate/coaching/one-on-one-coaching-workflow.ts`: receiver-side verifier applied before JSON parse and dispatch.
+- `candidate/coaching/one-on-one-coaching-workflow.ts`: receiver-side verifier applied before JSON parse and dispatch; requires a separate authenticated Cloudflare idempotency claim.
+
+## Durable replay protection
+
+The candidate workflow calls the separately authenticated Cloudflare Worker route `POST /coaching/interaction/claim` after HMAC verification and JSON parsing but before dispatch. The Worker uses its own `COACHING_IDEMPOTENCY_TOKEN` to reach a separate SQLite table, `coaching_interaction_claims`, in the existing independent Durable Object. The table uses Discord interaction ID as a primary key and retains claims for seven days. This table is separate from `gateway_ownership`; it does not add the Coaching Relay to Bot 005's Gateway lease scope.
+
+The durable claim is at-most-once: if the workflow process crashes after the claim is stored but before dispatch completes, the interaction will not be replayed automatically and may require manual recovery. That failure mode must be tested and accepted or replaced with a durable processing-state/recovery queue before cutover.
 
 ## Mandatory release gates
 
 1. Run all unit tests, including HMAC, sender client, candidate source and existing workflow tests.
 2. Deploy the receiver privately or behind HTTPS with both receiver secrets before either caller is switched.
 3. Verify an unsigned request, wrong-source secret, stale timestamp and altered body are rejected; verify properly signed calls from each service are accepted.
-4. Implement and test durable interaction-ID idempotency that survives workflow restarts before public exposure. The current in-memory `seenInteractions` map only mitigates duplicate requests while one process remains alive.
+4. Verify the Cloudflare claim route rejects unauthenticated/invalid callers and a duplicate interaction ID returns `claimed=false`, including after Durable Object recreation.
 5. Confirm both production callers can reach the same receiver; changing only Bot 005 leaves the Relay on the Railway internal URL.
 6. Verify data persistence, access controls and workflow readiness under load before a public cutover.
 7. Only after the separate Bot 005 Gateway lease/fence path is provisioned and proven may Bot 005's primary/standby cutover proceed.
@@ -54,3 +60,6 @@ All changes listed above are candidate/source changes only. No public endpoint w
 
 
 **Additional release blocker:** do not expose the receiver publicly until replay/idempotency state is durable across workflow restarts. HMAC authentication and the 60-second timestamp window reduce exposure but do not substitute for a durable interaction-ID uniqueness constraint.
+
+
+**Remaining reliability gate:** the durable claim is at-most-once, not a durable work queue. A workflow crash after claiming but before handling can require manual recovery. Add or explicitly accept that condition before public cutover.
