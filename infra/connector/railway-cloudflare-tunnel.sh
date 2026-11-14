@@ -14,6 +14,22 @@ for command_name in railway cloudflared nc; do
   fi
 done
 
+# Workers VPC requires cloudflared 2025.7.0 or later. Check before
+# creating temp files or starting either tunnel process.
+CLOUDFLARED_VERSION="$(cloudflared version 2>/dev/null | sed -n 's/.*version \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n 1)"
+if [ -z "$CLOUDFLARED_VERSION" ]; then
+  echo "Could not determine cloudflared version; Workers VPC requires 2025.7.0 or later." >&2
+  exit 1
+fi
+if ! awk -F. -v version="$CLOUDFLARED_VERSION" 'BEGIN {
+  split(version, parts, ".");
+  if (parts[1] > 2025 || (parts[1] == 2025 && parts[2] >= 7)) exit 0;
+  exit 1;
+}'; then
+  echo "cloudflared $CLOUDFLARED_VERSION is too old; Workers VPC requires 2025.7.0 or later." >&2
+  exit 1
+fi
+
 LOCAL_FORWARD_PORT="${LOCAL_FORWARD_PORT:-15432}"
 case "$LOCAL_FORWARD_PORT" in
   ''|*[!0-9]*) echo "LOCAL_FORWARD_PORT must be numeric" >&2; exit 2 ;;
