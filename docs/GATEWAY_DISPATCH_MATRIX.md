@@ -90,3 +90,18 @@ Discord interaction payloads contain a short-lived webhook bearer token. It must
 - `src/gateway-coordinator-do.mjs`: refuses startup without matching client definitions, handler manifest and token-encryption secret.
 
 **Not yet complete:** the actual seven feature-handler implementations have not all been ported to Workers/DO adapters. The dispatcher is currently a tested standalone module; it is not wired into the DO alarm/interaction path. A live Gateway must not be activated until handler adapters are ported, their idempotency receipts are durable, interaction acknowledgement is immediate, and every feature family passes parity tests.
+
+
+## First feature-handler port: Discord Engagement Engine message awards
+
+The original `MESSAGE_CREATE` award path has now been separated into two testable components:
+
+- `src/durable-engagement-ledger.mjs` — transactionally stores per-member XP totals, daily/monthly buckets, channel counts, reply/message counts, 90-day active-day samples, 35-day message-ID dedupe markers, 12-hour content-hash retention and per-user cooldown timestamps.
+- `src/discord-engagement-channel-policy.mjs` — verifies the message channel through Discord REST, resolves thread parents, checks the @everyone View Channel permission, excludes private threads, NSFW channels and the original source's sensitive channel-name list.
+- `createEngagementMessageHandler` — adapter for `MESSAGE_CREATE` that returns a durable receipt to the shared dispatcher.
+
+The scoring is copied from the recovered source: 5 base XP, +3 for first qualifying channel of the ET day and +2 for a reply. A member receives at most one award per 60 seconds; repeated normalized content from the same member is suppressed for 10 minutes. Qualification requires a human, non-webhook guild message of type 0 or 19, with meaningful text. URLs and user/channel mentions are stripped before checking text length, letter count and word count. Raw message content is never persisted; only a SHA-256 digest and counters are stored. Historical XP is not fabricated.
+
+Focused tests: 18/18 passed (ledger scoring/dedupe/concurrency/period snapshots and Discord channel-policy checks).
+
+**Still not integrated:** this message-award adapter is not yet injected into the DO's dispatcher handler map. The original public/staff dashboard sync, `ddxp:` button interactions, ephemeral/private DM delivery and immediate component acknowledgement still need a portable adapter. Until those are ported and wired, the full Engagement Engine feature is not parity-complete and the Gateway remains disabled.
