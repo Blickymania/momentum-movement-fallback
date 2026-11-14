@@ -197,10 +197,17 @@ test("Worker separates operator bootstrap and bot fence-request credentials; dir
   }), env);
   assert.equal(directFence.status, 404);
 
+  const wrongIdentity = await worker.fetch(new Request("https://lease.example.com/fence", {
+    method: "POST",
+    headers: { authorization: "Bearer " + fenceRequestToken, "content-type": "application/json" },
+    body: JSON.stringify({ candidateOwnerId: "unbound-owner", candidateDeploymentId: "standby-deploy" })
+  }), env);
+  assert.equal(wrongIdentity.status, 400);
+
   const notConfigured = await worker.fetch(new Request("https://lease.example.com/fence", {
     method: "POST",
     headers: { authorization: "Bearer " + fenceRequestToken, "content-type": "application/json" },
-    body: JSON.stringify({ candidateOwnerId: "standby-owner", candidateDeploymentId: "standby-deploy" })
+    body: JSON.stringify({ candidateOwnerId: "standby-deploy:process-unique", candidateDeploymentId: "standby-deploy" })
   }), env);
   assert.equal(notConfigured.status, 503);
   assert.equal(forwarded, 1);
