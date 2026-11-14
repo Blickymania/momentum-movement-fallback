@@ -1,0 +1,33 @@
+name: Dawn Dotta failover tests
+
+on:
+  push:
+    branches:
+      - recovery/dawn-dotta-backend-2026-11-13
+    paths:
+      - "failover/**"
+      - ".github/workflows/dawn-dotta-failover-tests.yml"
+  pull_request:
+    paths:
+      - "failover/**"
+      - ".github/workflows/dawn-dotta-failover-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  failover-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out Dawn Dotta recovery branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run lease and listener wiring tests
+        run: node --test failover/tests/*.test.mjs
