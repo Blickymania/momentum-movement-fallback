@@ -510,3 +510,14 @@ Keep the connector prepared and isolated. Continue the provider/host feasibility
 - No Cloudflare Tunnel, VPC Service, Hyperdrive, external VPS, Railway token, DNS change, public DB proxy, billing change, or production cutover was created.
 - No scheduled automation or cron process was created.
 - Next exact action: continue the no-cost persistent-host review and, in parallel, isolate the GitHub Actions pre-job startup failure. Resume from this checkpoint without asking the user for "NEXT".
+
+
+## GitHub Actions startup diagnosis
+
+- Inspected the full latest run record: run `43543427828`, workflow ID `417875803`, check suite `117905398810`.
+- The run has an empty workflow name, path `BuildFailed`, `startup_failure`, created/started/completed at the same timestamp, no previous attempt, and an empty jobs array.
+- This is before any job/runner/step exists. The Node 22 / npm / Wrangler steps cannot be the direct cause because they never start.
+- The connected GitHub API surface does not expose repository Actions permissions/settings or the check-suite diagnostic details. No speculative workflow rewrite or repeated rerun was made.
+- Possible repository-level blocker: Actions disabled/restricted, selected-action policy, or a GitHub runner/workflow-build issue. This is not confirmed.
+- If the connector remains unable to expose the setting, the only user-side diagnostic needed is to open repository **Settings → Actions → General** and confirm Actions are enabled and the allowed-actions policy permits `actions/checkout@v4` and `actions/setup-node@v4`. No billing or payment change should be made.
+- Until that is checked or GitHub provides a job, the 33/33 V8 source harness and 3/3 native connector Node tests remain the available test evidence.
