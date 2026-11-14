@@ -59,3 +59,23 @@ Scope: Dawn Dotta / Momentum Movement only. No other community may be changed.
 
 ## Exact next execution step
 Continue independent code/CI diagnostics and investigate no-cost persistent connector hosting/private-network options. Re-check current Cloudflare Hyperdrive/VPC inventory when the authenticated tab is navigated there. Keep production and private database configuration unchanged.
+
+
+## Additional independent diagnosis — plan limits and Actions dispatcher
+
+### Railway free-tier capacity constraint
+- Current Railway pricing page states the Free plan becomes limited to 3 services per project after the trial (and 1 project), while this Dawn production project currently inventories 34 services. Hobby has a $5 minimum usage commitment.
+- Therefore, adding a new cloudflared service to this already 34-service project is not a credible no-cost path after trial expiry. Do not attempt it, delete/merge existing production services to make room, or select Hobby without user authorization.
+- Pricing source reviewed: https://railway.com/pricing
+
+### GitHub Actions startup failure diagnosis
+- Latest run metadata confirms an empty workflow name, synthetic path `BuildFailed`, conclusion `startup_failure`, and zero jobs. The dedicated jobs endpoint also returned an empty list.
+- This failure occurs before any runner/job exists; therefore the workflow's npm/typecheck/test steps never ran. Rewriting source or changing npm scripts cannot repair a failure that occurs before job construction.
+- Similar 2026 GitHub Community reports document the same signature (BuildFailed, startup_failure, zero jobs) and discuss repository workflow-dispatch/registration or account-level restrictions, but these are community reports and do not establish this repository's root cause. No account billing setting was inspected or changed.
+- Evidence source: https://github.com/orgs/community/discussions/209847
+- The GitHub connector rejected direct check-suite and workflow-registry API reads as unsupported. No evidence supports deleting/recreating workflows or altering repository Actions settings. Preserve workflow history and avoid speculative mutations.
+
+### Result and next step
+- No new infrastructure, billing, workflow, or production changes.
+- The two major blockers are now more precisely bounded: no permitted always-on private-network connector host on the current no-paid-plan constraint, and GitHub Actions dispatcher failure before job creation.
+- Continue isolated code review and identify any other safe non-deployment verification. Resume provisioning only when a compliant private-network host and an executable test path exist.
