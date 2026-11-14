@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - infra/dawn-dotta-cloudflare-worker
+      - infra/dawn-dotta-northflank-manager
   pull_request:
     branches:
       - main
