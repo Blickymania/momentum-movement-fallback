@@ -5,11 +5,11 @@ import { GatewayLeaseCoordinator, GATEWAY_LEASE_SCOPE } from "../cloudflare/gate
 import { startGatewayOwner } from "./gateway-owner-supervisor.mjs";
 import worker from "../cloudflare/worker.mjs";
 import { createCloudflareGatewayLeaseStore } from "./cloudflare-gateway-lease-client.mjs";
-import { createCloudflareGatewayFencingClient } from "./cloudflare-gateway-fencing-client.mjs";
+import { createCloudflareFenceRequester, createRemoteFencedCloudflareLeaseStore } from "./cloudflare-fence-request-client.mjs";
 
 const token = "x".repeat(48);
 const bootstrapToken = "b".repeat(48);
-const fenceToken = "f".repeat(48);
+const fenceRequestToken = "r".repeat(48);
 const lease = {
   lease_scope: "momentum-movement:discord-gateway",
   owner_id: "instance-1",
@@ -160,7 +160,7 @@ test("Worker proxies authenticated state and mutation calls to one deterministic
   assert.equal((await response.json()).lease.owner_id, "instance-1");
 });
 
-test("Worker separates bootstrap and fence-confirm credentials from ordinary lease access", async () => {
+test("Worker separates operator bootstrap and bot fence-request credentials; direct fence confirmation is not public", async () => {
   let forwarded = 0;
   const namespace = {
     idFromName: () => "id",
@@ -169,15 +169,15 @@ test("Worker separates bootstrap and fence-confirm credentials from ordinary lea
   const env = {
     LEASE_SERVICE_TOKEN: token,
     LEASE_BOOTSTRAP_TOKEN: bootstrapToken,
-    FENCE_CONTROLLER_TOKEN: fenceToken,
+    FENCE_REQUEST_TOKEN: fenceRequestToken,
     GATEWAY_LEASE_COORDINATOR: namespace
   };
 
-  for (const path of ["/lease/bootstrap", "/lease/fence/confirm"]) {
+  for (const path of ["/lease/bootstrap", "/fence"]) {
     const denied = await worker.fetch(new Request("https://lease.example.com" + path, {
       method: "POST",
       headers: { authorization: "Bearer " + token, "content-type": "application/json" },
-      body: "{}"
+      body: JSON.stringify({ candidateOwnerId: "standby-owner", candidateDeploymentId: "standby-deploy" })
     }), env);
     assert.equal(denied.status, 401);
   }
@@ -185,17 +185,25 @@ test("Worker separates bootstrap and fence-confirm credentials from ordinary lea
   const bootstrap = await worker.fetch(new Request("https://lease.example.com/lease/bootstrap", {
     method: "POST",
     headers: { authorization: "Bearer " + bootstrapToken, "content-type": "application/json" },
-    body: "{}"
+    body: JSON.stringify({ scope: GATEWAY_LEASE_SCOPE, ownerId: "primary", deploymentId: "primary-deploy", proofId: "operator-proof" })
   }), env);
   assert.equal(bootstrap.status, 200);
+  assert.equal(forwarded, 1);
 
-  const confirmation = await worker.fetch(new Request("https://lease.example.com/lease/fence/confirm", {
+  const directFence = await worker.fetch(new Request("https://lease.example.com/lease/fence/confirm", {
     method: "POST",
-    headers: { authorization: "Bearer " + fenceToken, "content-type": "application/json" },
+    headers: { authorization: "Bearer " + fenceRequestToken, "content-type": "application/json" },
     body: "{}"
   }), env);
-  assert.equal(confirmation.status, 200);
-  assert.equal(forwarded, 2);
+  assert.equal(directFence.status, 404);
+
+  const notConfigured = await worker.fetch(new Request("https://lease.example.com/fence", {
+    method: "POST",
+    headers: { authorization: "Bearer " + fenceRequestToken, "content-type": "application/json" },
+    body: JSON.stringify({ candidateOwnerId: "standby-owner", candidateDeploymentId: "standby-deploy" })
+  }), env);
+  assert.equal(notConfigured.status, 503);
+  assert.equal(forwarded, 1);
 });
 
 test("Worker never forwards unapproved route paths", async () => {
@@ -214,7 +222,7 @@ test("Worker never forwards unapproved route paths", async () => {
 });
 
 
-test("Cloudflare Worker + SQLite Durable Object + lease supervisor require bootstrap and hard fence", async () => {
+test("Cloudflare Worker + SQLite Durable Object + remote hard-stop controller require bootstrap and Render suspension", async () => {
   const db = new DatabaseSync(":memory:");
   const sql = {
     exec(statement, ...params) {
@@ -241,7 +249,12 @@ test("Cloudflare Worker + SQLite Durable Object + lease supervisor require boots
   const workerEnv = {
     LEASE_SERVICE_TOKEN: token,
     LEASE_BOOTSTRAP_TOKEN: bootstrapToken,
-    FENCE_CONTROLLER_TOKEN: fenceToken,
+    FENCE_REQUEST_TOKEN: fenceRequestToken,
+    RENDER_API_KEY: "render-test-api-key-123456",
+    RENDER_SERVICE_IDS_JSON: JSON.stringify({
+      "primary-deploy": "srv-primary-12345678",
+      "standby-deploy": "srv-standby-12345678"
+    }),
     GATEWAY_LEASE_COORDINATOR: namespace
   };
   const remoteFetch = async (url, init) => worker.fetch(new Request(url, init), workerEnv);
@@ -251,96 +264,120 @@ test("Cloudflare Worker + SQLite Durable Object + lease supervisor require boots
     fetchFn: remoteFetch,
     timeoutMs: 2500
   });
-  const fencing = createCloudflareGatewayFencingClient({
+  const fenceRequester = createCloudflareFenceRequester({
     baseUrl: "https://lease.example.com",
-    bootstrapToken,
-    fenceControllerToken: fenceToken,
+    requestToken: fenceRequestToken,
     fetchFn: remoteFetch,
     timeoutMs: 2500
   });
+  const fencedStore = createRemoteFencedCloudflareLeaseStore({
+    baseLeaseStore: store,
+    fenceRequester
+  });
 
-  const primaryInput = {
-    scope: GATEWAY_LEASE_SCOPE,
-    ownerId: "primary-process-unique",
-    deploymentId: "primary-deploy",
-    ttlSeconds: 30
+  const renderStates = new Map([
+    ["srv-primary-12345678", "not_suspended"],
+    ["srv-standby-12345678", "not_suspended"]
+  ]);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const parsed = new URL(String(url));
+    const serviceId = parsed.pathname.split("/").filter(Boolean)[2];
+    if (parsed.origin !== "https://api.render.com") return originalFetch(url, init);
+    if (init.method === "GET") {
+      return new Response(JSON.stringify({
+        id: serviceId,
+        suspended: renderStates.get(serviceId),
+        updatedAt: "2026-11-14T00:00:00Z"
+      }), { status: 200 });
+    }
+    if (init.method === "POST" && parsed.pathname.endsWith("/suspend")) {
+      renderStates.set(serviceId, "suspended");
+      return new Response(null, { status: 202 });
+    }
+    return new Response(JSON.stringify({ error: "unsupported_render_test_call" }), { status: 404 });
   };
-  await assert.rejects(
-    () => store.acquire(primaryInput),
-    /lease_coordinator_lease_bootstrap_required/
-  );
 
-  await fencing.bootstrap({
-    scope: GATEWAY_LEASE_SCOPE,
-    ownerId: primaryInput.ownerId,
-    deploymentId: primaryInput.deploymentId,
-    proofId: "operator-confirmed-old-gateway-stopped"
-  });
+  try {
+    const primaryInput = {
+      scope: GATEWAY_LEASE_SCOPE,
+      ownerId: "primary-process-unique",
+      deploymentId: "primary-deploy",
+      ttlSeconds: 30
+    };
+    await assert.rejects(
+      () => store.acquire(primaryInput),
+      /lease_coordinator_lease_bootstrap_required/
+    );
 
-  let primaryLogins = 0;
-  let standbyLogins = 0;
-  const common = {
-    leaseStore: store,
-    scope: GATEWAY_LEASE_SCOPE,
-    heartbeatIntervalMs: 1000,
-    renewTimeoutMs: 500,
-    destroyGateway: async () => {}
-  };
-  const primary = await startGatewayOwner({
-    ...common,
-    ownerId: primaryInput.ownerId,
-    deploymentId: primaryInput.deploymentId,
-    loginGateway: async () => { primaryLogins++; }
-  });
-  assert.equal(primary.ok, true);
-  assert.equal(primary.lease.fencing_epoch, "1");
-  assert.equal((await store.read()).owner_id, primaryInput.ownerId);
+    const bootstrap = await worker.fetch(new Request("https://lease.example.com/lease/bootstrap", {
+      method: "POST",
+      headers: { authorization: "Bearer " + bootstrapToken, "content-type": "application/json" },
+      body: JSON.stringify({
+        scope: GATEWAY_LEASE_SCOPE,
+        ownerId: primaryInput.ownerId,
+        deploymentId: primaryInput.deploymentId,
+        proofId: "operator-confirmed-old-gateway-stopped"
+      })
+    }), workerEnv);
+    assert.equal(bootstrap.status, 200);
 
-  const standbyDeniedWhilePrimaryActive = await startGatewayOwner({
-    ...common,
-    ownerId: "standby-process-unique",
-    deploymentId: "standby-deploy",
-    loginGateway: async () => { standbyLogins++; }
-  });
-  assert.deepEqual(standbyDeniedWhilePrimaryActive, { ok: false, reason: "lease_unavailable" });
-  assert.equal(primaryLogins, 1);
-  assert.equal(standbyLogins, 0);
+    let primaryLogins = 0;
+    let standbyLogins = 0;
+    const common = {
+      leaseStore: store,
+      scope: GATEWAY_LEASE_SCOPE,
+      heartbeatIntervalMs: 1000,
+      renewTimeoutMs: 500,
+      destroyGateway: async () => {}
+    };
+    const primary = await startGatewayOwner({
+      ...common,
+      ownerId: primaryInput.ownerId,
+      deploymentId: primaryInput.deploymentId,
+      loginGateway: async () => { primaryLogins++; }
+    });
+    assert.equal(primary.ok, true);
+    assert.equal(primary.lease.fencing_epoch, "1");
+    assert.equal((await store.read()).owner_id, primaryInput.ownerId);
 
-  const primaryStopped = await primary.shutdown();
-  assert.equal(primaryStopped.released, true);
-
-  await assert.rejects(
-    () => startGatewayOwner({
+    const standbyDenied = await startGatewayOwner({
       ...common,
       ownerId: "standby-process-unique",
       deploymentId: "standby-deploy",
       loginGateway: async () => { standbyLogins++; }
-    }),
-    /lease_coordinator_hard_fence_required/
-  );
-  assert.equal(standbyLogins, 0);
+    });
+    assert.deepEqual(standbyDenied, { ok: false, reason: "lease_unavailable" });
+    assert.equal(primaryLogins, 1);
+    assert.equal(standbyLogins, 0);
 
-  await fencing.confirmFence({
-    scope: GATEWAY_LEASE_SCOPE,
-    expectedOwnerId: primaryInput.ownerId,
-    expectedFencingEpoch: primary.lease.fencing_epoch,
-    candidateOwnerId: "standby-process-unique",
-    candidateDeploymentId: "standby-deploy",
-    provider: "test-provider",
-    proofId: "verified-stop-of-primary"
-  });
+    const primaryStopped = await primary.shutdown();
+    assert.equal(primaryStopped.released, true);
+    await assert.rejects(
+      () => store.acquire({
+        scope: GATEWAY_LEASE_SCOPE,
+        ownerId: "standby-process-unique",
+        deploymentId: "standby-deploy"
+      }),
+      /lease_coordinator_hard_fence_required/
+    );
 
-  const standby = await startGatewayOwner({
-    ...common,
-    ownerId: "standby-process-unique",
-    deploymentId: "standby-deploy",
-    loginGateway: async () => { standbyLogins++; }
-  });
-  assert.equal(standby.ok, true);
-  assert.equal(standby.lease.fencing_epoch, "2");
-  assert.equal(standbyLogins, 1);
-  await standby.shutdown();
-  db.close();
+    const standby = await startGatewayOwner({
+      ...common,
+      leaseStore: fencedStore,
+      ownerId: "standby-process-unique",
+      deploymentId: "standby-deploy",
+      loginGateway: async () => { standbyLogins++; }
+    });
+    assert.equal(standby.ok, true);
+    assert.equal(standby.lease.fencing_epoch, "2");
+    assert.equal(standbyLogins, 1);
+    assert.equal(renderStates.get("srv-primary-12345678"), "suspended");
+    await standby.shutdown();
+  } finally {
+    globalThis.fetch = originalFetch;
+    db.close();
+  }
 });
 
 test("lease client composes the path correctly when the Worker base URL has no path", async () => {
