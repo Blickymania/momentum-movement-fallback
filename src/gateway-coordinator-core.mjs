@@ -19,6 +19,7 @@ function validateDefinitions(definitions) {
     throw new RangeError("Gateway coordinator requires between 1 and 12 client definitions");
   }
   const ids = new Set();
+  const tokenReferences = new Set();
   for (const def of definitions) {
     if (!def || typeof def !== "object" ||
         typeof def.id !== "string" || !/^[A-Za-z0-9_-]{1,48}$/.test(def.id) ||
@@ -28,6 +29,10 @@ function validateDefinitions(definitions) {
       throw new TypeError("Gateway client definition has invalid identity or intents");
     }
     if (ids.has(def.id)) throw new TypeError("Gateway client IDs must be unique");
+    if (tokenReferences.has(def.tokenRef)) {
+      throw new TypeError("Each Gateway identity must have a unique token reference");
+    }
+    tokenReferences.add(def.tokenRef);
     if (def.enabled !== true && def.enabled !== false) {
       throw new TypeError("Gateway client enabled must be an explicit boolean");
     }
@@ -102,6 +107,8 @@ export class GatewayCoordinatorCore {
     now = () => Date.now(),
     random = Math.random,
     scheduleAlarm,
+    verifyIdentity = async () => true,
+    fingerprintToken,
     log = () => {},
   } = {}) {
     if (!storage || typeof storage.get !== "function" ||
@@ -110,7 +117,9 @@ export class GatewayCoordinatorCore {
     }
     if (typeof connectSocket !== "function" || typeof tokenProvider !== "function" ||
         typeof scheduleAlarm !== "function" || typeof now !== "function" ||
-        typeof random !== "function" || typeof log !== "function") {
+        typeof random !== "function" || typeof verifyIdentity !== "function" ||
+        (fingerprintToken !== undefined && typeof fingerprintToken !== "function") ||
+        typeof log !== "function") {
       throw new TypeError("Gateway coordinator dependencies are incomplete");
     }
     this.storage = storage;
@@ -121,7 +130,16 @@ export class GatewayCoordinatorCore {
     this.now = now;
     this.random = random;
     this.scheduleAlarm = scheduleAlarm;
+    this.verifyIdentity = verifyIdentity;
+    this.fingerprintToken = fingerprintToken ?? (async (token) => {
+      const cryptoImpl = globalThis.crypto;
+      if (!cryptoImpl?.subtle) throw new Error("Web Crypto is required for credential isolation");
+      const digest = await cryptoImpl.subtle.digest("SHA-256", new TextEncoder().encode(token));
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    });
     this.log = log;
+    this.credentialOwners = new Map();
+    this.fingerprintsByClient = new Map();
     this.sessions = new Map();
     this.sockets = new Map();
     this.inboxes = new Map();
@@ -244,6 +262,26 @@ export class GatewayCoordinatorCore {
         error.code = "GATEWAY_TOKEN_MISSING";
         throw error;
       }
+      token = token.trim();
+      const fingerprint = await this.fingerprintToken(token);
+      const existingOwner = this.credentialOwners.get(fingerprint);
+      if (existingOwner && existingOwner !== id) {
+        const error = new Error("duplicate_discord_credential");
+        error.code = "GATEWAY_DUPLICATE_TOKEN";
+        throw error;
+      }
+      const previousFingerprint = this.fingerprintsByClient.get(id);
+      if (previousFingerprint && previousFingerprint !== fingerprint) {
+        this.credentialOwners.delete(previousFingerprint);
+      }
+      this.credentialOwners.set(fingerprint, id);
+      this.fingerprintsByClient.set(id, fingerprint);
+      const identityVerified = await this.verifyIdentity(token, def);
+      if (identityVerified === false) {
+        const error = new Error("discord_identity_mismatch");
+        error.code = "GATEWAY_IDENTITY_MISMATCH";
+        throw error;
+      }
       const saved = await this.getInbox(id).getState();
       const resume = state.pendingAuthAction !== "identify" &&
         typeof saved.sessionId === "string" && saved.sessionId.length > 0 &&
@@ -306,6 +344,14 @@ export class GatewayCoordinatorCore {
       }
       if (error?.code === "GATEWAY_TOKEN_MISSING") {
         state.lastError = "gateway_token_missing";
+        state.status = "fatal";
+        state.reconnectAt = null;
+        state.pendingAuthAction = null;
+      } else if (error?.code === "GATEWAY_DUPLICATE_TOKEN" ||
+                 error?.code === "GATEWAY_IDENTITY_MISMATCH") {
+        state.lastError = error.code === "GATEWAY_DUPLICATE_TOKEN"
+          ? "duplicate_discord_credential"
+          : "discord_identity_mismatch";
         state.status = "fatal";
         state.reconnectAt = null;
         state.pendingAuthAction = null;
