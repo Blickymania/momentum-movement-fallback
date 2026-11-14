@@ -96,7 +96,8 @@ export function createNorthflankServiceFencer({
     const id = validateServiceId(serviceId);
     const response = await request("GET", encodeURIComponent(id) + "/health");
     const current = response?.data?.current;
-    if (!current || !Array.isArray(current.containers) || current.hasMore === true) {
+    if (!current || !Array.isArray(current.containers) ||
+        current.containers.length === 0 || current.hasMore === true) {
       throw new Error("northflank_service_state_unverified");
     }
     for (const container of current.containers) {
