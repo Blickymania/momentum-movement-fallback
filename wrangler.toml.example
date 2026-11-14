@@ -9,6 +9,15 @@ workers_dev = true
 AUTHORIZED_GUILD_ID = "1565048205970767992"
 APPLICATION_ID = "1565304619838742598"
 MCP_OAUTH_ENABLED = "false"
+GATEWAY_COORDINATOR_ENABLED = "false"
+
+[[durable_objects.bindings]]
+name = "GATEWAY_COORDINATOR"
+class_name = "GatewayCoordinatorDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GatewayCoordinatorDurableObject"]
 
 [[d1_databases]]
 binding = "OAUTH_DB"
