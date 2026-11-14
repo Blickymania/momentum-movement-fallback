@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { isIP } from 'node:net';
 
 const SERVICE = 'Momentum Movement Core Shadow';
 const COMMUNITY = 'Momentum Movement';
@@ -13,10 +14,14 @@ function isRailwayHost(hostname) {
 
 function isLocalHost(hostname) {
   const host = hostname.toLowerCase().replace(/\.$/, '');
-  return host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') ||
-    host === '::1' || host.startsWith('127.') || host.startsWith('10.') ||
-    host.startsWith('192.168.') || host.startsWith('169.254.') ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host === '0.0.0.0';
+  return host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local');
+}
+
+function isIpLiteral(hostname) {
+  const host = hostname.startsWith('[') && hostname.endsWith(']')
+    ? hostname.slice(1, -1)
+    : hostname;
+  return isIP(host) !== 0;
 }
 
 export function validateCoordinationDatabaseUrl(raw) {
@@ -28,7 +33,7 @@ export function validateCoordinationDatabaseUrl(raw) {
   if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
     throw new Error('coordination_database_url_scheme_invalid');
   }
-  if (!parsed.hostname || isRailwayHost(parsed.hostname) || isLocalHost(parsed.hostname)) {
+  if (!parsed.hostname || isRailwayHost(parsed.hostname) || isLocalHost(parsed.hostname) || isIpLiteral(parsed.hostname)) {
     throw new Error('coordination_database_must_be_external_and_non_railway');
   }
   return parsed;
@@ -39,7 +44,7 @@ export function validatePrimaryHealthUrl(raw) {
   let parsed;
   try { parsed = new URL(raw); } catch { throw new Error('primary_health_url_invalid'); }
   if (parsed.protocol !== 'https:' || !parsed.hostname ||
-      parsed.hostname.endsWith('.railway.internal') || isLocalHost(parsed.hostname)) {
+      isRailwayHost(parsed.hostname) || isLocalHost(parsed.hostname) || isIpLiteral(parsed.hostname)) {
     throw new Error('primary_health_url_must_be_public_https');
   }
   return parsed;
