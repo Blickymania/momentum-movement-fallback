@@ -45,6 +45,44 @@ async function internalLeaseRead(stub) {
   return payload.lease;
 }
 
+async function claimCoachingInteraction(request, env) {
+  const token = env.COACHING_IDEMPOTENCY_TOKEN || "";
+  if (typeof token !== "string" || token.length < 32 || token.length > 512) {
+    return json({ error: "coaching_idempotency_not_configured" }, 503);
+  }
+  const authorization = request.headers.get("authorization") || "";
+  const candidate = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!await sameSecret(candidate, token)) return json({ error: "unauthorized" }, 401);
+  let body;
+  try {
+    const raw = await request.text();
+    if (raw.length > 2048) return json({ error: "request_too_large" }, 413);
+    body = JSON.parse(raw);
+  } catch { return json({ error: "invalid_json" }, 400); }
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      Object.keys(body).sort().join(",") !== "interactionId,source" ||
+      typeof body.interactionId !== "string" || !/^\\d{17,22}$/.test(body.interactionId) ||
+      (body.source !== "bot005" && body.source !== "coaching-relay")) {
+    return json({ error: "coaching_claim_invalid" }, 400);
+  }
+  let stub;
+  try { stub = objectStub(env); }
+  catch { return json({ error: "lease_coordinator_binding_missing" }, 503); }
+  try {
+    const response = await stub.fetch(new Request("https://lease.internal/coaching/interaction/claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    }));
+    let payload;
+    try { payload = await response.json(); }
+    catch { throw new Error("coaching_claim_response_invalid"); }
+    if (!response.ok || payload?.ok !== true || typeof payload.claimed !== "boolean") {
+      throw new Error("coaching_claim_unavailable");
+    }
+    return json({ ok: true, claimed: payload.claimed, duplicate: !payload.claimed });
+  } catch { return json({ error: "coaching_claim_unavailable" }, 503); }
+}
 async function internalFenceConfirm(stub, input) {
   const response = await stub.fetch(new Request("https://lease.internal/lease/fence/confirm", {
     method: "POST",
@@ -203,8 +241,9 @@ export default {
     ]);
     const bootstrapRoute = path === "/lease/bootstrap";
     const fenceRequestRoute = path === "/fence";
+    const coachingClaimRoute = path === "/coaching/interaction/claim";
 
-    if (!standardRoutes.has(path) && !bootstrapRoute && !fenceRequestRoute) {
+    if (!standardRoutes.has(path) && !bootstrapRoute && !fenceRequestRoute && !coachingClaimRoute) {
       return json({ error: "not_found" }, 404);
     }
 
@@ -216,6 +255,7 @@ export default {
     }
 
     if (fenceRequestRoute) return fenceCandidate(request, env);
+    if (coachingClaimRoute) return claimCoachingInteraction(request, env);
 
     // Bootstrap is an operator-only path; Bot 005 and standby receive neither
     // this credential nor the Render API key.
