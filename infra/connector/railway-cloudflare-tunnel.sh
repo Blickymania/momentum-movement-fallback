@@ -87,7 +87,7 @@ done
 
 # The Railway CLI keeps its own inherited token; do not pass it to cloudflared.
 unset RAILWAY_TOKEN
-cloudflared tunnel --no-autoupdate run --token-file "$TOKEN_FILE" &
+cloudflared tunnel --protocol quic --no-autoupdate run --token-file "$TOKEN_FILE" &
 CLOUDFLARED_PID=$!
 
 # Keep the connector alive only while both underlying tunnel processes live.
