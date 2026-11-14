@@ -87,6 +87,20 @@ test("lease client maps conflict to null and fails closed on server errors", asy
   await assert.rejects(() => unavailable.renew({}), /lease_coordinator_http_503/);
 });
 
+test("lease client surfaces bootstrap and hard-fence conflicts instead of treating them as lease denial", async () => {
+  for (const reason of ["lease_bootstrap_required", "hard_fence_required"]) {
+    const store = createCloudflareGatewayLeaseStore({
+      baseUrl: "https://lease.example.com",
+      serviceToken: token,
+      fetchFn: async () => jsonResponse({ ok: false, reason }, 409)
+    });
+    await assert.rejects(
+      () => store.acquire({}),
+      new RegExp("lease_coordinator_" + reason)
+    );
+  }
+});
+
 test("lease client times out instead of waiting on a stalled HTTP control plane", async () => {
   const store = createCloudflareGatewayLeaseStore({
     baseUrl: "https://lease.example.com",
@@ -146,6 +160,44 @@ test("Worker proxies authenticated state and mutation calls to one deterministic
   assert.equal((await response.json()).lease.owner_id, "instance-1");
 });
 
+test("Worker separates bootstrap and fence-confirm credentials from ordinary lease access", async () => {
+  let forwarded = 0;
+  const namespace = {
+    idFromName: () => "id",
+    get: () => ({ fetch: async () => { forwarded++; return jsonResponse({ ok: true, lease }); } })
+  };
+  const env = {
+    LEASE_SERVICE_TOKEN: token,
+    LEASE_BOOTSTRAP_TOKEN: bootstrapToken,
+    FENCE_CONTROLLER_TOKEN: fenceToken,
+    GATEWAY_LEASE_COORDINATOR: namespace
+  };
+
+  for (const path of ["/lease/bootstrap", "/lease/fence/confirm"]) {
+    const denied = await worker.fetch(new Request("https://lease.example.com" + path, {
+      method: "POST",
+      headers: { authorization: "Bearer " + token, "content-type": "application/json" },
+      body: "{}"
+    }), env);
+    assert.equal(denied.status, 401);
+  }
+
+  const bootstrap = await worker.fetch(new Request("https://lease.example.com/lease/bootstrap", {
+    method: "POST",
+    headers: { authorization: "Bearer " + bootstrapToken, "content-type": "application/json" },
+    body: "{}"
+  }), env);
+  assert.equal(bootstrap.status, 200);
+
+  const confirmation = await worker.fetch(new Request("https://lease.example.com/lease/fence/confirm", {
+    method: "POST",
+    headers: { authorization: "Bearer " + fenceToken, "content-type": "application/json" },
+    body: "{}"
+  }), env);
+  assert.equal(confirmation.status, 200);
+  assert.equal(forwarded, 2);
+});
+
 test("Worker never forwards unapproved route paths", async () => {
   let forwarded = false;
   const response = await worker.fetch(new Request("https://lease.example.com/admin", {
@@ -162,12 +214,12 @@ test("Worker never forwards unapproved route paths", async () => {
 });
 
 
-test("Cloudflare Worker + SQLite Durable Object + remote lease-store supervisor enforce one owner end to end", async () => {
+test("Cloudflare Worker + SQLite Durable Object + lease supervisor require bootstrap and hard fence", async () => {
   const db = new DatabaseSync(":memory:");
   const sql = {
     exec(statement, ...params) {
       const prepared = db.prepare(statement);
-      if (/\bRETURNING\b|^\s*SELECT\b/i.test(statement)) {
+      if (statement.includes("RETURNING") || statement.trimStart().startsWith("SELECT")) {
         return { toArray: () => prepared.all(...params) };
       }
       prepared.run(...params);
@@ -186,49 +238,102 @@ test("Cloudflare Worker + SQLite Durable Object + remote lease-store supervisor 
       return { fetch: request => durableObject.fetch(request) };
     }
   };
-  const remoteFetch = async (url, init) => worker.fetch(new Request(url, init), {
+  const workerEnv = {
     LEASE_SERVICE_TOKEN: token,
+    LEASE_BOOTSTRAP_TOKEN: bootstrapToken,
+    FENCE_CONTROLLER_TOKEN: fenceToken,
     GATEWAY_LEASE_COORDINATOR: namespace
-  });
+  };
+  const remoteFetch = async (url, init) => worker.fetch(new Request(url, init), workerEnv);
   const store = createCloudflareGatewayLeaseStore({
     baseUrl: "https://lease.example.com",
     serviceToken: token,
     fetchFn: remoteFetch,
     timeoutMs: 2500
   });
+  const fencing = createCloudflareGatewayFencingClient({
+    baseUrl: "https://lease.example.com",
+    bootstrapToken,
+    fenceControllerToken: fenceToken,
+    fetchFn: remoteFetch,
+    timeoutMs: 2500
+  });
+
+  const primaryInput = {
+    scope: GATEWAY_LEASE_SCOPE,
+    ownerId: "primary-process-unique",
+    deploymentId: "primary-deploy",
+    ttlSeconds: 30
+  };
+  await assert.rejects(
+    () => store.acquire(primaryInput),
+    /lease_coordinator_lease_bootstrap_required/
+  );
+
+  await fencing.bootstrap({
+    scope: GATEWAY_LEASE_SCOPE,
+    ownerId: primaryInput.ownerId,
+    deploymentId: primaryInput.deploymentId,
+    proofId: "operator-confirmed-old-gateway-stopped"
+  });
+
   let primaryLogins = 0;
   let standbyLogins = 0;
   const common = {
     leaseStore: store,
     scope: GATEWAY_LEASE_SCOPE,
-    deploymentId: "candidate",
     heartbeatIntervalMs: 1000,
     renewTimeoutMs: 500,
     destroyGateway: async () => {}
   };
   const primary = await startGatewayOwner({
     ...common,
-    ownerId: "primary-process-unique",
+    ownerId: primaryInput.ownerId,
+    deploymentId: primaryInput.deploymentId,
     loginGateway: async () => { primaryLogins++; }
   });
   assert.equal(primary.ok, true);
-  const currentLease = await store.read();
-  assert.equal(currentLease.owner_id, "primary-process-unique");
-  const standbyDenied = await startGatewayOwner({
+  assert.equal(primary.lease.fencing_epoch, "1");
+  assert.equal((await store.read()).owner_id, primaryInput.ownerId);
+
+  const standbyDeniedWhilePrimaryActive = await startGatewayOwner({
     ...common,
     ownerId: "standby-process-unique",
+    deploymentId: "standby-deploy",
     loginGateway: async () => { standbyLogins++; }
   });
-  assert.deepEqual(standbyDenied, { ok: false, reason: "lease_unavailable" });
+  assert.deepEqual(standbyDeniedWhilePrimaryActive, { ok: false, reason: "lease_unavailable" });
   assert.equal(primaryLogins, 1);
   assert.equal(standbyLogins, 0);
 
-  const stopped = await primary.shutdown();
-  assert.equal(stopped.released, true);
+  const primaryStopped = await primary.shutdown();
+  assert.equal(primaryStopped.released, true);
+
+  await assert.rejects(
+    () => startGatewayOwner({
+      ...common,
+      ownerId: "standby-process-unique",
+      deploymentId: "standby-deploy",
+      loginGateway: async () => { standbyLogins++; }
+    }),
+    /lease_coordinator_hard_fence_required/
+  );
+  assert.equal(standbyLogins, 0);
+
+  await fencing.confirmFence({
+    scope: GATEWAY_LEASE_SCOPE,
+    expectedOwnerId: primaryInput.ownerId,
+    expectedFencingEpoch: primary.lease.fencing_epoch,
+    candidateOwnerId: "standby-process-unique",
+    candidateDeploymentId: "standby-deploy",
+    provider: "test-provider",
+    proofId: "verified-stop-of-primary"
+  });
 
   const standby = await startGatewayOwner({
     ...common,
     ownerId: "standby-process-unique",
+    deploymentId: "standby-deploy",
     loginGateway: async () => { standbyLogins++; }
   });
   assert.equal(standby.ok, true);
@@ -237,7 +342,6 @@ test("Cloudflare Worker + SQLite Durable Object + remote lease-store supervisor 
   await standby.shutdown();
   db.close();
 });
-
 
 test("lease client composes the path correctly when the Worker base URL has no path", async () => {
   let capturedUrl;
