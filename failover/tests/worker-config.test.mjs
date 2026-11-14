@@ -30,4 +30,5 @@ test("public lease mutations require the control token and use one fixed namespa
   assert.match(config, /"name": "momentum-movement-lease-control"/);
   assert.match(config, /"new_sqlite_classes": \["MomentumMovementLease"\]/);
   assert.match(config, /"class_name": "MomentumMovementLease"/);
+  assert.match(config, /"required": \["LEASE_CONTROL_TOKEN"\]/);
 });
