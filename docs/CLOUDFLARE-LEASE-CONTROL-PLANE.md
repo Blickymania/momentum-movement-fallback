@@ -41,7 +41,7 @@ Official documentation:
 
 ## Components committed
 
-- `cloudflare/gateway-lease-coordinator.mjs`: SQLite-backed Durable Object. It uses a fixed lease scope, 30-second default TTL, 10–120-second accepted TTL range, owner ID, deployment ID, monotonic fencing epoch, expiry and heartbeat timestamp. Acquisition is an atomic UPSERT allowed only when the previous lease has expired. The same active owner ID cannot reacquire its own lease. Renewal and release require the exact owner ID and fencing epoch. Fencing epochs are returned as strings and are checked to stay inside JavaScript's safe-integer range.
+- `cloudflare/gateway-lease-coordinator.mjs`: SQLite-backed Durable Object. It uses a fixed lease scope, 30-second default TTL, 10–120-second accepted TTL range, owner ID, deployment ID, monotonic fencing epoch, expiry and heartbeat timestamp. Acquisition is an atomic UPSERT allowed only after the prior lease expires and only when the exact prior owner/epoch has been hard-fence confirmed for the exact candidate. The same active owner ID cannot reacquire its own lease. **The Durable Object itself now checks that every owner ID is prefixed by its deployment ID** during bootstrap and acquire; fence confirmation validates both the previous owner's stored deployment binding and the candidate's deployment binding before recording the fence. Renewal and release require the exact owner ID and fencing epoch. Fencing epochs are returned as strings and stay inside JavaScript's safe-integer range.
 - `cloudflare/worker.mjs`: public `GET /healthz`, bot-authenticated lease routes, one-time operator-only `/lease/bootstrap`, and bot-facing `/fence`. Direct `/lease/fence/confirm` is not public; only the Worker calls it over the internal Durable Object stub. Ordinary lease routes use `LEASE_SERVICE_TOKEN`; bootstrap uses `LEASE_BOOTSTRAP_TOKEN`; fence requests use deployment-scoped tokens from the secret `FENCE_REQUEST_TOKENS_JSON`. Only the Worker holds `RENDER_API_KEY` and `RENDER_SERVICE_IDS_JSON`. Never put Render or bootstrap credentials in either Bot runtime.
 - `cloudflare/wrangler.jsonc`: SQLite Durable Object binding and initial `new_sqlite_classes` migration.
 - `implementation/cloudflare-gateway-lease-client.mjs`: Node-side HTTPS client. It rejects Railway/local/IP-literal endpoints, normalizes trailing-dot hostnames and root Worker URL paths, enforces a 32–512-character service secret, uses a bounded request timeout, maps HTTP 409 to a denied lease (null), and fails closed on timeout/network/server error. The coordinator's state route returns the same `{ ok: true, lease }` envelope as the mutation routes.
@@ -157,9 +157,9 @@ Latest component-local Node.js 22.16.0 simulations:
 - Discord event/REST/fetch guard: 7 passed.
 - Prepared Gateway owner adapter with deployment-prefixed owner ID: 5 passed.
 - Provider-neutral hard-stop contract and e2e supervisor batch: 9 passed.
-- **Total: 41 passed, 0 failed across separate local test batches.**
+- **Latest combined local result: 65 passed, 0 failed across the selected component suites.**
 
-These tests use isolated working copies, simulated Cloudflare context, Node SQLite, fake Discord clients, and mocked Render HTTP responses. They are not a clean repository checkout test run, Cloudflare-hosted integration test, or actual Render service suspension test. GitHub Actions still fails before job creation and has no job logs.
+These tests use isolated working copies, simulated Cloudflare context, Node SQLite, fake Discord clients, and mocked Render HTTP responses. The combined command exercised five working directories containing the locally reconstructed component sources; it is not a clean repository checkout test run, Cloudflare-hosted integration test, or actual Render service suspension test. GitHub Actions still fails before job creation and has no job logs.
 
 ## Remaining gates
 
@@ -174,3 +174,25 @@ These tests use isolated working copies, simulated Cloudflare context, Node SQLi
 ## Render credential isolation correction
 
 The unused helper that could combine a PostgreSQL/Cloudflare lease store with the Render API adapter inside a Bot process has been removed. The Render service fencer is now intentionally consumed only by cloudflare/worker.mjs. Bot-side code uses only cloudflare-fence-request-client.mjs, which sends candidate identity and a deployment-specific request token to the Worker; it never imports a Render API client or receives the Render API key. The current component suite no longer includes the two removed helper-wrapper tests. The Render fencer suite is 7/7, and the Worker-to-Render-to-Durable-Object flow remains separately simulated.
+
+
+## Durable Object-level owner/deployment identity enforcement
+
+The most recent hardening moved the identity check into `cloudflare/gateway-lease-coordinator.mjs` itself. Worker-only validation is not relied on:
+- Bootstrap rejects an owner ID that does not begin with its deployment ID plus a colon.
+- Lease acquire independently enforces the same prefix.
+- Fence confirmation reads the current lease and verifies the old owner is bound to its stored deployment, then verifies the candidate owner is bound to the requested candidate deployment before it writes the fence evidence.
+- The Worker and Render fencer also validate deployment-bound candidate/previous identities before invoking Render API operations.
+
+The updated SQLite test suite explicitly rejects unbound bootstrap/acquire owners and unbound old/candidate identities in fence confirmation. The Render fencer test suite also verifies mismatched owner identities are rejected before any Render API call.
+
+## Latest local verification and hosted CI
+
+A single local Node.js v22.16.0 test invocation across isolated component working directories returned **65 tests, 65 passed, 0 failed**:
+- Durable Object + Render fencer: 14
+- Worker controller + fence request client + ownership egress guard: 15
+- Prepared Discord owner adapter: 5
+- Provider-neutral hard-stop controller: 8
+- Shared lease + Gateway supervisor + independent preflight: 23
+
+Latest observed GitHub Actions run is `43556643815`, commit `3d06db570263be426a62a846ffac64a2e044673c`, with conclusion `startup_failure`; the jobs endpoint returned an empty list. Immediately preceding runs `43556634163` and `43556557762` failed the same way. No runner or job logs exist. This is an unresolved hosted-CI blocker; do not claim GitHub Actions passed or guess at the cause.
