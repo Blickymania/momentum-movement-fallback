@@ -89,3 +89,12 @@ Continue independent code/CI diagnostics and investigate no-cost persistent conn
 - Existing Supabase projects are for other community scopes and remain untouched. No Neon or Supabase project was created, no account was connected, and no database was migrated.
 - Either provider could potentially support an isolated compatibility test or cold fallback, but transparent primary/fallback continuity would require both Railway and Cloudflare to share the same OAuth state, a carefully planned migration, and a verified rollback. Do not create a separate divergent OAuth database and call it failover.
 - Conclusion: no verified zero-cost always-on shared database/network path is available from current connected resources. Continue design/review without modifying production until a suitable persistent host or user-approved shared DB migration path exists.
+
+
+## Continuation protocol locked in
+- Added `infra/failover/CONTINUATION-PROTOCOL.md` as the durable execution contract for this project.
+- Protocol explicitly requires autonomous next-cycle selection after each checkpoint; no "NEXT" prompt; continue independent tasks around blockers; no background-work claims; resume from newest checkpoint.
+- Scheduler policy locked: no new cron/reminder/automation/duplicate monitor; preserve existing schedules and maximum one centralized maintenance/recovery process only if later required.
+- Production/security guardrails and exact checkpoint fields are documented in the protocol.
+- This is a repository-level continuation contract, not a background daemon or scheduled automation. No scheduler was created or changed.
+- Next action: continue independent code/security review of the isolated Worker and router, then make the smallest evidence-backed correction and test it in an executable environment if available.
