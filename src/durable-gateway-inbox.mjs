@@ -135,6 +135,29 @@ export class DurableGatewayInbox {
     return this.getState();
   }
 
+  async advanceSequence(sessionId, sequence) {
+    if (typeof sessionId !== "string" || !sessionId ||
+        !Number.isSafeInteger(sequence) || sequence < 0) {
+      throw new TypeError("Gateway sequence checkpoint is invalid");
+    }
+    return this.storage.transaction(async (txn) => {
+      const state = await txn.get(this.stateKey);
+      if (!state || state.sessionId !== sessionId ||
+          !Number.isSafeInteger(state.sequence)) {
+        throw new InboxIntegrityError("Gateway READY session must be stored before advancing its sequence");
+      }
+      if (sequence <= state.sequence) {
+        return { advanced: false, duplicate: true, sequence: state.sequence };
+      }
+      await txn.put(this.stateKey, {
+        ...state,
+        sequence,
+        updatedAt: Date.now(),
+      });
+      return { advanced: true, duplicate: false, sequence };
+    });
+  }
+
   async clearSession() {
     await this.storage.transaction(async (txn) => {
       const state = await txn.get(this.stateKey);
