@@ -129,3 +129,34 @@ Continue independent code/CI diagnostics and investigate no-cost persistent conn
 
 ### Exact next execution step
 Continue independent security and runtime-compatibility review of the isolated Worker/router, prioritizing request limits, timeout/cancellation behavior, health/readiness semantics, and OAuth edge cases. Add only evidence-backed tests or fixes. Keep pursuing an executable test path without paid services or production changes.
+
+
+## Runtime-boundary review cycle — bounded Discord calls
+
+### Evidence reviewed
+- Reviewed the Worker request handler, readiness endpoint, OAuth handlers, guild audit, capability inventory, and Discord API call sites.
+- Cloudflare's current Workers limits page (updated Nov 13, 2026) states Free plan: 10 ms CPU per HTTP request, 128 MB memory, 50 subrequests per invocation, and 6 simultaneous outgoing connections. HTTP-triggered request wall time has no hard limit while the client remains connected. Source: https://developers.cloudflare.com/workers/platform/limits/
+- Cloudflare's Workers best-practices documentation recommends enforcing request-body limits before fully buffering user input and streaming large payloads. Source: https://developers.cloudflare.com/workers/best-practices/workers-best-practices/
+- The router's 70-second Render cold-fallback probe is not independently disqualified by a hard HTTP wall-time cap, but still depends on the calling client remaining connected and on Render actually waking. It remains a cold fallback only, not a verified primary.
+- Reviewed outbound fetch call sites. Most already use AbortSignal timeouts; the channel ownership lookup and final Discord API operation did not.
+
+### Implemented
+- Added a 12-second timeout to the Discord channel ownership lookup.
+- Added a 15-second timeout to the final Discord API read/write operation. No retry was added; a timed-out write remains an unknown outcome and must not be replayed automatically.
+- Source change commit: `6dcc729aec9e1971d74fa3e42cd1472e2fc16fa2`.
+- Added two static source-invariant tests for those bounded timeouts.
+- Test change commit: `5ffdff921eae4d96b3be3fa967156ae1cba57328`.
+- Read-back verified both timeout patterns in the source and 16 test cases in the test file. Isolated V8 syntax parsing succeeded after removing Node-specific imports and the `import.meta` file reference.
+- This did not run the Node test runner, TypeScript compiler, Wrangler build, or live Discord tests.
+
+### CI failure reconfirmed
+- Push run for latest test commit: `43542084034`, conclusion `startup_failure`, path `BuildFailed`.
+- Jobs endpoint returned an empty array. Workflow steps did not execute.
+- Several sequential push runs show the same pre-job startup failure. No further blind retries were made.
+
+### Production and scheduler
+- No production service, Discord resource, database, Cloudflare resource, secret, DNS, or billing setting changed.
+- No scheduled automation, cron, reminder, monitor, or recovery process created or changed.
+
+### Next execution step
+Continue reviewing Worker input validation, MCP request parsing, and OAuth redirect/state edge cases. Preserve no-retry semantics for any Discord write whose outcome is uncertain. Seek a local reproducible Node/Wrangler test path without a paid service or production mutation.
