@@ -9,6 +9,7 @@ import { createCloudflareFenceRequester, createRemoteFencedCloudflareLeaseStore 
 
 const token = "x".repeat(48);
 const bootstrapToken = "b".repeat(48);
+const primaryFenceToken = "p".repeat(48);
 const fenceRequestToken = "r".repeat(48);
 const lease = {
   lease_scope: "momentum-movement:discord-gateway",
@@ -169,7 +170,7 @@ test("Worker separates operator bootstrap and bot fence-request credentials; dir
   const env = {
     LEASE_SERVICE_TOKEN: token,
     LEASE_BOOTSTRAP_TOKEN: bootstrapToken,
-    FENCE_REQUEST_TOKEN: fenceRequestToken,
+    FENCE_REQUEST_TOKENS_JSON: JSON.stringify({ "primary-deploy": primaryFenceToken, "standby-deploy": fenceRequestToken }),
     GATEWAY_LEASE_COORDINATOR: namespace
   };
 
@@ -204,6 +205,13 @@ test("Worker separates operator bootstrap and bot fence-request credentials; dir
   }), env);
   assert.equal(wrongIdentity.status, 400);
 
+  const primaryCredentialCannotFenceStandby = await worker.fetch(new Request("https://lease.example.com/fence", {
+    method: "POST",
+    headers: { authorization: "Bearer " + primaryFenceToken, "content-type": "application/json" },
+    body: JSON.stringify({ candidateOwnerId: "standby-deploy:process-unique", candidateDeploymentId: "standby-deploy" })
+  }), env);
+  assert.equal(primaryCredentialCannotFenceStandby.status, 401);
+
   const notConfigured = await worker.fetch(new Request("https://lease.example.com/fence", {
     method: "POST",
     headers: { authorization: "Bearer " + fenceRequestToken, "content-type": "application/json" },
@@ -216,7 +224,7 @@ test("Worker separates operator bootstrap and bot fence-request credentials; dir
 test("Worker rejects candidate owners not bound to their declared deployment", async () => {
   let forwarded = 0;
   const env = {
-    FENCE_REQUEST_TOKEN: fenceRequestToken,
+    FENCE_REQUEST_TOKENS_JSON: JSON.stringify({ "primary-deploy": primaryFenceToken, "standby-deploy": fenceRequestToken }),
     RENDER_API_KEY: "render-test-api-key-123456",
     RENDER_SERVICE_IDS_JSON: JSON.stringify({
       "primary-deploy": "srv-primary-12345678",
