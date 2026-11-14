@@ -10,8 +10,10 @@ function validateBaseUrl(raw) {
       url.username || url.password || url.search || url.hash) {
     throw new TypeError("lease_coordinator_url_must_be_public_https");
   }
-  url.pathname = url.pathname.replace(/\/$/, "");
-  return url;
+  return {
+    origin: url.origin,
+    pathname: url.pathname.replace(/\/+$/, "")
+  };
 }
 
 function validateTimeout(value) {
