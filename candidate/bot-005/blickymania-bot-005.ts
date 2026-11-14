@@ -552,7 +552,7 @@ if(client.user?.id!==A)throw Error("Discord bot/application mismatch");
 const guild=await client.guilds.fetch(G);
 if(guild.id!==G)throw Error("Wrong authorized guild");
 guildVerified=true;ready=true;log("gateway_verified",{app:A,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",handlerCount:SAFE.size,commandRegistryManagedElsewhere:true});
-}catch(err){lastError=err instanceof Error?err.name:"identity_failed";ready=false;guildVerified=false;log("identity_failed",{kind:lastError});await client.destroy();}
+}catch(err){lastError=err instanceof Error?err.name:"identity_failed";ready=false;guildVerified=false;log("identity_failed",{kind:lastError});await preparedGatewayOwner.shutdown("identity_verification_failed");}
 });
 client.on(Events.ShardDisconnect,ev=>{ready=false;log("disconnected",{code:ev.code})});
 client.on(Events.ShardResume,()=>{ready=true;log("resumed")});
