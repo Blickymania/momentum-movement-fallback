@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";\nimport { GatewayLeaseCoordinator, GATEWAY_LEASE_SCOPE } from "../cloudflare/gateway-lease-coordinator.mjs";\nimport { startGatewayOwner } from "./gateway-owner-supervisor.mjs";
+import { DatabaseSync } from "node:sqlite";
+import { GatewayLeaseCoordinator, GATEWAY_LEASE_SCOPE } from "../cloudflare/gateway-lease-coordinator.mjs";
+import { startGatewayOwner } from "./gateway-owner-supervisor.mjs";
 import worker from "../cloudflare/worker.mjs";
 import { createCloudflareGatewayLeaseStore } from "./cloudflare-gateway-lease-client.mjs";
 
