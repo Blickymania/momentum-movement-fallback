@@ -529,3 +529,30 @@ No production service, variable, DB, volume, route, credential, schedule, Discor
 - PR #2 remains draft and is not approved for merge or production cutover.
 - OAuth database backup/restore coverage remains unverified for the Manager's actual target. Northflank/Neon routing remains inactive. The Neon staging endpoint remains idle and disabled.
 - Continue with host-independent checks only until the database host is identified. Do not expose the production Postgres port or migrate OAuth rows as a shortcut.
+
+
+## Cycle 27 — map database hostnames from Railway service networking (2026-11-14 UTC)
+
+### Hostname mapping verified
+- Read-only Railway `describe_service` results show the live private-network endpoint names:
+  - `OAuth PostgreSQL`: `oauth-postgresql`
+  - `Postgres`: `postgres`
+  - `Dawn Dotta Discord Manager`: `dawn-dotta-discord-manager`
+- The live endpoint configuration does not expose public TCP proxies for either database. The database services remain private.
+- Railway's current official private-networking documentation confirms the internal hostname format is `<service-name>.railway.internal`, scoped to the same project and environment. Therefore the two candidate URL hostnames are:
+  - `oauth-postgresql.railway.internal` → OAuth PostgreSQL
+  - `postgres.railway.internal` → separate Postgres
+- Owner has confirmed the Manager variable is a direct `postgres://` URL. The host portion has not yet been supplied or otherwise read, so the Manager's actual target remains unknown. Do not infer it from variable names, diagnostic-service configuration, or database labels.
+
+### PR base-branch comparison correction
+- Refreshed PR #2 metadata: its base is `infra/dawn-dotta-cloudflare-worker`, not `main`.
+- Compared the Northflank branch to the actual PR base SHA `eccbae73eeb4ca896c6440693fc3069e166fff15`: 57 commits ahead, 0 behind. This confirms there is no branch-behind condition relative to the PR's actual base; a separate comparison to `main` was not relevant to this PR.
+- The PR remains open, draft, mergeable, and unmerged.
+
+### Latest CI check
+- The push-triggered run `43563109310` for checkpoint commit `5fb8af0dc1aaa649998bff20fdd54b11db329e56` concluded `startup_failure`; its job list is empty. No code tests ran.
+
+### Safety state / next action
+- No production service, variable, database, proxy, backup, deployment, route, DNS record, or schedule was changed.
+- No credentials or complete connection strings were read or copied.
+- To resolve the DB target, inspect only the host substring in the Manager's existing `postgres://` URL and compare it with the two exact candidates above. If it matches neither, stop and investigate the hostname owner. Continue to keep the PR draft and all production failover origins inactive until the database's backup/restore and OAuth lifecycle gates pass.
