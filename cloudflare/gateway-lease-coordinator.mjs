@@ -181,7 +181,7 @@ export class GatewayLeaseCoordinator {
 
     if (url.pathname === "/lease/state") {
       if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
-      return json({ lease: this.read() });
+      return json({ ok: true, lease: this.read() });
     }
 
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
