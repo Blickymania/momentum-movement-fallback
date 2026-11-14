@@ -80,7 +80,7 @@ Set these inside Northflank's encrypted secret/variable management. Never place 
 - `MCP_INTERNAL_BEARER_TOKEN` — preferred static internal MCP credential
 - `RAILWAY_SERVICE_KEY` — compatibility alias for existing clients still using the legacy credential name; set to the same intended secret only where needed
 - `DISCORD_OAUTH_CLIENT_SECRET`
-- `OAUTH_DATABASE_URL` — Northflank private PostgreSQL connection string with TLS enabled
+- `OAUTH_DATABASE_URL` — connection string for the selected shared OAuth data plane; it must be reachable from every eligible Manager origin and must not point to an isolated Northflank-only production database
 - `OAUTH_SIGNING_KEY`
 - `OAUTH_TOKEN_ENCRYPTION_KEY`
 
