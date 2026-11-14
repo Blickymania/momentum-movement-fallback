@@ -339,7 +339,7 @@ export class GatewayLeaseCoordinator {
 
   claimCoachingInteraction({ interactionId, source }) {
     const id = requiredString(interactionId, "interaction_id");
-    if (!/^\\d{17,22}$/.test(id)) throw new TypeError("interaction_id_invalid");
+    if (!/^\d{17,22}$/.test(id)) throw new TypeError("interaction_id_invalid");
     if (source !== "bot005" && source !== "coaching-relay") {
       throw new TypeError("coaching_source_invalid");
     }
