@@ -138,7 +138,7 @@ test("fences all direct fetch calls except the configured lease coordinator orig
     fetchTarget
   });
   await assert.rejects(() => fetchTarget.fetch("https://discord.com/api/v10/channels/1/messages"), /gateway_lease_not_active/);
-  await assert.rejects(() => fetchTarget.fetch("http://coaching-workflow.railway.internal:3000/interaction"), /gateway_lease_not_active/);
+  assert.throws(() => fetchTarget.fetch("http://coaching-workflow.railway.internal:3000/interaction"), /railway_dependency_forbidden/);
   assert.equal(fetchTarget.calls.length, 0);
 
   const leaseResponse = await fetchTarget.fetch("https://lease.example.com/lease/renew");
@@ -184,4 +184,29 @@ test("replaces client listener methods and global fetch only until explicit rest
   assert.equal(client.login, originalLogin);
   assert.equal(client.rest.request, originalRest);
   assert.equal(fetchTarget.fetch, originalFetch);
+});
+
+
+test("listener identity can be removed using the original callback", () => {
+  const client = fakeClient();
+  const guard = installGatewayOwnershipGuards({
+    client,
+    leaseCoordinatorUrl: "https://lease.example.com",
+    fetchTarget: fakeFetchTarget()
+  });
+  let count = 0;
+  const listener = () => { count++; };
+  client.on("interaction", listener);
+  client.removeListener("interaction", listener);
+  guard.setAssertOwned(() => true);
+  client.emit("interaction");
+  assert.equal(count, 0);
+
+  let onceCount = 0;
+  const onceListener = () => { onceCount++; };
+  client.once("ready", onceListener);
+  client.removeListener("ready", onceListener);
+  client.emit("ready");
+  assert.equal(onceCount, 0);
+  guard.restore();
 });
