@@ -157,7 +157,7 @@ export async function startGatewayOwner({
       gatewayReady = false;
       heartbeat.stop();
       await destroy(reason).catch(() => {});
-      const released = await releaseGatewayLease(db, {
+      const released = await store.release({
         scope: lease.lease_scope,
         ownerId: lease.owner_id,
         fencingEpoch: lease.fencing_epoch
