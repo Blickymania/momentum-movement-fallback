@@ -198,7 +198,6 @@ export function startLeaseHeartbeat({
   };
 
   timer = setInterval(() => { void beat(); }, intervalMs);
-  timer.unref?.();
   return { stop, beat };
 }
 
