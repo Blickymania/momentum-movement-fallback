@@ -429,3 +429,12 @@ Continue read-only inspection of the two Railway PostgreSQL services and their v
 - No service, backup schedule, volume, database, credential, or production configuration was changed. Existing daily backup schedule remains as-is; no new schedule was created.
 - Before selecting Neon or Northflank for OAuth failover, first prove Manager's actual DB target and ensure that exact database has tested backups and a restore path. If OAuth PostgreSQL is the live target, the existing daily backup worker is currently not shown to cover it.
 - Neon staging remains empty, endpoint idle and disabled; no app connection or credential configured.
+
+
+## Cycle 21 — final checkpoint verification (2026-11-14 UTC)
+
+- After the Cycle 20 documentation commit, latest GitHub Actions runs `43561875746` and `43561869750` both completed with `startup_failure`; both job lists are empty. No source tests ran.
+- PR #2 remains open/draft/mergeable/unmerged at head `2ca7424f304f31fed427c845115371935753674e` before this checkpoint-only update.
+- Railway production environment remains without staged changes. Dawn Dotta Discord Manager remains live, one replica, latest deployment SUCCESS.
+- Neon staging endpoint is still `idle` and `disabled: true`; project usage fields are zero. No app secrets or connections were created.
+- The next unresolved gate is the Manager's exact OAuth database reference and tested backup/restore coverage. Diagnostic function -> OAuth PostgreSQL is confirmed; existing daily backup worker -> separate Postgres is confirmed. Do not assume the latter backs up the former.
