@@ -115,7 +115,7 @@ test("fences every Discord REST request before invoking the underlying client", 
     leaseCoordinatorUrl: "https://lease.example.com",
     fetchTarget: fakeFetchTarget()
   });
-  await assert.rejects(() => client.rest.request("POST", "/channels/1/messages"), /gateway_lease_not_active/);
+  assert.throws(() => client.rest.request("POST", "/channels/1/messages"), /gateway_lease_not_active/);
   assert.equal(client.requests.length, 0);
 
   guard.setAssertOwned(() => true);
@@ -124,7 +124,7 @@ test("fences every Discord REST request before invoking the underlying client", 
   assert.equal(client.requests.length, 1);
 
   guard.revoke();
-  await assert.rejects(() => client.rest.request("POST", "/channels/1/messages"), /gateway_ownership_revoked/);
+  assert.throws(() => client.rest.request("POST", "/channels/1/messages"), /gateway_ownership_revoked/);
   assert.equal(client.requests.length, 1);
   guard.restore();
 });
@@ -137,7 +137,7 @@ test("fences all direct fetch calls except the configured lease coordinator orig
     leaseCoordinatorUrl: "https://lease.example.com/control",
     fetchTarget
   });
-  await assert.rejects(() => fetchTarget.fetch("https://discord.com/api/v10/channels/1/messages"), /gateway_lease_not_active/);
+  assert.throws(() => fetchTarget.fetch("https://discord.com/api/v10/channels/1/messages"), /gateway_lease_not_active/);
   assert.throws(() => fetchTarget.fetch("http://coaching-workflow.railway.internal:3000/interaction"), /railway_dependency_forbidden/);
   assert.equal(fetchTarget.calls.length, 0);
 
@@ -154,7 +154,7 @@ test("fences all direct fetch calls except the configured lease coordinator orig
   assert.equal(fetchTarget.calls.length, 3);
 
   guard.revoke();
-  await assert.rejects(() => fetchTarget.fetch("https://coaching.example.com/interaction"), /gateway_ownership_revoked/);
+  assert.throws(() => fetchTarget.fetch("https://coaching.example.com/interaction"), /gateway_ownership_revoked/);
   guard.restore();
   const unguarded = await fetchTarget.fetch("https://coaching.example.com/interaction");
   assert.equal(unguarded.status, 200);
