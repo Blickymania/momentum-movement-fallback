@@ -40,6 +40,12 @@ test("roles dashboard configuration matches the existing Discord message", () =>
   assert.equal(roles.message, "1566161931377709137");
   assert.deepEqual(roles.tabs, ["Access Roles", "Eligibility", "Privacy", "Original"]);
   assert.equal(roles.pages.length, 4);
+  assert.match(roles.pages[0], /2 consecutive months/);
+  assert.match(roles.pages[0], /Fan Club Level 20 or higher/);
+  assert.match(roles.pages[0], /Conference Room Access/);
+  assert.match(roles.pages[1], /Moderators/);
+  assert.match(roles.pages[2], /1565643497388646411/);
+  assert.match(roles.pages[3], /Role names and channel links reflect the current server setup/);
 });
 
 test("all four existing roles buttons resolve to the same dashboard", () => {
@@ -63,5 +69,6 @@ test("shared dashboard handler acknowledges before editing the message", () => {
 
 test("roles dashboard navigation contains no role mutation", () => {
   assert.match(roles.pages[2], /do not add, remove or change roles/i);
-  assert.match(roles.pages[3], /does not modify any member or bot role/i);
+  assert.match(roles.pages[2], /do not add, remove or change roles/i);
+  assert.match(roles.pages[3], /does not grant moderation authority/i);
 });
