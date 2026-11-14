@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  acquireGatewayLease,\n  ensureLeaseSchema,
+  acquireGatewayLease,
+  ensureLeaseSchema,
   renewGatewayLease,
   releaseGatewayLease,
   startLeaseHeartbeat,
