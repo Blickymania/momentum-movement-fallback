@@ -116,6 +116,7 @@ export class GatewayCoordinatorCore {
     verifyIdentity = async () => true,
     fingerprintToken,
     handlerRegistry,
+    protectInteraction,
     log = () => {},
   } = {}) {
     if (!storage || typeof storage.get !== "function" ||
@@ -127,6 +128,7 @@ export class GatewayCoordinatorCore {
         typeof random !== "function" || typeof verifyIdentity !== "function" ||
         (fingerprintToken !== undefined && typeof fingerprintToken !== "function") ||
         (handlerRegistry !== undefined && typeof handlerRegistry.route !== "function") ||
+        (protectInteraction !== undefined && typeof protectInteraction !== "function") ||
         typeof log !== "function") {
       throw new TypeError("Gateway coordinator dependencies are incomplete");
     }
@@ -140,6 +142,7 @@ export class GatewayCoordinatorCore {
     this.scheduleAlarm = scheduleAlarm;
     this.verifyIdentity = verifyIdentity;
     this.handlerRegistry = handlerRegistry ?? null;
+    this.protectInteraction = protectInteraction ?? null;
     this.fingerprintToken = fingerprintToken ?? (async (token) => {
       const cryptoImpl = globalThis.crypto;
       if (!cryptoImpl?.subtle) throw new Error("Web Crypto is required for credential isolation");
@@ -496,6 +499,34 @@ export class GatewayCoordinatorCore {
               reason: route.reason,
             });
             break;
+          }
+          if (event.eventType === "INTERACTION_CREATE") {
+            if (!this.protectInteraction || typeof event.payload?.token !== "string") {
+              state.status = "fatal";
+              state.lastError = "interaction_token_protection_unavailable";
+              state.reconnectAt = null;
+              state.pendingAuthAction = null;
+              await this.persistSession(id, state);
+              socket.close(4004, "Interaction token protection is unavailable");
+              break;
+            }
+            try {
+              event.payload = await this.protectInteraction(event.payload);
+              if (!event.payload || typeof event.payload !== "object" ||
+                  Object.prototype.hasOwnProperty.call(event.payload, "token") ||
+                  typeof event.payload.interaction_token?.ciphertext !== "string" ||
+                  typeof event.payload.interaction_token?.iv !== "string") {
+                throw new Error("interaction_token_protection_invalid_result");
+              }
+            } catch {
+              state.status = "fatal";
+              state.lastError = "interaction_token_protection_failed";
+              state.reconnectAt = null;
+              state.pendingAuthAction = null;
+              await this.persistSession(id, state);
+              socket.close(4004, "Interaction token protection failed");
+              break;
+            }
           }
           try {
             await inbox.enqueueDispatch(event);
