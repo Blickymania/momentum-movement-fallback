@@ -7,34 +7,39 @@
 // until the primary uses this protocol and an external controller proves the old
 // process/socket is stopped before standby login.
 
+const SCHEMA_SQL = `
+CREATE SCHEMA IF NOT EXISTS failover AUTHORIZATION CURRENT_USER;
+REVOKE ALL ON SCHEMA failover FROM PUBLIC`;
+
 const TABLE_SQL = `
-CREATE TABLE IF NOT EXISTS gateway_ownership (
-  lease_scope text PRIMARY KEY,
-  owner_id text NOT NULL,
-  fencing_epoch bigint NOT NULL,
+CREATE TABLE IF NOT EXISTS failover.gateway_ownership (
+  lease_scope text PRIMARY KEY CHECK (length(lease_scope) BETWEEN 1 AND 200),
+  owner_id text NOT NULL CHECK (length(owner_id) BETWEEN 1 AND 200),
+  fencing_epoch bigint NOT NULL CHECK (fencing_epoch >= 1),
   lease_until timestamptz NOT NULL,
   heartbeat_at timestamptz NOT NULL,
-  deployment_id text NOT NULL
-)`;
+  deployment_id text NOT NULL CHECK (length(deployment_id) BETWEEN 1 AND 200)
+);
+REVOKE ALL ON TABLE failover.gateway_ownership FROM PUBLIC`;
 
 const ACQUIRE_SQL = `
-INSERT INTO gateway_ownership
+INSERT INTO failover.gateway_ownership
   (lease_scope, owner_id, fencing_epoch, lease_until, heartbeat_at, deployment_id)
 VALUES
   ($1, $2, 1, clock_timestamp() + make_interval(secs => $3::double precision),
    clock_timestamp(), $4)
 ON CONFLICT (lease_scope) DO UPDATE SET
   owner_id = EXCLUDED.owner_id,
-  fencing_epoch = gateway_ownership.fencing_epoch + 1,
+  fencing_epoch = failover.gateway_ownership.fencing_epoch + 1,
   lease_until = clock_timestamp() + make_interval(secs => $3::double precision),
   heartbeat_at = clock_timestamp(),
   deployment_id = EXCLUDED.deployment_id
-WHERE gateway_ownership.lease_until <= clock_timestamp()
+WHERE failover.gateway_ownership.lease_until <= clock_timestamp()
 RETURNING lease_scope, owner_id, fencing_epoch::text AS fencing_epoch,
           lease_until, heartbeat_at, deployment_id`;
 
 const RENEW_SQL = `
-UPDATE gateway_ownership
+UPDATE failover.gateway_ownership
 SET lease_until = clock_timestamp() + make_interval(secs => $4::double precision),
     heartbeat_at = clock_timestamp(),
     deployment_id = $5
@@ -46,7 +51,7 @@ RETURNING lease_scope, owner_id, fencing_epoch::text AS fencing_epoch,
           lease_until, heartbeat_at, deployment_id`;
 
 const RELEASE_SQL = `
-UPDATE gateway_ownership
+UPDATE failover.gateway_ownership
 SET lease_until = clock_timestamp() - interval '1 millisecond',
     heartbeat_at = clock_timestamp()
 WHERE lease_scope = $1
@@ -59,7 +64,7 @@ const READ_SQL = `
 SELECT lease_scope, owner_id, fencing_epoch::text AS fencing_epoch,
        lease_until, heartbeat_at, deployment_id,
        lease_until > clock_timestamp() AS lease_active
-FROM gateway_ownership
+FROM failover.gateway_ownership
 WHERE lease_scope = $1
 `;
 
@@ -82,6 +87,7 @@ function first(rows) {
 }
 
 export async function ensureLeaseSchema(db) {
+  await db.unsafe(SCHEMA_SQL);
   await db.unsafe(TABLE_SQL);
 }
 
@@ -202,6 +208,7 @@ export function startLeaseHeartbeat({
 }
 
 export const leaseSqlForTests = Object.freeze({
+  SCHEMA_SQL,
   TABLE_SQL,
   ACQUIRE_SQL,
   RENEW_SQL,
