@@ -379,3 +379,10 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 6. Build the separate Bot 005 candidate from the recovered source, install guards before all listeners, wire the READY/guild verification signal, and verify every event/side-effect path against lease ownership.
 7. Deploy only an isolated preproduction control plane and runtime after resource cost/scope authorization. Do not connect to the production guild.
 8. Prove process hard-stop, single-owner transitions, failure recovery, and rollback before any cutover.
+
+
+### Final CI refresh after Cycle 10
+- Latest branch run read-back: run 43554551581 for commit 9a9bcbd9d810439edee4106a79c5d23f67e3d32e, completed with startup_failure.
+- Latest jobs endpoint read returned an empty jobs array. No runner or job started and no job logs exist.
+- Immediately preceding runs 43554398207, 43554383023, 43554374901, and 43554354944 also ended startup_failure. Do not interpret the repeat as proof of a particular billing/permissions cause.
+- The Actions failure remains an external GitHub account/repository execution blocker, not a failed unit-test result. Local verification remains 35/35 passed.
