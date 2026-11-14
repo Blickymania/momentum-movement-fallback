@@ -4,6 +4,7 @@ import {
 } from "./gateway-lease-coordinator.mjs";
 import { CoachingInteractionIdempotency } from "./coaching-interaction-idempotency.mjs";
 import { createRenderServiceFencer } from "../implementation/render-service-fencer.mjs";
+import { createNorthflankServiceFencer } from "../implementation/northflank-service-fencer.mjs";
 
 export { GatewayLeaseCoordinator, CoachingInteractionIdempotency };
 
@@ -179,22 +180,65 @@ async function fenceCandidate(request, env) {
   const candidate = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
   if (!await sameSecret(candidate, requestToken)) return json({ error: "unauthorized" }, 401);
 
-  const apiKey = env.RENDER_API_KEY || "";
-  const serviceMapRaw = env.RENDER_SERVICE_IDS_JSON || "";
-  if (typeof apiKey !== "string" || apiKey.length < 20 || apiKey.length > 512 ||
-      typeof serviceMapRaw !== "string" || serviceMapRaw.length > 4096) {
-    return json({ error: "render_fencer_not_configured" }, 503);
-  }
-
-  let serviceIdsByDeployment;
-  try {
-    serviceIdsByDeployment = JSON.parse(serviceMapRaw);
-  } catch {
-    return json({ error: "render_service_map_invalid" }, 503);
-  }
-  if (!serviceIdsByDeployment || typeof serviceIdsByDeployment !== "object" ||
-      Array.isArray(serviceIdsByDeployment)) {
-    return json({ error: "render_service_map_invalid" }, 503);
+  const provider = env.FENCE_PROVIDER || "render";
+  let fencer;
+  if (provider === "render") {
+    const apiKey = env.RENDER_API_KEY || "";
+    const serviceMapRaw = env.RENDER_SERVICE_IDS_JSON || "";
+    if (typeof apiKey !== "string" || apiKey.length < 20 || apiKey.length > 512 ||
+        typeof serviceMapRaw !== "string" || serviceMapRaw.length > 4096) {
+      return json({ error: "render_fencer_not_configured" }, 503);
+    }
+    let serviceIdsByDeployment;
+    try { serviceIdsByDeployment = JSON.parse(serviceMapRaw); }
+    catch { return json({ error: "render_service_map_invalid" }, 503); }
+    if (!serviceIdsByDeployment || typeof serviceIdsByDeployment !== "object" ||
+        Array.isArray(serviceIdsByDeployment)) {
+      return json({ error: "render_service_map_invalid" }, 503);
+    }
+    try {
+      fencer = createRenderServiceFencer({
+        apiKey,
+        serviceIdsByDeployment,
+        fetchFn: fetch,
+        timeoutMs: 15000,
+        pollIntervalMs: 500,
+        requestTimeoutMs: 5000
+      });
+    } catch {
+      return json({ error: "render_fencer_configuration_invalid" }, 503);
+    }
+  } else if (provider === "northflank") {
+    const apiToken = env.NORTHFLANK_API_TOKEN || "";
+    const projectId = env.NORTHFLANK_PROJECT_ID || "";
+    const serviceMapRaw = env.NORTHFLANK_SERVICE_IDS_JSON || "";
+    if (typeof apiToken !== "string" || apiToken.length < 20 || apiToken.length > 512 ||
+        typeof projectId !== "string" || projectId.length < 3 || projectId.length > 39 ||
+        typeof serviceMapRaw !== "string" || serviceMapRaw.length > 4096) {
+      return json({ error: "northflank_fencer_not_configured" }, 503);
+    }
+    let serviceIdsByDeployment;
+    try { serviceIdsByDeployment = JSON.parse(serviceMapRaw); }
+    catch { return json({ error: "northflank_service_map_invalid" }, 503); }
+    if (!serviceIdsByDeployment || typeof serviceIdsByDeployment !== "object" ||
+        Array.isArray(serviceIdsByDeployment)) {
+      return json({ error: "northflank_service_map_invalid" }, 503);
+    }
+    try {
+      fencer = createNorthflankServiceFencer({
+        apiToken,
+        projectId,
+        serviceIdsByDeployment,
+        fetchFn: fetch,
+        timeoutMs: 15000,
+        pollIntervalMs: 500,
+        requestTimeoutMs: 5000
+      });
+    } catch {
+      return json({ error: "northflank_fencer_configuration_invalid" }, 503);
+    }
+  } else {
+    return json({ error: "fence_provider_invalid" }, 503);
   }
 
   let stub;
@@ -202,14 +246,6 @@ async function fenceCandidate(request, env) {
   catch { return json({ error: "lease_coordinator_binding_missing" }, 503); }
 
   try {
-    const fencer = createRenderServiceFencer({
-      apiKey,
-      serviceIdsByDeployment,
-      fetchFn: fetch,
-      timeoutMs: 15000,
-      pollIntervalMs: 500,
-      requestTimeoutMs: 5000
-    });
     const result = await fencer.fenceExpiredOwner({
       leaseStore: { read: () => internalLeaseRead(stub) },
       candidateOwnerId: body.candidateOwnerId,
@@ -226,9 +262,10 @@ async function fenceCandidate(request, env) {
       stopProof: {
         serviceId: result.stopProof.serviceId,
         state: result.stopProof.state,
-        alreadySuspended: result.stopProof.alreadySuspended,
+        alreadyStopped: Boolean(result.stopProof.alreadySuspended || result.stopProof.alreadyPaused),
         verifiedAt: result.stopProof.verifiedAt,
-        renderUpdatedAt: result.stopProof.renderUpdatedAt
+        remainingRunningContainers: result.stopProof.remainingRunningContainers ?? null,
+        observedContainerCount: result.stopProof.observedContainerCount ?? null
       },
       fenceConfirmation: {
         fencedOwnerId: result.fenceConfirmation.fenced_owner_id,
@@ -246,11 +283,15 @@ async function fenceCandidate(request, env) {
     const conflicts = new Set([
       "lease_bootstrap_required",
       "lease_still_active",
+      "lease_fence_not_confirmed",
       "render_deployment_mapping_missing",
       "render_owner_services_must_be_distinct",
       "render_candidate_service_suspended",
       "render_suspend_state_unverified",
-      "lease_fence_not_confirmed"
+      "northflank_deployment_mapping_missing",
+      "northflank_owner_services_must_be_distinct",
+      "northflank_candidate_service_not_running",
+      "northflank_pause_state_unverified"
     ]);
     return json({ ok: false, reason }, conflicts.has(reason) ? 409 : 503);
   }
