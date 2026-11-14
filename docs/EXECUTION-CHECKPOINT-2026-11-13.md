@@ -6,7 +6,7 @@ Updated: 2026-11-13 US Eastern (latest execution through 2026-11-14 03:31 UTC)
 Dawn Dotta / Momentum Movement — Railway-independent Core Shadow / Bot 005 failover.
 
 - Railway is not a deployment dependency for recovery, coordination, or future failover.
-- Bot 005 remains the only production Discord Gateway owner until a verified, controlled cutover is possible.
+- Bot 005 remains the primary Gateway owner for its own workload until a verified, controlled cutover is possible.
 - Core Shadow must run on a genuinely independent persistent host.
 - The coordination database must be independent of Railway.
 - Primary and standby must use the same lease/heartbeat/monotonic-fencing protocol.
@@ -155,7 +155,7 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 - Supabase organization remains Free tier with two active OAuth-named projects; neither was repurposed.
 - No independent coordination DB selected or connected.
 - No Render or Supabase resource was created/upgraded; no billing approval was used.
-- Bot 005 remains the sole active production Gateway owner. Its recovered source still calls `client.login(token)` without the new supervisor and includes the hard-coded coaching dependency `http://coaching-workflow.railway.internal:3000/interaction`.
+- Bot 005 remains the active production Gateway owner for its own workload. Its recovered source still calls `client.login(token)` without the new supervisor and includes the hard-coded coaching dependency `http://coaching-workflow.railway.internal:3000/interaction`.
 - No standby Gateway session, production write, live failover, or failback test was attempted.
 
 ### Next execution steps
@@ -547,3 +547,22 @@ The existing Railway connector was used strictly for read-only inspection of the
 - Bot 005's live environment names include the Discord token, guild/application identity, profile data key and channel IDs, silent-build mode, social TikTok URL and PORT. There is no `COACHING_WORKFLOW_URL` variable; the coaching host is hard-coded in the source.
 
 This read-only inspection resolves the source-provenance question: the recovered Bot 005 snapshot is current and the coaching workflow dependency is live in the actual configured start command. It does not resolve the Manager's OAuth database host because the values remain redacted.
+
+
+## Cycle 14 — multi-Gateway inventory and Bot 005-specific lease scope
+
+A read-only inspection of all Railway production service source/configuration identified six live Gateway-connected workloads:
+1. Blickymania Bot 005 — discord.js Client.login().
+2. Dawn Dotta Social Owner Console — discord.js Client.login().
+3. LIVE NOW V2 Shadow Engine — discord.js Client.login().
+4. Momentum Movement Discord Engagement Engine — discord.js Client.login().
+5. Dawn Dotta TikTok Fan Club Level-Up Management — discord.js Client.login().
+6. 1-on-1 Coaching Interaction Relay — raw WebSocket to Discord Gateway.
+
+All six service records were live, and their latest deployments reported SUCCESS in the service metadata read. Bot 005, Social Owner Console, Engagement Engine and Coaching Relay recovered sources explicitly include the Momentum Movement application/guild identifiers. LIVE NOW V2 and Fan Club Level-Up use environment-supplied identity values. All six service environments list DISCORD_BOT_TOKEN, but environment values are redacted so identical token values cannot be proven.
+
+The former assumption that Bot 005 was the sole Gateway-connected runtime in the project was incorrect. The lease scope was narrowed to `momentum-movement:bot-005-gateway`, and the test/source fixtures were updated. It controls only the primary/standby Bot 005 workload. The other five Gateway services remain outside this failover and are not allowed to use the Bot 005 lease or Render service mapping.
+
+The Coaching Workflow and Coaching Interaction Relay form a coupled dependency: Bot 005 directly forwards selected coach: interactions, and the separate raw Gateway Relay also forwards INTERACTION_CREATE events to the same workflow. Any future coaching migration must move or intentionally retire the Relay as well as update Bot 005's endpoint. The workflow's recovered source stores case/profile information through Discord channel message REST operations and has an in-memory seenInteractions dedupe map; source contains no DATABASE_URL reference despite that variable name being present in the service environment.
+
+The exact service IDs, latest deployment timestamps and scope rules are documented in docs/MOMENTUM-MOVEMENT-GATEWAY-WORKLOAD-INVENTORY.md. No service was stopped, changed or redeployed during the audit.
