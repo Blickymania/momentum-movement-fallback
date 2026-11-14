@@ -137,18 +137,18 @@ export default {
     const safeRead = request.method === "GET" || request.method === "HEAD";
     const excluded = new Set<string>();
     let current: { name: string; origin: string } | null = selected;
-    let lastRetryableResponse: Response | null = null;
 
     while (current) {
       excluded.add(current.name);
       try {
         const response = await fetch(new Request(forwardUrl(request.url, current.origin), request));
         if (safeRead && RETRYABLE_READ_STATUSES.has(response.status)) {
-          lastRetryableResponse = response;
-          if (response.body) await response.body.cancel().catch(() => {});
-          current = await chooseOrigin(env, excluded);
-          if (current) continue;
-          return lastRetryableResponse;
+          const alternate = await chooseOrigin(env, excluded);
+          if (alternate) {
+            if (response.body) await response.body.cancel().catch(() => {});
+            current = alternate;
+            continue;
+          }
         }
         return response;
       } catch (error) {
@@ -163,7 +163,6 @@ export default {
       }
     }
 
-    if (lastRetryableResponse) return lastRetryableResponse;
     return json({ error: "selected_manager_origin_transport_failed", selectedOrigin: selected.name }, 502);
   }
 };
