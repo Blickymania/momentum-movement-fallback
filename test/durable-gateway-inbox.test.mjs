@@ -62,6 +62,40 @@ const sessionA = {
   resumeGatewayUrl: "wss://gateway.example",
 };
 
+test("isolates two Gateway client queues inside one durable storage namespace", async () => {
+  const storage = new MemoryStorage();
+  const alpha = new DurableGatewayInbox(storage, { namespace: "bot-alpha" });
+  const beta = new DurableGatewayInbox(storage, { namespace: "bot-beta" });
+  await Promise.all([alpha.initialize(), beta.initialize()]);
+  await alpha.saveReadySession({
+    sessionId: "alpha-session", sequence: 5, resumeGatewayUrl: "wss://alpha.example",
+  });
+  await beta.saveReadySession({
+    sessionId: "beta-session", sequence: 50, resumeGatewayUrl: "wss://beta.example",
+  });
+  await alpha.enqueueDispatch({
+    guildId: "guild", sessionId: "alpha-session", sequence: 6,
+    eventType: "MESSAGE_CREATE", payload: { id: "alpha-message" },
+  });
+  await beta.enqueueDispatch({
+    guildId: "guild", sessionId: "beta-session", sequence: 51,
+    eventType: "MESSAGE_CREATE", payload: { id: "beta-message" },
+  });
+
+  assert.equal((await alpha.getState()).sequence, 6);
+  assert.equal((await beta.getState()).sequence, 51);
+  assert.deepEqual((await alpha.listPending()).map((item) => item.payload.id), ["alpha-message"]);
+  assert.deepEqual((await beta.listPending()).map((item) => item.payload.id), ["beta-message"]);
+  assert.equal((await alpha.getMetrics()).pendingEvents, 1);
+  assert.equal((await beta.getMetrics()).pendingEvents, 1);
+});
+
+test("rejects unsafe Durable Gateway inbox namespace identifiers", () => {
+  const storage = new MemoryStorage();
+  assert.throws(() => new DurableGatewayInbox(storage, { namespace: "../bot" }), /namespace/);
+  assert.throws(() => new DurableGatewayInbox(storage, { namespace: "x".repeat(65) }), /namespace/);
+});
+
 test("initializes durable session and inbox metadata", async () => {
   const inbox = makeInbox();
   await inbox.initialize();
