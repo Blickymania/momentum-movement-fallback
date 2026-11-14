@@ -410,7 +410,9 @@ async function bootstrap(){
      idempotencyUrl.username||idempotencyUrl.password||idempotencyUrl.search||idempotencyUrl.hash||
      idempotencyHost==="localhost"||idempotencyHost.endsWith(".localhost")||
      idempotencyHost.endsWith(".local")||idempotencyHost.endsWith(".internal")||
-     idempotencyHost.includes("railway")||idempotencyHost.endsWith(".rlwy.net")||
+     idempotencyHost.endsWith(".lan")||idempotencyHost.endsWith(".home")||
+     idempotencyHost.endsWith(".test")||idempotencyHost.endsWith(".invalid")||
+     !idempotencyHost.includes(".")||idempotencyHost.includes("railway")||idempotencyHost.endsWith(".rlwy.net")||
      /^\d{1,3}(\.\d{1,3}){3}$/.test(idempotencyHost)||idempotencyHost.startsWith("[")) {
    throw Error("Public HTTPS durable coaching idempotency endpoint and token are required");
   }
