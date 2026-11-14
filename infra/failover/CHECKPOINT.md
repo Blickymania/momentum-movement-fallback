@@ -498,3 +498,13 @@ No production service, variable, DB, volume, route, credential, schedule, Discor
 - The existing daily backup worker has 168-hour metrics, but its network-flow destination matches `Postgres`, not `OAuth PostgreSQL`. Its successful archived dumps remain evidence only for the separate database.
 - No production DB queries, backups, migrations, service changes, or new schedules were created in this cycle.
 - Exact Manager target remains blocked on the redacted `OAUTH_DATABASE_URL` service reference. Next, have the owner confirm that one reference within the Railway dashboard or an authorized non-redacted Railway API token session; do not expose the full secret URL in chat.
+
+
+## Cycle 25 — final status after schema-test and storage checkpoint (2026-11-14 UTC)
+
+- Latest workflow runs for PR head `6a9ae802d4d17721fe5d72fcefae5dded71d0ff2`: `43562337823` and `43562324768`; both concluded `startup_failure`, both jobs lists are empty, and the commit has no status checks. The GitHub Actions runner still never started.
+- PR #2 remains open, draft, mergeable, and unmerged; it now includes `tests/oauth-schema-compat.test.mjs` as file 12 of 12. The candidate source parity assertions previously executed 10/10 successfully through the JS execution tool; the added Node test itself has not executed under Node.
+- Production Railway remains unchanged: no staged patch, live Manager still one replica and latest deployment SUCCESS.
+- Neon staging endpoint remains `idle` and `disabled: true`; no application has been connected to it.
+- The exact live Manager OAuth database reference remains unresolved because the connected Railway OAuth integration returns variable names only. The actual production readiness endpoint still does not query the DB, and OAuth PostgreSQL backup/restore coverage remains unverified.
+- Next safe move: confirm the Manager's `OAUTH_DATABASE_URL` reference via an owner-visible Railway setting or an authorized session that can read variable values without copying secrets into chat; then map that exact DB to a proven backup and restore path. Until then, no Northflank origin activation, Neon app connection, or production route change.
