@@ -83,7 +83,7 @@ const definitions = [
   { id: "bot-disabled", guildId: "1565304619838742500", applicationId: "1565304619838742501", intents: 1, enabled: false, tokenRef: "BOT_DISABLED_TOKEN" },
 ];
 
-function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken } = {}) {
+function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken, clientDefinitions = definitions } = {}) {
   const storage = new MemoryDOStorage();
   const sockets = [];
   const tokens = new Map([
@@ -95,7 +95,7 @@ function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, f
   const logs = [];
   const core = new GatewayCoordinatorCore({
     storage,
-    definitions,
+    definitions: clientDefinitions,
     tokenProvider: async (reference) => tokens.get(reference),
     connectSocket: async (url, context) => {
       const socket = new MockSocket(context.id + "-" + context.generation);
@@ -129,6 +129,20 @@ function frame(socket, payload) {
   const event = Object.create({ get data() { return JSON.stringify(payload); } });
   socket.emit("message", event);
 }
+
+test("rejects duplicate application IDs and duplicate token references before starting", () => {
+  const sharedApplication = [
+    definitions[0],
+    { ...definitions[1], applicationId: definitions[0].applicationId },
+  ];
+  assert.throws(() => makeHarness({ clientDefinitions: sharedApplication }), /one active Gateway session/);
+
+  const sharedTokenReference = [
+    definitions[0],
+    { ...definitions[1], tokenRef: definitions[0].tokenRef },
+  ];
+  assert.throws(() => makeHarness({ clientDefinitions: sharedTokenReference }), /unique token reference/);
+});
 
 test("starts enabled identities with one persisted alarm and no shared sequence state", async () => {
   const h = makeHarness();
