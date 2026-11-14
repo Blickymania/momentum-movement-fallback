@@ -500,3 +500,13 @@ Keep the connector prepared and isolated. Continue the provider/host feasibility
 - No production service was modified or restarted in this check.
 - No scheduler was created or changed.
 - Next: keep Manager untouched; resolve the retired-forum cleanup service only when a permitted redeploy path exists, and continue the persistent private-connector host investigation.
+
+
+## Latest continuation checkpoint after connector Node tests and production recheck
+
+- Latest branch CI run `43543427828` for checkpoint commit `6c8ef0cfe6237ac1cfc4f4b794496cf77a07cac4` returned `startup_failure`, path `BuildFailed`, and zero jobs. The workflow did not reach its first step.
+- Connector native Node test remains 3/3 passing. Main source harness remains 33/33 passing on the last full execution after the OAuth atomicity change.
+- Railway production Manager remains online with no staged work; the single known cleanup service crash is documented above.
+- No Cloudflare Tunnel, VPC Service, Hyperdrive, external VPS, Railway token, DNS change, public DB proxy, billing change, or production cutover was created.
+- No scheduled automation or cron process was created.
+- Next exact action: continue the no-cost persistent-host review and, in parallel, isolate the GitHub Actions pre-job startup failure. Resume from this checkpoint without asking the user for "NEXT".
