@@ -155,13 +155,15 @@ export default {
     if (!selected) return json({ error: "no_verified_manager_origin_available" }, 503);
 
     if (url.pathname === "/readyz" && request.method === "GET") {
+      const fullyReady = selected.oauthDatabaseVerified;
       return json({
-        status: "ready",
+        status: fullyReady ? "ready" : "degraded",
         manager: MANAGER_NAME,
+        managerReady: true,
         discordVerified: true,
         oauthDatabaseVerified: selected.oauthDatabaseVerified,
         selectedOrigin: selected.name
-      });
+      }, fullyReady ? 200 : 503);
     }
 
     // Writes are sent to exactly one verified origin and are never replayed.
