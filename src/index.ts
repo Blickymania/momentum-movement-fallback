@@ -90,7 +90,7 @@ const tools = [
 const reply=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}});
 async function readBoundedText(request:Request,maxBytes:number):Promise<string>{
  const declared=request.headers.get("content-length");
- if(declared!==null&&(!/^\\d+$/.test(declared)||Number(declared)>maxBytes))throw new Error("request_body_too_large");
+ if(declared!==null&&(!/^\d+$/.test(declared)||Number(declared)>maxBytes))throw new Error("request_body_too_large");
  const reader=request.body?.getReader();if(!reader)return "";
  const chunks:Uint8Array[]=[];let total=0;
  try{
