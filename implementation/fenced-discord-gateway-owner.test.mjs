@@ -16,7 +16,7 @@ function fakeClient() {
   return client;
 }
 
-function makeLeaseTransport({ denyAcquire = false } = {}) {
+function makeLeaseTransport({ denyAcquire = false, denyFence = false } = {}) {
   let lease = null;
   let epoch = 0;
   let fenceAllowed = false;
@@ -49,6 +49,12 @@ function makeLeaseTransport({ denyAcquire = false } = {}) {
       }
       if (url.pathname === "/fence" && method === "POST") {
         const body = JSON.parse(init.body);
+        if (denyFence) {
+          return new Response(JSON.stringify({
+            ok: false,
+            reason: "render_suspend_state_unverified"
+          }), { status: 503 });
+        }
         fenceAllowed = true;
         return new Response(JSON.stringify({
           ok: true,
@@ -281,4 +287,48 @@ test("prepared Bot 005 owner requests Worker hard-stop before promoting after le
   assert.equal(standbyClient.loginCount, 1);
   assert.equal(leaseState.some(x => x.path === "/fence"), true);
   await standby.shutdown();
+});
+
+
+test("prepared Bot 005 owner never logs in when Worker cannot verify the previous service hard-stop", async () => {
+  const transport = makeLeaseTransport({ denyFence: true });
+  const primaryClient = fakeClient();
+  const primary = prepareFencedDiscordGatewayOwner({
+    client: primaryClient,
+    botToken: "fake-bot-token-1234567890",
+    deploymentId: "primary-deploy",
+    ownerId: "primary-deploy:process-before-fence",
+    leaseCoordinatorUrl: "https://lease.example.com",
+    leaseServiceToken: "x".repeat(48),
+    fenceRequestToken: "p".repeat(48),
+    fetchFn: transport.fetch,
+    fetchTarget: fakeFetchTarget(),
+    heartbeatIntervalMs: 10000
+  });
+  assert.equal((await primary.start()).ok, true);
+  await primary.shutdown();
+
+  const standbyClient = fakeClient();
+  const standby = prepareFencedDiscordGatewayOwner({
+    client: standbyClient,
+    botToken: "fake-bot-token-1234567890",
+    deploymentId: "standby-deploy",
+    ownerId: "standby-deploy:process-fence-fails",
+    leaseCoordinatorUrl: "https://lease.example.com",
+    leaseServiceToken: "x".repeat(48),
+    fenceRequestToken: "s".repeat(48),
+    fetchFn: transport.fetch,
+    fetchTarget: fakeFetchTarget(),
+    heartbeatIntervalMs: 10000
+  });
+  await assert.rejects(
+    () => standby.start(),
+    /fence_request_render_suspend_state_unverified/
+  );
+  assert.equal(standbyClient.loginCount, 0);
+  assert.equal(standbyClient.destroyCount, 0);
+  assert.equal(standby.ready, false);
+  assert.equal(standby.guards.revoked, true);
+  assert.equal(transport.calls.filter(x => x.path === "/fence").length, 1);
+  assert.equal(transport.calls.filter(x => x.path === "/lease/acquire").length, 2);
 });
