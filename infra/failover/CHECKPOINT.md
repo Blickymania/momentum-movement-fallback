@@ -556,3 +556,28 @@ No production service, variable, DB, volume, route, credential, schedule, Discor
 - No production service, variable, database, proxy, backup, deployment, route, DNS record, or schedule was changed.
 - No credentials or complete connection strings were read or copied.
 - To resolve the DB target, inspect only the host substring in the Manager's existing `postgres://` URL and compare it with the two exact candidates above. If it matches neither, stop and investigate the hostname owner. Continue to keep the PR draft and all production failover origins inactive until the database's backup/restore and OAuth lifecycle gates pass.
+
+
+## Cycle 28 — diagnose the GitHub Actions pre-job failure signature (2026-11-14 UTC)
+
+### Exact GitHub API signature
+- Queried the raw GitHub Actions run resource for latest head `297595de638377d1d9e6887aa9317ba7239db8b5`.
+- Both new runs (IDs `43563162105` for `pull_request` and `43563158800` for `push`) report:
+  - `name: ""`
+  - `path: "BuildFailed"`
+  - `display_title: "(Unknown event)"`
+  - `conclusion: "startup_failure"`
+  - `workflow_id: 417875803`
+- Both `GET .../actions/runs/{id}/jobs` responses contain `total_count: 0` and an empty jobs array.
+- The commit's Check Runs API reports `total_count: 0`; commit status has no contexts/checks.
+- The events are created, but GitHub does not bind them to a normal named workflow/job graph. No runner, checkout, Node/npm, TypeScript, tests, or Wrangler steps execute. Therefore this is not a code test failure, and the repo has no actionable step log to fix.
+
+### External corroboration and confidence
+- GitHub Community discussions from September–October 2026 describe the same synthetic `BuildFailed` path + empty workflow name + `startup_failure` + zero jobs/check-runs pattern across unrelated repositories. These discussions are corroboration of the symptom signature, not confirmation of the cause in this repository.
+- Current evidence supports a **pre-job workflow registration/binding/dispatch failure**. It does not prove whether the root cause is a GitHub backend defect, a deleted/orphaned workflow registration, or another account/repository-level Actions issue. Do not modify source YAML blindly or claim GitHub Support has confirmed the cause.
+- Next escalation evidence package is: repository `Blickymania/momentum-movement-fallback`, workflow ID `417875803`, path `BuildFailed`, run IDs `43563162105` and `43563158800`, exact head SHA above, 0 jobs, 0 check-runs, and event types push + pull_request. If the integration provides GitHub Support access, submit those identifiers; otherwise the repository owner must raise the ticket through GitHub Support/Community.
+
+### Safety / status
+- No workflow, Actions setting, source file, repo permission, production service, database, routing, or schedule was changed to probe this issue.
+- PR #2 remains draft, open, unmerged and mergeable. Its actual base is `infra/dawn-dotta-cloudflare-worker`; the Northflank branch is 58 commits ahead and 0 behind that base.
+- The database target is still unresolved until the host in the live Manager's direct `postgres://` URL is compared with `oauth-postgresql.railway.internal` or `postgres.railway.internal`.
