@@ -145,6 +145,9 @@ test("expired lease cannot transfer until the exact previous owner and epoch are
     assert.equal(fenced.fenced_epoch, "1");
     assert.equal(fenced.fence_target_owner_id, "standby-instance");
     assert.equal(fenced.fence_target_deployment_id, "standby-deploy");
+    assert.throws(() => confirmFence(env, first, "other-standby", "other-deploy"), /lease_fence_not_confirmed/);
+    const repeatedFence = confirmFence(env, first);
+    assert.equal(repeatedFence.fence_proof_id, fenced.fence_proof_id);
     const second = env.coordinator.acquire(input("standby-instance", "standby-deploy"));
     assert.equal(second.owner_id, "standby-instance");
     assert.equal(second.fencing_epoch, "2");
