@@ -8,6 +8,10 @@
       {
         "name": "GATEWAY_LEASE_COORDINATOR",
         "class_name": "GatewayLeaseCoordinator"
+      },
+      {
+        "name": "COACHING_IDEMPOTENCY_STORE",
+        "class_name": "CoachingInteractionIdempotency"
       }
     ]
   },
@@ -15,6 +19,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["GatewayLeaseCoordinator"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["CoachingInteractionIdempotency"]
     }
   ],
   "observability": {
