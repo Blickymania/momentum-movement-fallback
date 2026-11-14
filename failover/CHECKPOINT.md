@@ -26,7 +26,7 @@
 - Added Cloudflare SQLite Durable Object lease coordinator reference implementation.
 - Added monotonic fencing tokens, lease acquire/renew/check/release, stale-owner rejection, and idempotent same-owner acquire retries to recover safely from a lost acquire response.
 - Added listener LeaseClient with heartbeat, local safety deadline, fail-closed API gating, abort signal on lease loss, and graceful release.
-- Added isolated lease-gated listener build at `failover/listener/index.tsx`; it remains disconnected while standby and does not change the root production snapshot.
+- Added isolated lease-gated listener build at `failover/listener/index.tsx`; it remains disconnected while standby and does not change the root production snapshot. Lease loss now waits for the previous Gateway client to finish destroying before allowing a replacement connection.
 - Added `.env.example` with placeholders only; no credentials committed.
 - Added tests: 8 lease-state, 6 lease-client, 1 static listener-wiring, and 4 worker security/readiness checks (19 defined total).
 - Previous checkpoint recorded 13 state/client tests as passing; this session did not independently rerun them. Do not claim all 18 passed.
