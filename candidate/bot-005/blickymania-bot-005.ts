@@ -13,6 +13,9 @@
 
 const G="1565048205970767992",A="1565304619838742598";
 const token=Bun.env.DISCORD_BOT_TOKEN||"";
+const coachingAuthSecret=Bun.env.COACHING_WORKFLOW_AUTH_SECRET||"";
+if(Bun.env.COACHING_WORKFLOW_SOURCE!=="bot005"||coachingAuthSecret.length<32||coachingAuthSecret.length>512||coachingAuthSecret===token)
+throw Error("Bot 005 coaching sender identity and secret must be unique");
 if(Bun.env.AUTHORIZED_GUILD_ID!==G||Bun.env.APPLICATION_ID!==A||!token)
 throw Error("Bot 005: guild/application credentials do not match Momentum Movement");
 
