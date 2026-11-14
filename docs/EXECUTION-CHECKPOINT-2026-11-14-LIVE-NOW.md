@@ -38,29 +38,36 @@ The read-only production inventory and Hostless plan now document seven Gateway-
 - Added `implementation/live-now-panel-recovery.test.mjs`, `implementation/live-now-panel-repair-adapter.mjs`, and `implementation/live-now-panel-repair-adapter.test.mjs`.
 - The adapter filters the last 10 pages by the expected Bot 005 application ID, detects nested V2/legacy buttons, writes the process-local panel ID only after the existing guarded publisher returns a valid ID, and suppresses overlapping audit invocations.
 - Focused local Node.js 22.16.0 run: **19 tests passed, 0 failed** (11 helper tests + 8 adapter tests).
-- Retrieved-branch source inspection passed 15/15 structural checks for the candidate adapter wiring, panel-ID getter/setter, early active-mode guard, preserved single 30-minute passive-audit interval, preserved archive snapshot, correct ID regex, and absence of timers in the adapter. The six committed candidate static-test cases have not yet run in a clean checkout.
+- Retrieved-branch source inspection passed **17/17** package and safety checks for exact dependency pins, bare imports, nested package isolation, frozen-lock Docker requirement, early active-mode guard, preserved single 30-minute audit interval, unchanged root Hostless files, correct ID regex, and no timers in the adapter. The nine committed candidate static-test cases have not yet run in a clean checkout.
 - The helper leaves a correct single panel alone; asks the existing guarded publisher to publish a missing panel or adopt a sole panel when the stored ID is stale; refuses duplicate V2 panels and any legacy-panel conflict; and requires a second scan to confirm exactly one V2 panel and no legacy panel.
-- The helper is not yet wired into the recovered LIVE NOW V2 source or an active service. The production V2 passive audit remains read-only. This helper does not perform Discord I/O, connect a Gateway, read secrets, or schedule work.
+- The helper/adapter are wired into a separate `candidate/live-now-v2/index.ts` candidate and are not wired into an active service. The production V2 passive audit remains read-only. The candidate still has an early activation guard and cannot connect a Gateway. No helper/adapter timer is created.
+
+### Isolated LIVE NOW V2 package
+
+- Candidate source: `candidate/live-now-v2/index.ts`; package manifest: `candidate/live-now-v2/package.json` pins `discord.js` 14.27.0, `tiktok-live-connector` 2.5.0 and `sharp` 0.34.5.
+- Candidate Dockerfile uses `oven/bun:1.4.4` and `bun install --production --frozen-lockfile`. The existing root `package.json`, root `Dockerfile`, and `hostless.yaml` remain unchanged.
+- No `candidate/live-now-v2/bun.lock` has been generated. Bun is not installed in this environment and `npm view bun@1.4.4` timed out. The candidate has not been built or executed; no unlocked install or fabricated lockfile was used.
+- The npm listing for `tiktok-live-connector` 2.5.0 identifies it as an unofficial reverse-engineering package, lists modified AGPL-3.0-only licensing and documents Euler Stream signing. Review exact terms/provider service limits before public release.
 
 ### Documentation and PR
 
 - Updated `docs/HOSTLESS-FREE-DEPLOYMENT-PLAN.md` with the incident evidence, the unsafe direct-post condition, the helper boundary, and the next integration step.
 - Updated `docs/MOMENTUM-MOVEMENT-GATEWAY-WORKLOAD-INVENTORY.md` to seven confirmed Gateway-connected deployments.
 - Updated PR #4 body to reflect seven deployments and current constraints. PR remains open, draft, unmerged.
-- Latest verified branch commit at checkpoint start: `4ae598b2df234b6989fa070452d12271a57b306f` (this commit adds the plan appendix; checkpoint file is the next commit).
+- The checkpoint has been refreshed as work progressed; see the current PR #4 head SHA for the latest committed version.
 
 ## Tests and verification
 
-- Focused LIVE NOW helper tests: **11/11 passed** with local Node.js v22.16.0.
+- Focused LIVE NOW reconciliation-helper and audit-adapter tests: **19/19 passed** with local Node.js v22.16.0.
 - Source readback confirms the panel deletion, empty channel and pins, and existing Upcoming Events panel.
 - Full repository test suite has not been run in a clean checkout.
-- GitHub Actions latest runs ended `startup_failure` before a runner/job was created (zero jobs). Run metadata showed `BuildFailed` / `Unknown event`; available connector endpoints did not expose workflow/check-suite runner diagnostics. Root cause remains unknown. No repeated rerun was started.
+- Latest relevant branch Actions runs `43652766822` and `43652757502` both ended `startup_failure`; both Jobs API results were empty. Run metadata had previously shown `BuildFailed` / `Unknown event`. Available endpoints do not expose runner logs or a root cause. No blind retry was started.
 
 ## Active blockers
 
 1. **Current production LIVE NOW repair:** V2 process holds a stale deleted message ID. Safe direct post is not sufficient. Integration requires a controlled V2 runtime update/restart or replacement, which cannot be done while respecting the no-Railway-operation boundary and no-parallel-Gateway requirement.
 2. **Independent Gateway ownership:** V2 needs its own workload-specific lease/fencing scope and physical-stop proof. It must not share Bot 005's existing lease scope. No provider-specific, independently verified stop path exists for the currently live Railway process.
-3. **CI:** GitHub Actions pre-job failure has no runner logs or jobs; cause unknown.
+3. **CI:** GitHub Actions fails before job creation; the latest two run IDs and empty jobs results are recorded above. Cause unknown.
 4. **Hostless:** app/worker has not been created. Current wizard is still Configure, shows $0.00, and no volume is selected. Resource fit and persistent storage for Engagement remain unverified.
 5. **Other migrations:** coaching Relay/Workflow crash-recovery gap, Engagement persistent-storage dependency, Fan Club media resource requirements, and full seven-service ownership integration remain open.
 
@@ -85,10 +92,10 @@ The read-only production inventory and Hostless plan now document seven Gateway-
 - PR #4 remains draft-only and unmerged.
 - Seven Gateway-connected deployments are documented; their independent scopes remain.
 - `#live-now` remains empty; `#upcoming-events` remains intact.
-- LIVE NOW panel recovery helper and 11 tests are committed; the live runtime remains unchanged.
+- LIVE NOW recovery helper and adapter are committed; 19 focused helper/adapter tests passed; nine candidate static tests are committed but not yet executed. The live runtime remains unchanged.
 - Railway, bot roles, and Hostless provisioning remain untouched.
 
-**Next execution step:** use Bun 1.4.4 in an authorized build environment to generate and commit `candidate/live-now-v2/bun.lock` with `bun install --lockfile-only`, run `bun install --frozen-lockfile`, execute the nine static tests with `npm test` or the nested test script, and perform a true no-token Bun standby boot. Keep the activation guard in place. Then add a separate LIVE NOW V2 lease/fence scope and independently verify the old process is physically stopped before any Gateway session can start. Before any activation, implement the V2 workload's independent ownership fencing and prove the old process is physically stopped. Do not restart Railway or create another Gateway session in parallel.
+**Next execution step:** generate and commit `candidate/live-now-v2/bun.lock` using Bun 1.4.4 (`bun install --lockfile-only`) in an authorized build environment; then run `bun install --frozen-lockfile`, the nine static tests, and a no-token standby boot. Bun is not installed in this execution environment and the npm registry request timed out, so this lockfile and build have not been completed. Keep the activation guard in place. After package verification, add a dedicated V2 Durable Object lease scope/Worker route with separate credentials, test isolation from Bot 005, and independently prove the old Gateway process is physically stopped before activation. Do not restart Railway or create another Gateway session in parallel.
 
 ## Additional cutover blocker — V2 requires independent ownership scope
 
