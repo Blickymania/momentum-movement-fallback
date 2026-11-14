@@ -218,3 +218,12 @@ The live Manager's `GET /readyz` checks Discord bot identity and guild access an
 Therefore the existing live Manager can report ready while OAuth storage is unavailable or incorrectly configured. Do not use that legacy readiness response as evidence of shared database readiness. The proposed Northflank/Worker candidates must continue to fail closed when OAuth is enabled and their database check fails. Production Manager readiness must eventually be upgraded in a separately tested release, with OAuth database readiness included before router cutover.
 
 The temporary diagnostic function's public Railway domain is unauthenticated at the application layer and its GET handler returns a database name plus a simple database connectivity result. This does not expose credentials or rows, but unnecessarily reveals DB identity/availability; restrict or retire it once an authenticated replacement is established. No change was made to the diagnostic function in this audit.
+
+
+## OAuth schema compatibility verification (2026-11-14)
+
+The deployed production Manager's SQL was compared with the candidate sources. The Render/Northflank Manager has the exact same five OAuth table definitions and all 24 unique production OAuth SQL statements. The Cloudflare Worker also contains the same five table definitions and all 24 production statements, with two additional expiry indexes (login-request and authorization-code expiry). Both candidates retain the three `FOR UPDATE` row locks, four transaction callbacks, refresh-token replacement linkage (`replaced_by`), and three token/client revocation update paths.
+
+A regression test, `tests/oauth-schema-compat.test.mjs`, now freezes the five audited DDL definitions and checks candidate transaction/rotation/revocation invariants. Its exact source assertions were executed against the candidate sources: 10/10 passed. The actual Node test runner and build/CI remain unverified because GitHub Actions currently starts zero jobs.
+
+This establishes source-level schema/logic parity only. It does not prove that the production Manager's redacted `OAUTH_DATABASE_URL` points to `OAuth PostgreSQL` or to the separate `Postgres` service, nor that the Manager's OAuth dataset has a tested backup/restore path. Those remain mandatory gates before activating any fallback.
