@@ -9,9 +9,9 @@ This directory packages the recovered, unmodified Bun HTTP/MCP Manager for an in
 - Dockerfile path: render/Dockerfile
 - Plan: Free
 - Region: Ohio or Virginia
-- Health check path: /readyz
+- Interim health check path: /healthz (process liveness only). Switch to /readyz only after Discord credentials and the intended OAuth database are configured and /readyz returns 200.
 - Auto deploy: disabled until the migration branch is reviewed
-- No database is embedded in the image; configure the same Dawn-only PostgreSQL endpoint used by the Cloudflare Worker.
+- No database is embedded in the image. Confirm the exact Dawn-only PostgreSQL endpoint used by the Cloudflare Worker before configuring OAUTH_DATABASE_URL. Do not use Railway's private-only `oauth-postgresql` hostname from Render; Render cannot join Railway's private network. Do not assume the Neon `staging` branch is production OAuth storage: it was empty at the last read-only count and must not be used until the intended data source is confirmed.
 
 ## Required environment values
 
@@ -44,7 +44,7 @@ For these reasons, this is an emergency cold fallback, not an always-on producti
 
 - Do not change the existing Railway production service.
 - Do not enable writes until identity, database, OAuth, and read tests pass.
-- The health check validates the expected Discord application and guild and the OAuth database when OAuth is enabled.
+- The interim `/healthz` check validates only that the HTTP process is responding. Once all required Discord credentials and the intended OAuth DB are set, verify `/readyz` returns 200 and then change Render's health check path to `/readyz`.
 - The gateway/router must send an actual request to exactly one origin; never replay a timed-out POST.
-- If Render is asleep, allow cold-start time before considering it ready.
-- Keep the Cloudflare and Railway endpoints available for manual rollback.
+- If Render is asleep, allow cold-start time before considering it ready. No scheduled keep-alive pings or cron jobs are configured.
+- Keep the Cloudflare and Railway endpoints available for manual rollback. Keep Render out of production routing until it passes `/readyz`, OAuth, database, and manager read-only tests.
