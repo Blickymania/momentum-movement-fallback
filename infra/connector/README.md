@@ -53,6 +53,10 @@ Run `sh infra/connector/railway-cloudflare-tunnel.sh` after installing the requi
 - If either tunnel process exits, stops the connector with a non-zero status. A host/container supervisor may restart it; this script creates no cron or scheduled job.
 - Does not read or write database credentials directly, migrate records, change production services, or change DNS.
 
+## Safe host qualification
+
+Before selecting a host or introducing any secrets, follow [`LOCAL-HOST-TEST.md`](./LOCAL-HOST-TEST.md). It separates host/network checks, a disposable local PostgreSQL VPC smoke test, and a later non-production Railway SSH test. It does not authorize production credentials or cutover.
+
 ## Deployment status
 
 **Prepared only. Not deployed or runtime-verified.** The connector still needs a trusted always-on host, Cloudflare Tunnel/VPC resources, and a real end-to-end test. Render Free and other sleep/short-lived tiers are unsuitable for production. Do not place Railway or Cloudflare tokens on an untrusted free VPS, and do not use a host whose terms, security, and renewal guarantees have not been reviewed.
