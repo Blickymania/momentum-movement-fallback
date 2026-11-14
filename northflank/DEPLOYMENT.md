@@ -39,6 +39,20 @@ For true cross-provider Manager failover, all eligible origins must use the same
 
 Northflank supports private project networking by default, plus optional public TCP ingress with TLS for supported PostgreSQL addons. Public ingress can be restricted with network rules, but it is a security-sensitive change and must not be enabled as a shortcut. Choose the database topology first; then configure only the minimum network path required for every approved Manager origin. 
 
+## Database topology decision
+
+A persistent manager process and a ready database do not, by themselves, provide a safe provider failover. Northflank and every fallback Manager origin must reach the **same logical OAuth data plane**. Otherwise tokens, registrations, authorization codes, and refresh-token rotations can diverge when the router changes origins.
+
+Northflank PostgreSQL supports external TLS TCP access for supported addons, so another provider can be configured to reach the same addon. However, that database remains in Northflank's fault domain. A Northflank-wide outage would remove both the Manager and its database; it is therefore not a fully independent database layer even if Railway can connect to it.
+
+A separately hosted database is preferable for cross-provider resilience, but it must be selected and costed before provisioning. Neon Free is one test candidate, not a production recommendation: its current free-plan documentation lists 100 CU-hours per project/month, 1 GB storage, 5 GB egress, and scale-to-zero after five minutes. That sleep behavior and its prototype/small-team positioning make it unsuitable as the only always-on production OAuth data plane without an accepted wake-up/availability risk.
+
+**Current decision: no independent shared production PostgreSQL provider has been selected or verified.** Do not create a second isolated OAuth database and do not configure `NORTHFLANK_MANAGER_ORIGIN` in the router until the candidate and existing Railway Manager are proven to use the same logical database, with row-count/digest reconciliation, OAuth lifecycle tests, and a rehearsed restore path.
+
+References:
+- Northflank PostgreSQL network access: https://northflank.com/docs/v1/application/databases-and-persistence/access-a-database
+- Neon free-plan limits: https://neon.com/docs/introduction/plans
+
 ## Service configuration
 
 In Northflank, connect the private repository and configure:
