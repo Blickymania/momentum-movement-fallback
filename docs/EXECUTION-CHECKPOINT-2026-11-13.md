@@ -342,3 +342,40 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 6. Implement the provider-specific stopAndConfirm adapter and verify it can terminate the old process by exact identity and report Gateway closure.
 7. Audit Discord Manager OAUTH_DATABASE_URL host without printing credentials.
 8. Only after provider plan/cost, hard-stop, runtime compatibility, independent coordination and rollback are verified should any preproduction deployment or production cutover be considered.
+
+
+## Cycle 10 — account-level Cloudflare verification and runtime compatibility gate
+
+### Account inspection result
+- A read-only Cloudflare browser inspection was started against Workers plan, Durable Objects, Workers & Pages, and account usage/inventory.
+- The browser run ultimately completed with the Cloudflare sign-in card expired and the page at https://dash.cloudflare.com/login.
+- Workers plan, current Durable Object quotas/usage, namespace inventory, deployed Worker inventory, and account usage remain unavailable.
+- No dashboard changes were made and no resource/plan/secret/route/DNS change was made.
+- This is not evidence that the account is on Free or that no Workers/DO resources exist. Account plan and resource inventory are explicitly unverified.
+- Browser task/run completed as an authentication blocker; no retry is running.
+
+### Local regression verification
+- Re-ran the full Node.js v22.16.0 isolated test suite from the current working copy after Cycle 9 commits.
+- Result: **35 tests, 35 passed, 0 failed**.
+- Node emitted only its experimental node:sqlite warning; all tests completed successfully.
+- The container test environment does not have discord.js, Bun, or Wrangler installed. The recovered source does not include an independent package lock or exact dependency manifest, so actual Discord.js/Bun compatibility cannot yet be confirmed from this environment.
+
+### Updated exact blockers
+- Cloudflare plan and deployed-resource inventory: unavailable until authenticated account access can be completed. No resource changes made.
+- GitHub Actions: multiple pushes still yield startup_failure with zero jobs. No job logs/runner output; root cause remains unknown. Do not keep pushing changes merely to repeat the failure.
+- Render service inventory tool: repeated literal null; no proof the workspace is empty. Postgres and Key Value lists returned no instances.
+- Persistent runtime provider and exact process identity/API: not selected. Therefore no provider-specific hard-stop adapter can yet be implemented or safely verified.
+- The recovered Bot 005 source snapshot has no package manifest/lockfile in the repository; exact discord.js/Bun runtime version and writable client.rest.request behavior are unknown. The test container confirms those packages are not installed there. Candidate guard throws before login if required hooks are unavailable.
+- The coaching workflow remains on the hard-coded Railway internal URL in the recovered source; the new guard would reject it. An independent public HTTPS coaching endpoint and data/state migration must exist before that feature can operate off Railway.
+- Discord Manager OAUTH_DATABASE_URL host remains unknown; no credentials have been printed or copied.
+- No provider hard-stop adapter, independent runtime, deployed DO namespace, deployed Worker, production primary lease integration, or live failover exists.
+
+### Next execution gates
+1. Restore authenticated read-only access to Cloudflare dashboard and inspect plan, existing Workers/DO namespaces, quotas, and usage. No resources should be created during inventory.
+2. Resolve Render service inventory through the dashboard/API using its existing confirmed workspace.
+3. Obtain or reconstruct Bot 005's exact runtime/dependency manifest and test real Discord.js instance method interception before any candidate startup.
+4. Migrate coaching workflow to a public HTTPS endpoint with verified feature parity and state continuity; reject Railway fallback.
+5. Identify the independent persistent process provider and its exact primary stop/kill API. Implement stopAndConfirm for that provider and verify process ID/deployment identity and Gateway closure.
+6. Build the separate Bot 005 candidate from the recovered source, install guards before all listeners, wire the READY/guild verification signal, and verify every event/side-effect path against lease ownership.
+7. Deploy only an isolated preproduction control plane and runtime after resource cost/scope authorization. Do not connect to the production guild.
+8. Prove process hard-stop, single-owner transitions, failure recovery, and rollback before any cutover.
