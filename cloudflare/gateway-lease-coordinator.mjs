@@ -1,4 +1,4 @@
-const LEASE_SCOPE = "momentum-movement:discord-gateway";
+const LEASE_SCOPE = "momentum-movement:bot-005-gateway";
 const DEFAULT_TTL_SECONDS = 30;
 const MIN_TTL_SECONDS = 10;
 const MAX_TTL_SECONDS = 120;
