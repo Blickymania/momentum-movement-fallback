@@ -127,11 +127,11 @@ export async function startGatewayOwner({
     heartbeat.stop();
     await destroy("gateway_start_failed").catch(() => {});
     if (!leaseLost) {
-      await store.release({
+      await Promise.resolve().then(() => store.release({
         scope: lease.lease_scope,
         ownerId: lease.owner_id,
         fencingEpoch: lease.fencing_epoch
-      }).catch(() => null);
+      })).catch(() => null);
     }
     throw loginOutcome.error;
   }
@@ -157,11 +157,11 @@ export async function startGatewayOwner({
       gatewayReady = false;
       heartbeat.stop();
       await destroy(reason).catch(() => {});
-      const released = await store.release({
+      const released = await Promise.resolve().then(() => store.release({
         scope: lease.lease_scope,
         ownerId: lease.owner_id,
         fencingEpoch: lease.fencing_epoch
-      }).catch(() => null);
+      })).catch(() => null);
       return { released: Boolean(released), alreadyStopped: false };
     }
   };
