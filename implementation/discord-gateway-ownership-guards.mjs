@@ -104,6 +104,10 @@ export function installGatewayOwnershipGuards({
 
     // The lease client captures the original fetch before this guard is installed.
     // Only direct use of global fetch to the lease endpoint is exempt here.
+    const outboundHost = url.hostname.toLowerCase().replace(/\.$/, "");
+    if (outboundHost.includes("railway") || outboundHost.endsWith(".rlwy.net")) {
+      throw new Error("railway_dependency_forbidden");
+    }
     if (url.origin !== coordinatorOrigin) checkOwnership();
     return originalFetch.call(this, input, init);
   };
