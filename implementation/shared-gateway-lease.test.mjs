@@ -27,7 +27,7 @@ test("acquire is one atomic upsert and returns no lease when another owner is ac
     return [];
   });
   const result = await acquireGatewayLease(db, {
-    scope: "momentum-movement:discord-gateway",
+    scope: "momentum-movement:bot-005-gateway",
     ownerId: "standby-instance-1",
     deploymentId: "deploy-abc",
     ttlSeconds: 30
@@ -35,7 +35,7 @@ test("acquire is one atomic upsert and returns no lease when another owner is ac
   assert.equal(result, null);
   assert.equal(db.calls.length, 1);
   assert.deepEqual(db.calls[0].args, [
-    "momentum-movement:discord-gateway",
+    "momentum-movement:bot-005-gateway",
     "standby-instance-1",
     30,
     "deploy-abc"
@@ -51,7 +51,7 @@ test("renewal is fenced by scope, owner, epoch, and unexpired lease", async () =
     return [row];
   });
   const result = await renewGatewayLease(db, {
-    scope: "momentum-movement:discord-gateway",
+    scope: "momentum-movement:bot-005-gateway",
     ownerId: "primary-1",
     fencingEpoch: "7",
     deploymentId: "deploy-primary",
@@ -59,7 +59,7 @@ test("renewal is fenced by scope, owner, epoch, and unexpired lease", async () =
   });
   assert.equal(result, row);
   assert.deepEqual(db.calls[0].args, [
-    "momentum-movement:discord-gateway",
+    "momentum-movement:bot-005-gateway",
     "primary-1",
     "7",
     30,
@@ -75,7 +75,7 @@ test("release can only expire the matching owner and fencing epoch", async () =>
     return [{ owner_id: args[1], fencing_epoch: args[2] }];
   });
   const result = await releaseGatewayLease(db, {
-    scope: "momentum-movement:discord-gateway",
+    scope: "momentum-movement:bot-005-gateway",
     ownerId: "primary-1",
     fencingEpoch: "12"
   });
@@ -126,7 +126,7 @@ test("active lease cannot be reacquired even by a process reusing the same owner
     return [];
   });
   const result = await acquireGatewayLease(db, {
-    scope: "momentum-movement:discord-gateway",
+    scope: "momentum-movement:bot-005-gateway",
     ownerId: "reused-owner-id",
     deploymentId: "same-deployment",
     ttlSeconds: 30
