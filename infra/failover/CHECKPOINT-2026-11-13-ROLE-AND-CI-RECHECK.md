@@ -98,3 +98,34 @@ Continue independent code/CI diagnostics and investigate no-cost persistent conn
 - Production/security guardrails and exact checkpoint fields are documented in the protocol.
 - This is a repository-level continuation contract, not a background daemon or scheduled automation. No scheduler was created or changed.
 - Next action: continue independent code/security review of the isolated Worker and router, then make the smallest evidence-backed correction and test it in an executable environment if available.
+
+
+## Continuation lock-in and next code-review cycle
+
+### Durable continuation protocol — committed and read back
+- Added `infra/failover/CONTINUATION-PROTOCOL.md`.
+- Protocol commit: `35a3fc0b1ea2749d6f8dd2d8f27452aca41c288f`.
+- Read-back verified protocol status ACTIVE, no "NEXT" prompt requirement, checkpoint fields, scheduler restrictions, production safeguards, objective queue, and session-boundary truthfulness.
+- Updated this checkpoint with the continuation record: commit `26c742a4125d34f4308c7b2a4a952cb8a64dbcd8`.
+- This is a persistent repository-level execution contract, not a background agent or recurring job. No scheduler was created or changed.
+
+### OAuth code-review and test-coverage cycle
+- Reviewed Worker OAuth registration, authorization, callback, code exchange, refresh rotation, revocation, authentication, schema initialization, and per-request PostgreSQL client lifecycle.
+- Verified in source that authorization codes are selected with `FOR UPDATE` and marked consumed; refresh tokens are selected with `FOR UPDATE`, revoked with `replaced_by`, and replaced in the same transaction; bearer tokens are SHA-256 hashed before persistence; DB client lifetime is request-scoped and closed in `finally`.
+- Added five static source-invariant tests for schema retry after failed initialization, one-time authorization-code consumption, atomic refresh-token rotation, token hashing, and request-scoped DB client cleanup.
+- Test change commit: `1a96aac82a3de3fad3b4c4c010ddd9aac9c3cea9`; test blob SHA `3b3fdab11d127169ecb21c95f157a8f5ccb4d9c3`.
+- Read-back verified 14 test cases in the test file. An isolated V8 syntax parse of the test module (after removing Node imports and replacing the file URL reference) succeeded. Five corresponding assertions evaluated true against the fetched current Worker source.
+- These are static source checks only. Node's `node --test`, TypeScript compilation, Wrangler dry-run, DB integration, and OAuth flow tests have NOT been executed.
+
+### GitHub Actions failure — latest push reconfirmed
+- New push run ID `43541928680`, commit `1a96aac82a3de3fad3b4c4c010ddd9aac9c3cea9`.
+- Result: `startup_failure`, path `BuildFailed`, zero jobs. The workflow's npm/test steps did not execute.
+- This reproduces the pre-job startup failure; no additional blind rerun was made. Do not describe CI as passing.
+
+### Production and scheduler state
+- No Railway, Cloudflare, Discord, database, secret, DNS, billing, or production resource was modified in this cycle.
+- No scheduler, cron, reminder, automation, monitor, or recurring repair process was created or changed.
+- Railway production remains the authoritative Manager.
+
+### Exact next execution step
+Continue independent security and runtime-compatibility review of the isolated Worker/router, prioritizing request limits, timeout/cancellation behavior, health/readiness semantics, and OAuth edge cases. Add only evidence-backed tests or fixes. Keep pursuing an executable test path without paid services or production changes.
