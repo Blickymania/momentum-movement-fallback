@@ -3,7 +3,7 @@
 - Candidate only. This is not deployed or connected to a Discord Gateway.
 - Based on the read-only recovered live relay source.
 - The recovered production relay remains untouched on Railway.
-- Requires COACHING_WORKFLOW_URL to point to a verified public HTTPS /interaction endpoint.
+- Requires COACHING_WORKFLOW_URL, COACHING_WORKFLOW_SOURCE=coaching-relay and a unique COACHING_WORKFLOW_AUTH_SECRET. Its secret must differ from Bot 005's secret.
 - The relay retains its own raw Discord Gateway session and is outside the Bot 005 lease scope.
 - Its separate Gateway failover/ownership plan must be designed independently if desired.
 - The Interaction Relay continues to filter by application ID, guild ID, and coach: interaction custom IDs.
