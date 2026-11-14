@@ -10,6 +10,14 @@ test("Railway/Cloudflare connector shell syntax is valid", () => {
   execFileSync("sh", ["-n", fileURLToPath(scriptUrl)]);
 });
 
+test("connector rejects cloudflared versions below the Workers VPC minimum", async () => {
+  const script = await readFile(scriptUrl, "utf8");
+  assert.match(script, /cloudflared version/);
+  assert.match(script, /2025\.7\.0 or later/);
+  assert.match(script, /parts\[1\] > 2025/);
+  assert.match(script, /parts\[2\] >= 7/);
+});
+
 test("connector keeps Railway and Cloudflare credentials out of logs and argv", async () => {
   const script = await readFile(scriptUrl, "utf8");
   assert.match(script, /railway connect[\s\S]*?>\/dev\/null 2>&1 &/);
