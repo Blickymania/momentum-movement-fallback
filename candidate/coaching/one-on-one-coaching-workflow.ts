@@ -424,6 +424,21 @@ async function bootstrap(){
    throw Error("Coaching idempotency credential must be unique");
   }
   coachingIdempotencyEndpoint=idempotencyUrl.href;
+  const idempotencyHealthUrl=new URL(idempotencyUrl.href);
+  idempotencyHealthUrl.pathname="/coaching/interaction/healthz";
+  let idempotencyHealthResponse,idempotencyHealth;
+  try{
+   idempotencyHealthResponse=await fetch(idempotencyHealthUrl.href,{
+    method:"GET",
+    headers:{authorization:"Bearer "+idempotencyToken,accept:"application/json"},
+    signal:AbortSignal.timeout(5000)
+   });
+   idempotencyHealth=await idempotencyHealthResponse.json();
+  }catch{throw Error("Durable coaching idempotency store is unavailable")}
+  if(!idempotencyHealthResponse.ok||idempotencyHealth?.status!=="ok"||
+     idempotencyHealth?.service!=="coaching-interaction-idempotency"||idempotencyHealth?.ready!==true) {
+   throw Error("Durable coaching idempotency store is not ready");
+  }
   if(Bun.env.AUTHORIZED_GUILD_ID!==G||Bun.env.APPLICATION_ID!==APP||!token()||Bun.env.WRITES_ENABLED!=="true")throw Error("Guild, application, token, or write authorization mismatch");
   const [self,guild,request,management,voice]=await Promise.all([api("GET","/users/@me"),api("GET","/guilds/"+G),api("GET","/channels/"+REQUEST),api("GET","/channels/"+MANAGEMENT),api("GET","/channels/"+VOICE)]);
   if(self.id!==APP||guild.id!==G||request.guild_id!==G||management.guild_id!==G||voice.guild_id!==G||request.type!==0||management.type!==0||voice.type!==2)throw Error("Coaching channel identity/type verification failed");
