@@ -298,3 +298,12 @@ The existing Railway connector was used strictly for read-only inspection of the
 - Bot 005's live environment names include the Discord token, guild/application identity, profile data key and channel IDs, silent-build mode, social TikTok URL and PORT. There is no `COACHING_WORKFLOW_URL` variable; the coaching host is hard-coded in the source.
 
 This read-only inspection resolves the source-provenance question: the recovered Bot 005 snapshot is current and the coaching workflow dependency is live in the actual configured start command. It does not resolve the Manager's OAuth database host because the values remain redacted.
+
+
+## Multi-Gateway production audit — lease scope is Bot 005 only
+
+A read-only source/config audit found six live Gateway-connected services in the Railway production environment: Bot 005, Social Owner Console, LIVE NOW V2 Shadow Engine, Discord Engagement Engine, Fan Club Level-Up Management and the 1-on-1 Coaching Interaction Relay. Four use discord.js Client.login(); the Coaching Relay opens a raw WebSocket to Discord Gateway. See docs/MOMENTUM-MOVEMENT-GATEWAY-WORKLOAD-INVENTORY.md for the detailed service IDs and responsibilities.
+
+This invalidates any earlier assumption that Bot 005 is the only Gateway-connected process in the project. It remains the primary Gateway owner for its own workload only. The Cloudflare lease has been narrowed to `momentum-movement:bot-005-gateway`; it does not attempt to stop or fence the other five services.
+
+Other Gateway services are deliberately out of this rollout. Do not force them to share Bot 005's lease. Each would need its own workload-specific scope, service pair, stop proof and feature-specific idempotency/recovery plan. The Bot 005 / coaching migration needs to include the separate Coaching Interaction Relay too, since both services currently forward coaching interactions to the same Railway-internal workflow.
