@@ -74,7 +74,7 @@ function fencerOptions(overrides = {}) {
 function inactiveLease(overrides = {}) {
   return {
     lease_scope: "momentum-movement:discord-gateway",
-    owner_id: "primary-owner",
+    owner_id: "primary-deploy:primary-owner",
     fencing_epoch: "3",
     deployment_id: "primary-deploy",
     lease_active: 0,
@@ -106,7 +106,7 @@ test("verifies candidate running, suspends previous service, polls state, then c
   const confirmations = [];
   const result = await fencer.fenceExpiredOwner({
     leaseStore: { read: async () => inactiveLease() },
-    candidateOwnerId: "standby-owner",
+    candidateOwnerId: "standby-deploy:standby-owner",
     candidateDeploymentId: "standby-deploy",
     confirmFence: async input => {
       confirmations.push(input);
@@ -120,16 +120,16 @@ test("verifies candidate running, suspends previous service, polls state, then c
   assert.equal(result.stopProof.alreadySuspended, false);
   assert.equal(render.serviceStates.get(serviceMap["primary-deploy"]), "suspended");
   assert.equal(confirmations.length, 1);
-  assert.equal(confirmations[0].expectedOwnerId, "primary-owner");
+  assert.equal(confirmations[0].expectedOwnerId, "primary-deploy:primary-owner");
   assert.equal(confirmations[0].expectedFencingEpoch, "3");
-  assert.equal(confirmations[0].candidateOwnerId, "standby-owner");
+  assert.equal(confirmations[0].candidateOwnerId, "standby-deploy:standby-owner");
   assert.equal(confirmations[0].candidateDeploymentId, "standby-deploy");
   assert.equal(confirmations[0].provider, "render-service-suspended");
   assert.match(confirmations[0].proofId, /^render-suspend-v1:[a-f0-9]{64}$/);
   assert.ok(confirmations[0].proofId.length <= 200);
   const repeated = await fencer.fenceExpiredOwner({
     leaseStore: { read: async () => inactiveLease() },
-    candidateOwnerId: "standby-owner",
+    candidateOwnerId: "standby-deploy:standby-owner",
     candidateDeploymentId: "standby-deploy",
     confirmFence: async input => { confirmations.push(input); return { ok: true }; }
   });
@@ -149,7 +149,7 @@ test("does not call suspend again when previous Render service is already suspen
   let confirmed = false;
   const proof = await fencer.fenceExpiredOwner({
     leaseStore: { read: async () => inactiveLease() },
-    candidateOwnerId: "standby-owner",
+    candidateOwnerId: "standby-deploy:standby-owner",
     candidateDeploymentId: "standby-deploy",
     confirmFence: async () => { confirmed = true; return { ok: true }; }
   });
@@ -168,7 +168,7 @@ test("fails closed when Render accepts suspend but never reports suspended", asy
   let confirmed = false;
   await assert.rejects(() => fencer.fenceExpiredOwner({
     leaseStore: { read: async () => inactiveLease() },
-    candidateOwnerId: "standby-owner",
+    candidateOwnerId: "standby-deploy:standby-owner",
     candidateDeploymentId: "standby-deploy",
     confirmFence: async () => { confirmed = true; }
   }), /render_suspend_state_unverified/);
@@ -181,7 +181,7 @@ test("does not confirm a fence when Render rejects the suspend request", async (
   let confirmed = false;
   await assert.rejects(() => fencer.fenceExpiredOwner({
     leaseStore: { read: async () => inactiveLease() },
-    candidateOwnerId: "standby-owner",
+    candidateOwnerId: "standby-deploy:standby-owner",
     candidateDeploymentId: "standby-deploy",
     confirmFence: async () => { confirmed = true; }
   }), /render_api_http_500/);
@@ -194,13 +194,13 @@ test("refuses fencing while old lease remains active or is absent", async () => 
   const confirmFence = async () => { throw new Error("must_not_confirm"); };
   await assert.rejects(() => fencer.fenceExpiredOwner({
     leaseStore: { read: async () => inactiveLease({ lease_active: 1 }) },
-    candidateOwnerId: "standby-owner",
+    candidateOwnerId: "standby-deploy:standby-owner",
     candidateDeploymentId: "standby-deploy",
     confirmFence
   }), /lease_still_active/);
   await assert.rejects(() => fencer.fenceExpiredOwner({
     leaseStore: { read: async () => null },
-    candidateOwnerId: "standby-owner",
+    candidateOwnerId: "standby-deploy:standby-owner",
     candidateDeploymentId: "standby-deploy",
     confirmFence
   }), /lease_bootstrap_required/);
@@ -226,10 +226,32 @@ test("refuses same-service deployment mapping and suspended candidate", async ()
   let confirmed = false;
   await assert.rejects(() => fencer.fenceExpiredOwner({
     leaseStore: { read: async () => inactiveLease() },
-    candidateOwnerId: "standby-owner",
+    candidateOwnerId: "standby-deploy:standby-owner",
     candidateDeploymentId: "standby-deploy",
     confirmFence: async () => { confirmed = true; }
   }), /render_candidate_service_suspended/);
   assert.equal(confirmed, false);
   assert.equal(render.calls.some(x => x.method === "POST"), false);
+});
+
+
+test("refuses mismatched owner IDs before it contacts Render", async () => {
+  const render = fakeRender();
+  const fencer = createRenderServiceFencer(fencerOptions({ fetchFn: render.fetch }));
+  await assert.rejects(() => fencer.fenceExpiredOwner({
+    leaseStore: { read: async () => inactiveLease({
+      owner_id: "unbound-owner",
+      deployment_id: "primary-deploy"
+    }) },
+    candidateOwnerId: "standby-deploy:standby-owner",
+    candidateDeploymentId: "standby-deploy",
+    confirmFence: async () => { throw new Error("must_not_confirm"); }
+  }), /previous_owner_id_not_bound_to_deployment/);
+  await assert.rejects(() => fencer.fenceExpiredOwner({
+    leaseStore: { read: async () => inactiveLease() },
+    candidateOwnerId: "unbound-owner",
+    candidateDeploymentId: "standby-deploy",
+    confirmFence: async () => { throw new Error("must_not_confirm"); }
+  }), /candidate_owner_id_must_be_bound_to_deployment/);
+  assert.equal(render.calls.length, 0);
 });
