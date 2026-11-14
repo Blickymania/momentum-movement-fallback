@@ -35,8 +35,9 @@ The read-only production inventory and Hostless plan now document seven Gateway-
 ### Source-level repair component
 
 - Added `implementation/live-now-panel-recovery.mjs`.
-- Added `implementation/live-now-panel-recovery.test.mjs`.
-- Focused local Node.js 22.16.0 run: **11 tests passed, 0 failed**.
+- Added `implementation/live-now-panel-recovery.test.mjs`, `implementation/live-now-panel-repair-adapter.mjs`, and `implementation/live-now-panel-repair-adapter.test.mjs`.
+- The adapter filters the last 10 pages by the expected Bot 005 application ID, detects nested V2/legacy buttons, writes the process-local panel ID only after the existing guarded publisher returns a valid ID, and suppresses overlapping audit invocations.
+- Focused local Node.js 22.16.0 run: **19 tests passed, 0 failed** (11 helper tests + 8 adapter tests).
 - The helper leaves a correct single panel alone; asks the existing guarded publisher to publish a missing panel or adopt a sole panel when the stored ID is stale; refuses duplicate V2 panels and any legacy-panel conflict; and requires a second scan to confirm exactly one V2 panel and no legacy panel.
 - The helper is not yet wired into the recovered LIVE NOW V2 source or an active service. The production V2 passive audit remains read-only. This helper does not perform Discord I/O, connect a Gateway, read secrets, or schedule work.
 
@@ -86,4 +87,4 @@ The read-only production inventory and Hostless plan now document seven Gateway-
 - LIVE NOW panel recovery helper and 11 tests are committed; the live runtime remains unchanged.
 - Railway, bot roles, and Hostless provisioning remain untouched.
 
-**Next execution step:** integrate `reconcileLiveNowPanel` into a separate LIVE NOW V2 candidate's existing 30-minute passive audit, keep its original publisher's duplicate/legacy safeguards, add one-in-flight protection, and test that candidate without a Gateway token. Before any activation, implement the V2 workload's independent ownership fencing and prove the old process is physically stopped. Do not restart Railway or create another Gateway session in parallel.
+**Next execution step:** import `createLiveNowPanelRepairAudit` into a separate LIVE NOW V2 candidate and wire it into the existing 30-minute passive audit using the current Discord message scanner, guarded `publishPanel`, and `panelId` getter/setter. Test in standby mode without a Gateway token. Before any activation, implement the V2 workload's independent ownership fencing and prove the old process is physically stopped. Do not restart Railway or create another Gateway session in parallel.
