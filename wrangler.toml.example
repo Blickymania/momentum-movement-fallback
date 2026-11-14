@@ -28,6 +28,20 @@ migrations_dir = "migrations"
 # No [triggers] / crons are configured.
 # Add secrets only through wrangler secret put after the owner authorizes the
 # no-card Free account and each required secret has been supplied securely.
-# Required secrets for a production test: DISCORD_BOT_TOKEN,
-# DISCORD_OAUTH_CLIENT_ID, DISCORD_OAUTH_CLIENT_SECRET,
-# MCP_INTERNAL_BEARER_TOKEN. Never commit secret values.
+# Before any isolated Gateway test, configure these non-secret vars securely:
+# GATEWAY_CLIENT_DEFINITIONS = JSON array of verified client IDs, guild IDs,
+# application IDs, intents, tokenRef names and explicit enabled flags.
+# GATEWAY_HANDLER_MANIFEST = JSON with the same guild/application IDs,
+# liveChannelId, one livePublisher ("none", "live-events-listener", or
+# "live-now-v2"), and the explicit enabledHandlers array.
+#
+# Required secrets for isolated Gateway/OAuth tests (secret bindings only):
+# DISCORD_BOT_TOKEN (one per verified tokenRef name),
+# GATEWAY_INTERACTION_ENCRYPTION_KEY (64 hex chars / exactly 32 random bytes),
+# MCP_INTERNAL_BEARER_TOKEN (at least 32 characters),
+# DISCORD_OAUTH_CLIENT_ID and DISCORD_OAUTH_CLIENT_SECRET.
+#
+# Do NOT set GATEWAY_COORDINATOR_ENABLED=true until every original handler has
+# been ported, interaction ACK is immediate and idempotent, a matching
+# application/token identity check passes, and the 24-hour Free quota soak
+# passes. Never commit any secret values.
