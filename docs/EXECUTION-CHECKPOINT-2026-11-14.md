@@ -173,3 +173,9 @@ No Render, Cloudflare, Railway or Discord production resource was created, chang
 - Workflow path filters now include implementation/**, cloudflare/**, candidate/**, package.json and the workflow. A pinned Wrangler 4.161.0 deploy --dry-run step is ready to execute after npm test, but no step has run because there is no runner/job.
 
 Production state remains unchanged; failover is not complete or production-ready.
+
+
+### Latest Actions check — 2026-11-14 06:04:58 UTC
+
+- The newest observed run is `43564570927`, associated with commit `7625dcdfd0a2658f833300a96d345e73e9c89cb9`, event `push`, conclusion `startup_failure`, run path `BuildFailed`, workflow ID `417875803`.
+- Jobs API again returns an empty list. There are no runner logs or step results. This confirms the same pre-job failure pattern but does not identify its cause.
