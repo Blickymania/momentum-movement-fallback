@@ -37,6 +37,14 @@ The deployed code contains the Momentum guild/application identifiers and provid
 - Before failover use, add provider-independent lease acquisition/fencing, durable event acceptance, health/READY checks, and a test-bot integration test.
 - Do not attach this repository to the production Railway service until a reviewed migration PR and rollback plan exist.
 
+## Bot 005 candidate and rules acceptance
+
+The `codex/dawn-rules-acceptance` work branch contains a separate review-only Bot 005 candidate at `candidate/bot-005/blickymania-bot-005.ts`. It includes an idempotent rules acceptance button workflow that stores versioned acknowledgements in the existing encrypted member-record vault. The worker entrypoint is `bun run start:bot005`.
+
+The existing app start command remains `bun run start:listener` for the separate LIVE & Events listener. The Docker image copies the candidate and its runtime modules so a separately provisioned worker can use them; it does not start that worker automatically. Do not add or activate the Hostless Bot 005 worker until the current Railway Bot 005 Gateway primary is separately stopped and its lease/cutover checks pass. No production Discord, Railway, Hostless, or Cloudflare resources were changed by the candidate work.
+
+See [the rules acceptance checkpoint](docs/RULES-ACCEPTANCE-CHECKPOINT-2026-11-14.md) for implementation status, tests, required environment configuration, and the remaining cutover gate.
+
 ## Recovery boundary
 
 Only the deployed function source was recovered. Railway environment-variable values, Discord credentials, runtime state, and other community projects were not copied.
