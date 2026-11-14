@@ -197,3 +197,7 @@ test("OAuth expired-record cleanup is bounded, advisory-locked, and request-driv
   assert.match(source, /Date\.now\(\)-mcpOAuthCleanupLastRun>24\*60\*60\*1000/);
   assert.match(source, /oauth_expired_record_cleanup_failed/);
 });
+
+test("authorization-code consumption and token issuance share one transaction", () => {
+  assert.match(source, /const context=await mcpOAuthDb\(\)\.begin\(async tx=>\{[\s\S]*?UPDATE mcp_oauth_authorization_codes SET consumed_at=now\(\)[\s\S]*?INSERT INTO mcp_oauth_access_tokens[\s\S]*?INSERT INTO mcp_oauth_refresh_tokens[\s\S]*?return row;/);
+});
