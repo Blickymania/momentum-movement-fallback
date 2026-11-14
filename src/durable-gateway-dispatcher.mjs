@@ -204,6 +204,11 @@ export class DurableGatewayDeliveryLedger {
     });
   }
 
+  async getDisposition(eventKey) {
+    validateIdentifier(eventKey, "eventKey", 512);
+    return (await this.storage.get(deliveryKey(this.namespace, eventKey, "$route"))) ?? null;
+  }
+
   async recordDisposition(eventKey, disposition, detail = {}) {
     validateIdentifier(eventKey, "eventKey", 512);
     if (!["ignored","quarantined"].includes(disposition)) {
