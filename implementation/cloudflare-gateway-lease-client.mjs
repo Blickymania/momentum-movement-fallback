@@ -2,7 +2,7 @@ function validateBaseUrl(raw) {
   if (typeof raw !== "string" || !raw.trim()) throw new TypeError("lease_coordinator_url_invalid");
   let url;
   try { url = new URL(raw); } catch { throw new TypeError("lease_coordinator_url_invalid"); }
-  const host = url.hostname.toLowerCase();
+  const host = url.hostname.toLowerCase().replace(/\\.$/, "");
   if (url.protocol !== "https:" || !host || host.includes("railway") ||
       host.endsWith(".rlwy.net") || host === "localhost" ||
       host.endsWith(".localhost") || host.endsWith(".local") ||
