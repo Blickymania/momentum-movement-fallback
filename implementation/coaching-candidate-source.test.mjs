@@ -66,9 +66,9 @@ test("candidate Relay and Bot 005 are separate Gateway workloads, not a shared l
 test("Bot 005 and the separate Relay use distinct authenticated workflow identities", async () => {
   const bot = await readFile(botPath, "utf8");
   const relay = await readFile(relayPath, "utf8");
-  assert.match(bot, /COACHING_WORKFLOW_SOURCE=bot005/);
+  assert.match(bot, /COACHING_WORKFLOW_SOURCE!=="bot005"/);
   assert.match(bot, /COACHING_WORKFLOW_AUTH_SECRET/);
-  assert.match(relay, /COACHING_WORKFLOW_SOURCE=coaching-relay/);
+  assert.match(relay, /COACHING_WORKFLOW_SOURCE!=="coaching-relay"/);
   assert.match(relay, /COACHING_WORKFLOW_AUTH_SECRET/);
 });
 
@@ -85,7 +85,8 @@ test("candidate Coaching Workflow verifies sender HMAC and timestamp before pars
   assert.match(source, /COACHING_BOT005_AUTH_SECRET/);
   assert.match(source, /COACHING_RELAY_AUTH_SECRET/);
   assert.match(source, /botAuthSecret===relayAuthSecret/);
-  assert.match(source, /Distinct Bot 005 and Relay authentication secrets are required/);
+  assert.match(source, /Coaching sender credentials must be distinct from each other and the Discord bot token/);
+  assert.match(source, /Coaching idempotency credential must be unique/);
   assert.match(source, /status:401/);
   assert.match(source, /x-coaching-signature/);
 });
@@ -128,4 +129,14 @@ test("candidate Coaching Workflow does not disclose internal bootstrap error str
   assert.match(source, /errorPresent:Boolean\(lastError\)/);
   assert.doesNotMatch(source, /Response\.json\(\{ready,lastError\}/);
   assert.doesNotMatch(source, /Response\.json\(\{error:"not-ready",lastError\}/);
+});
+
+
+test("Bot 005 and Coaching Relay candidates bind sender identity and HMAC secret away from the Discord token", async () => {
+  const bot = await readFile(botPath, "utf8");
+  const relay = await readFile(relayPath, "utf8");
+  assert.match(bot, /COACHING_WORKFLOW_SOURCE!=="bot005"/);
+  assert.match(bot, /coachingAuthSecret===token/);
+  assert.match(relay, /COACHING_WORKFLOW_SOURCE!=="coaching-relay"/);
+  assert.match(relay, /coachingAuthSecret===token\(\)/);
 });
