@@ -94,3 +94,29 @@ Production state remains unchanged. Failover is not complete or production-ready
 ## Updated repository revision
 
 This checkpoint is being refreshed after additional source and test changes. Production remains untouched; failover is not complete or production-ready.
+
+
+### Cycle 19 — isolate idempotency from Gateway lease execution
+
+- Moved coaching claim persistence into a dedicated `CoachingInteractionIdempotency` Durable Object class and a new `COACHING_IDEMPOTENCY_STORE` binding.
+- Added migration `v2` to `cloudflare/wrangler.jsonc`; the Worker public endpoint remains `POST /coaching/interaction/claim`, but internal delegation now uses the isolated object's `POST /claim`.
+- Removed the claims table, SQL, claim method, route and associated tests from `GatewayLeaseCoordinator`. A source check confirms the lease class no longer contains the coaching claims table.
+- Added a dedicated five-test SQLite suite. Local Node.js v22.16.0 run: **5/5 passed**.
+- Added a dedicated Worker claim-route suite. Local Node.js v22.16.0 route harness: **4/4 passed**. The focused harness used the committed route logic with unrelated Render/Gateway modules stubbed; it is not a full Worker integration test.
+- Re-ran HMAC helper tests: **4/4 passed** in the isolated Node.js v22.16.0 harness.
+- Re-ran URL validation checks: **14** private/reserved/malformed URL patterns rejected, and **2** public HTTPS URLs accepted. The repository regression tests for those cases are committed but full CI is still unavailable.
+- Total focused local tests executed in this cycle: **13/13** across HMAC, isolated SQLite idempotency and Worker claim routing. This is a targeted component count only, not the repository's complete test suite.
+- Restricted the Workflow client to exactly two source identities; Bot 005 and Relay candidate code pin their own identities and reject sender-secret reuse with the Discord bot token. Receiver bootstrap checks that sender, Discord and idempotency secrets are all distinct.
+- Public Workflow health responses now disclose only whether a bootstrap error is present, not the internal error string.
+
+## CI status after Cycle 19
+
+Latest main push run `43563342927` (commit `4c260c47393c6626050fe601ac537e7781fade79`) ended `startup_failure`; earlier adjacent main runs show the same result. The jobs endpoint reports zero jobs and no runner logs. The subsequent regression-test commits do not change the verified limitation: the full repository suite remains unrun in CI, and exact root cause is unknown.
+
+## Production and hosting state after Cycle 19
+
+- Render workspace access is confirmed for read-only metadata only. `list_services` returned literal `null` (not interpretable as empty); Postgres and Key Value calls reported no instances. No service inventory can be claimed complete.
+- No Render paid provisioning was authorized or performed. No services, databases or secrets were created.
+- No Cloudflare Worker, Durable Object, migration, route, secret or DNS resource has been deployed or created.
+- Railway Bot 005 and the other five Gateway-connected workloads remain unchanged.
+- The separate `infra/failover/CHECKPOINT.md` is for the stateless Discord Manager migration; it must not be confused with the Bot 005 Gateway primary/standby plan.
