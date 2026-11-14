@@ -172,3 +172,27 @@ The latest observed run `43552702634` for commit `35aa10ea525e02645a11bd0be3cc4c
 - The Discord Manager's `OAUTH_DATABASE_URL` host remains unknown; do not infer it is hosted on Railway.
 - No external hard-stop controller has been implemented or verified.
 - No standby runtime has been deployed, and no Gateway takeover or failback test has been run.
+
+
+## Control-plane candidate update — Cloudflare SQLite Durable Object
+
+The preferred coordination-control-plane candidate is now a Cloudflare SQLite-backed Durable Object, rather than a separately hosted PostgreSQL database solely for one gateway lease. PostgreSQL lease module and SQL migration remain as an unselected alternative/reusable implementation and have not been connected to production.
+
+The Cloudflare candidate uses:
+- One fixed namespace ID/scope for Momentum Movement's Discord Gateway ownership only.
+- Single Durable Object instance, SQLite-backed persistent storage and transactional UPSERT/UPDATE.
+- Authenticated Worker API and a Node HTTPS client.
+- One shared leaseStore interface, so the same Gateway owner supervisor can use either the Cloudflare client or the PostgreSQL module.
+- Monotonically increasing fencing epoch, active-lease exclusion, owner/epoch-bound renewal/release, short lease TTL, and fail-closed behavior on network errors/timeouts.
+
+Local Node.js v22.16.0 simulation tests:
+- Durable Object/SQLite API: 9 passed.
+- Worker/client: 9 passed.
+- Supervisor-to-Worker-to-Durable-Object end-to-end path: 1 passed.
+- **Combined Cloudflare control-plane suite: 19 passed, 0 failed.**
+
+This is a real SQLite execution through Node's node:sqlite and a simulated Durable Object context/Worker namespace, but it is not deployed Cloudflare edge verification. It does not verify real namespace provisioning, production secret setup, actual Cloudflare quota/plan, external network failures, or physical process fencing.
+
+Cloudflare account plan and current usage are not yet confirmed. Documentation indicates SQLite Durable Objects are available on Workers Free and that the approximate single-community lease traffic is within published Free-tier daily request/write budgets, subject to retries and all other account usage. This only potentially removes the extra database fee; it does not provide the persistent Bot 005/standby process host. Do not change the Cloudflare plan or deploy the Worker without explicit approval for the account-resource change.
+
+No Cloudflare Worker, Durable Object namespace, secret, route, DNS record, plan, or billing change has been created or modified.
