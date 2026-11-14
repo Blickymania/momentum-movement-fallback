@@ -1,0 +1,25 @@
+name: Bot 005 roles dashboard regression
+
+on:
+  push:
+    branches:
+      - deploy/hostless-bot005-app
+  pull_request:
+    branches:
+      - deploy/hostless-bot005-app
+
+permissions:
+  contents: read
+
+jobs:
+  roles-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify all four roles dashboard buttons
+        run: node --test recovered-functions/tests/blickymania-bot-005-roles-dashboard.test.mjs
