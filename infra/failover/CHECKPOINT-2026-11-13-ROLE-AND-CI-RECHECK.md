@@ -79,3 +79,13 @@ Continue independent code/CI diagnostics and investigate no-cost persistent conn
 - No new infrastructure, billing, workflow, or production changes.
 - The two major blockers are now more precisely bounded: no permitted always-on private-network connector host on the current no-paid-plan constraint, and GitHub Actions dispatcher failure before job creation.
 - Continue isolated code review and identify any other safe non-deployment verification. Resume provisioning only when a compliant private-network host and an executable test path exist.
+
+
+## Additional alternative-path review — managed free Postgres
+
+- Reviewed current official free-tier limits for two managed Postgres options as possible alternatives to a Railway-hosted `cloudflared` connector.
+- Neon Free: 1 GB Postgres storage/project, 100 compute-unit-hours/project/month, 5 GB public transfer, but compute is forced to scale to zero after 5 minutes idle and cannot be configured always-on on Free. A continuously active 0.25-CU database would exceed the monthly compute allowance. This is a cold/low-traffic test option, not a dependable always-on production OAuth database. Sources: https://github.com/neondatabase/website/blob/main/content/faqs/free-plan-limits-and-quotas.md and https://github.com/neondatabase/website/blob/main/content/docs/introduction/plans.md
+- Supabase Free: 500 MB Postgres/project; a project with insufficient user database activity over 7 days may be paused. This also cannot be treated as an always-on production dependency. Sources: https://supabase.com/pricing and https://supabase.com/docs/guides/platform/free-project-pausing
+- Existing Supabase projects are for other community scopes and remain untouched. No Neon or Supabase project was created, no account was connected, and no database was migrated.
+- Either provider could potentially support an isolated compatibility test or cold fallback, but transparent primary/fallback continuity would require both Railway and Cloudflare to share the same OAuth state, a carefully planned migration, and a verified rollback. Do not create a separate divergent OAuth database and call it failover.
+- Conclusion: no verified zero-cost always-on shared database/network path is available from current connected resources. Continue design/review without modifying production until a suitable persistent host or user-approved shared DB migration path exists.
