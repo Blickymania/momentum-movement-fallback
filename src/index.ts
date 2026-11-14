@@ -105,6 +105,14 @@ async function readBoundedText(request:Request,maxBytes:number):Promise<string>{
  for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
  return new TextDecoder().decode(bytes);
 }
+function validJsonRpcRequest(value:unknown):value is Record<string,any>{
+ if(!value||typeof value!=="object"||Array.isArray(value))return false;
+ const rpc=value as Record<string,any>;
+ if(rpc.jsonrpc!=="2.0"||typeof rpc.method!=="string"||!rpc.method.trim())return false;
+ if(rpc.params!==undefined&&(rpc.params===null||typeof rpc.params!=="object"))return false;
+ if(Object.prototype.hasOwnProperty.call(rpc,"id")&&!(typeof rpc.id==="string"||(typeof rpc.id==="number"&&Number.isFinite(rpc.id))))return false;
+ return true;
+}
 
 const text=(value,isError=false)=>({content:[{type:"text",text:typeof value==="string"?value:JSON.stringify(value)}],isError});
 const fail=(message)=>text({error:message},true);
@@ -474,12 +482,13 @@ async function handleRequest(request){
  if(u.pathname==="/healthz"&&request.method==="GET")return reply({status:"ok",manager:NAME,service:"cloudflare-workers"});
  if(u.pathname!=="/mcp"||request.method!=="POST")return reply({error:"Not found"},404);
  const provided=request.headers.get("authorization")||"";const secret=runtimeEnv().RAILWAY_SERVICE_KEY;const staticAuth=!!secret&&provided==="Bearer "+secret;let oauthAuth=null;if(!staticAuth&&provided.startsWith("Bearer ")){try{oauthAuth=await mcpOAuthAuthenticate(provided.slice(7));}catch{return reply({error:"OAuth authentication backend unavailable"},503);}}if(!staticAuth&&!oauthAuth)return mcpOAuthUnauthorized();
- let rpc;try{rpc=JSON.parse(await readBoundedText(request,2*1024*1024));}catch(error){const tooLarge=error instanceof Error&&error.message==="request_body_too_large";return reply({error:tooLarge?"Request body too large":"Invalid JSON"},tooLarge?413:400);}
- const id=rpc.id??null;const result=(v)=>reply({jsonrpc:"2.0",id,result:v});
+ let rpc;try{rpc=JSON.parse(await readBoundedText(request,2*1024*1024));}catch(error){const tooLarge=error instanceof Error&&error.message==="request_body_too_large";return tooLarge?reply({error:"Request body too large"},413):reply({jsonrpc:"2.0",id:null,error:{code:-32700,message:"Parse error"}},400);}
+ if(!validJsonRpcRequest(rpc))return reply({jsonrpc:"2.0",id:null,error:{code:-32600,message:"Invalid Request"}},400);
+ if(!Object.prototype.hasOwnProperty.call(rpc,"id"))return new Response(null,{status:202});
+ const id=rpc.id;const result=(v)=>reply({jsonrpc:"2.0",id,result:v});
  if(oauthAuth&&rpc.params?.name==="discord_guild_request"&&String(rpc.params?.arguments?.method||"GET").toUpperCase()!=="GET"&&!String(oauthAuth.scope).split(/\s+/).includes("mcp:write"))return reply({jsonrpc:"2.0",id,error:{code:-32003,message:"OAuth token lacks mcp:write scope"}},403);
  if(rpc.method==="server/discover")return result({supportedVersions:["2026-07-28"],capabilities:{tools:{}},serverInfo:{name:NAME,version:"1.0.0"}});
  if(rpc.method==="initialize")return result({protocolVersion:rpc.params?.protocolVersion||"2026-07-28",capabilities:{tools:{}},serverInfo:{name:NAME,version:"1.0.0"}});
- if(rpc.method==="notifications/initialized")return new Response(null,{status:202});
  if(rpc.method==="tools/list")return result({tools});
  if(rpc.method==="tools/call"){
   try{return result(await invoke(rpc.params?.name,rpc.params?.arguments||{}));}
