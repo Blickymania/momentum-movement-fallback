@@ -118,3 +118,30 @@ Scope: **Dawn Dotta / Momentum Movement only**. Do not modify any other Discord 
 6. Create the Render cold fallback with secrets configured; validate /readyz and MCP connectivity.
 7. Configure and test the router with all three origins; verify no POST replay.
 8. Perform reversible endpoint cutover only after every readiness and rollback condition passes. Re-run status, guild audit, OAuth, and MCP tests.
+
+
+## Cycle 9 — provider access and final state revalidation (2026-11-13)
+
+### Browser access check
+- Opened Cloudflare dashboard in an isolated read-only browser task.
+- Result: could not verify authentication/account/plan because dashboard failed to load with `ERR_SOCKS_CONNECTION_FAILED` / `ERR_QUIC_PROTOCOL_ERROR`.
+- No Cloudflare resources, account settings, DNS, secrets, or payment methods were changed.
+- User must provide working Cloudflare account/session access (Free/no card) before Worker, Hyperdrive, or routing resources can be created.
+
+### CI recovery
+- Checked all 8 latest workflow runs on `infra/dawn-dotta-cloudflare-worker`.
+- All 8 ended `startup_failure`.
+- Latest run ID `43534837859`; jobs endpoint returns `total_count: 0`. Repeated behavior across each branch update rules out a one-off failed unit test: GitHub never started a runner.
+- No compiler/test logs available. Do not report GitHub Actions tests as passed. Root cause cannot be verified with the available GitHub read API; account/repository Actions service availability or runner startup must be investigated in the GitHub account UI/support.
+- Local static source inspection remains the only completed code validation in this environment; typecheck, npm tests, Wrangler dry runs have not executed.
+
+### Current production checks rerun
+- Dawn Dotta Manager status: connected; bot identity/guild match; HTTP 200 for Discord identity and guild.
+- Read-only audit passed again at 2026-11-14T00:34:10Z, warnings none, no exceptions.
+- Railway prod Manager is currently reported online; production configuration and deployment untouched.
+- Existing News Forum staged patch still untouched.
+
+### Exact next user-only access requirement
+- Render connector listed only workspace `My Workspace` (ID `tea-dbcqe7ss728c73fthlug`), but requires explicit user workspace selection before scoped service operations. No Render service created.
+- Cloudflare dashboard access needs a usable authenticated session; the attempted read-only browser connection failed at proxy/network before login. No Cloudflare deployment possible until this is fixed.
+- Production OAuth database ownership and safe export route still need identifying; do not reuse the unrelated Supabase projects.
