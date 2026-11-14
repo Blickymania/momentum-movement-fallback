@@ -179,3 +179,32 @@ Scope: Dawn Dotta / Momentum Movement only. No other Discord community or projec
 2. Continue read-only Cloudflare plan/Hyperdrive documentation research and inspect the existing browser tab when it is on the Hyperdrive page.
 3. Evaluate secure alternatives to public database exposure, including a dedicated free-tier database or a supported private network integration; do not migrate OAuth records or expose the existing DB without a documented security/rollback plan.
 4. If a no-cost Railway deployment path becomes available, deploy the already-configured no-op cleanup command and verify it exits successfully; otherwise keep the crash documented as trial/billing-dependent.
+
+
+## Follow-up execution cycle — secure private-network architecture research
+
+### New viable architecture identified
+- Official Cloudflare documentation now confirms a supported private-database path: Workers VPC + Cloudflare Tunnel + TCP VPC Service + Hyperdrive.
+- Workers VPC is currently Beta and documented as available free on all Workers plans.
+- Cloudflare requires `cloudflared` to be running inside the same private network that can reach the database. A TCP VPC Service then targets the specific database host and port, and Hyperdrive binds to that service ID. The Worker can continue using the existing `env.HYPERDRIVE.connectionString` interface; no PostgreSQL driver rewrite is needed.
+- Official prerequisites include a database configured for TLS/SSL and the Cloudflare account's Connectivity Directory Admin role to create VPC Services. TLS verification defaults to `verify_full`; do not disable verification to work around a certificate mismatch.
+- Sources:
+  - https://developers.cloudflare.com/hyperdrive/configuration/connect-to-private-database-vpc/
+  - https://developers.cloudflare.com/workers-vpc/
+  - https://developers.cloudflare.com/workers-vpc/configuration/vpc-services/
+- Railway private networking exposes services to other services in the same Railway project via internal DNS and encrypted private networking. This means a separately deployed `cloudflared` connector in the Dawn Railway project should be able to reach the database's private endpoint, subject to verifying DNS, port, TLS, and service-to-service connectivity. Source: https://docs.railway.com/networking/private-networking
+- This is materially safer than creating a public Railway TCP proxy for the OAuth database. No public exposure is required.
+
+### Provisioning dependency
+- A continuously running `cloudflared` connector is required; a local desktop tunnel or sleeping Render Free service would not provide dependable production connectivity.
+- Railway's trial-expired response currently prevents provisioning/deploying a new connector service in this project. No existing service was repurposed or modified.
+- Cloudflare VPC resource creation also requires the account's Connectivity Directory Admin role; this role has not yet been verified in the dashboard.
+- No Cloudflare Tunnel, VPC Service, Hyperdrive resource, or Worker binding was created in this research cycle.
+- No database endpoint, certificate, credentials, or OAuth data was changed.
+
+### Cycle result
+- Secure private path identified and documented as preferred architecture.
+- Public database exposure is no longer the recommended fallback; avoid it unless a separate security review explicitly approves it.
+- Existing Worker code can retain the PostgreSQL Hyperdrive binding contract; actual IDs must be populated only after Cloudflare resources exist.
+- Current production state unchanged. Code remains isolated and unbuilt/unverified.
+- Exact next step: inspect Cloudflare Workers VPC dashboard/role and create a Dawn-only Tunnel only after a persistent connector host is available; Railway trial expiry remains the deployment blocker.
