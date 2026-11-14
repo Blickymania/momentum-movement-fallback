@@ -404,14 +404,14 @@ async function bootstrap(){
   const idempotencyToken=Bun.env.COACHING_IDEMPOTENCY_TOKEN||"";
   let idempotencyUrl;
   try{idempotencyUrl=new URL(Bun.env.COACHING_IDEMPOTENCY_URL||"")}catch{throw Error("Durable coaching idempotency endpoint is invalid")}
-  const idempotencyHost=idempotencyUrl.hostname.toLowerCase().replace(/\\.$/,"");
+  const idempotencyHost=idempotencyUrl.hostname.toLowerCase().replace(/\.$/,"");
   if(idempotencyToken.length<32||idempotencyToken.length>512||
      idempotencyUrl.protocol!=="https:"||idempotencyUrl.pathname!=="/coaching/interaction/claim"||
      idempotencyUrl.username||idempotencyUrl.password||idempotencyUrl.search||idempotencyUrl.hash||
      idempotencyHost==="localhost"||idempotencyHost.endsWith(".localhost")||
      idempotencyHost.endsWith(".local")||idempotencyHost.endsWith(".internal")||
      idempotencyHost.includes("railway")||idempotencyHost.endsWith(".rlwy.net")||
-     /^\\d{1,3}(\\.\\d{1,3}){3}$/.test(idempotencyHost)||idempotencyHost.startsWith("[")) {
+     /^\d{1,3}(\.\d{1,3}){3}$/.test(idempotencyHost)||idempotencyHost.startsWith("[")) {
    throw Error("Public HTTPS durable coaching idempotency endpoint and token are required");
   }
   coachingIdempotencyEndpoint=idempotencyUrl.href;
@@ -582,7 +582,7 @@ Bun.serve({hostname:"0.0.0.0",port:Number(Bun.env.PORT||3000),async fetch(req){
   if(!auth.ok)return Response.json({error:"unauthorized"},{status:401});
   let i;try{i=JSON.parse(rawBody)}catch{return Response.json({error:"invalid-json"},{status:400})}
   if(!i||typeof i!=="object"||Array.isArray(i)||typeof i.id!=="string"||
-     !/^\\d{17,22}$/.test(i.id)||!String(i?.data?.custom_id||"").startsWith("coach:"))return Response.json({ignored:true});
+     !/^\d{17,22}$/.test(i.id)||!String(i?.data?.custom_id||"").startsWith("coach:"))return Response.json({ignored:true});
   if(!ready||!coachingIdempotencyEndpoint)return Response.json({error:"not-ready",lastError},{status:503});
   const now=Date.now();for(const [key,ts] of seenInteractions)if(now-ts>900000)seenInteractions.delete(key);
   if(seenInteractions.has(i.id))return Response.json({duplicate:true});
