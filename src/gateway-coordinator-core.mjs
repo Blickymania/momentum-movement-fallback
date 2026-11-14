@@ -59,6 +59,7 @@ function initialSession(id) {
     heartbeatAckDeadline: null,
     heartbeatInterval: null,
     awaitingHeartbeatAck: false,
+    pendingHeartbeatAcks: 0,
     pendingAuthAction: null,
     lastGatewayCode: null,
     lastError: null,
@@ -179,6 +180,7 @@ export class GatewayCoordinatorCore {
         state.heartbeatAt = null;
         state.heartbeatAckDeadline = null;
         state.awaitingHeartbeatAck = false;
+        state.pendingHeartbeatAcks = 0;
         if (!def.enabled || this.stopped) {
           state.reconnectAt = null;
           state.pendingAuthAction = null;
@@ -247,6 +249,7 @@ export class GatewayCoordinatorCore {
       state.heartbeatAt = null;
       state.heartbeatAckDeadline = null;
       state.awaitingHeartbeatAck = false;
+      state.pendingHeartbeatAcks = 0;
       if (!def.enabled || this.stopped) {
         state.reconnectAt = null;
         state.pendingAuthAction = null;
@@ -308,6 +311,7 @@ export class GatewayCoordinatorCore {
       state.heartbeatInterval = null;
       state.heartbeatAckDeadline = null;
       state.awaitingHeartbeatAck = false;
+      state.pendingHeartbeatAcks = 0;
       const generation = state.generation;
       await this.persistSession(id, state);
       const socket = await this.connectSocket(url, { id, generation, definition: def });
@@ -389,6 +393,16 @@ export class GatewayCoordinatorCore {
     const state = this.sessions.get(id);
     if (!state || this.sockets.get(id) !== socket || state.generation !== generation) return;
     const frame = parseGatewayFrame(raw);
+    if (frame.op === 0 && (!Number.isSafeInteger(frame.s) || frame.s < 0)) {
+      state.status = "reconnect_wait";
+      state.lastError = "gateway_dispatch_sequence_missing";
+      state.reconnectAttempt += 1;
+      state.reconnectAt = this.now() + boundedReconnectDelay(state.reconnectAttempt, this.random());
+      await this.persistSession(id, state);
+      socket.close(4002, "Gateway dispatch sequence missing");
+      await this.scheduleNextAlarm();
+      return;
+    }
     const inbox = this.getInbox(id);
     const saved = await inbox.getState();
     const decision = decideGatewayFrame(frame, saved);
@@ -409,19 +423,25 @@ export class GatewayCoordinatorCore {
         );
         state.heartbeatAckDeadline = null;
         state.awaitingHeartbeatAck = false;
+        state.pendingHeartbeatAcks = 0;
         await this.persistSession(id, state);
         if (decision.action === "resume") await this.sendResume(id, socket);
         else await this.sendIdentify(id, socket);
         break;
       }
       case "send_heartbeat":
-        await this.sendHeartbeat(id, socket, saved.sequence);
+        await this.sendHeartbeat(id, socket, saved.sequence, true);
         break;
-      case "heartbeat_ack":
-        state.awaitingHeartbeatAck = false;
-        state.heartbeatAckDeadline = null;
+      case "heartbeat_ack": {
+        state.pendingHeartbeatAcks = Math.max(
+          0,
+          (Number.isSafeInteger(state.pendingHeartbeatAcks) ? state.pendingHeartbeatAcks : 0) - 1,
+        );
+        state.awaitingHeartbeatAck = state.pendingHeartbeatAcks > 0;
+        if (!state.awaitingHeartbeatAck) state.heartbeatAckDeadline = null;
         await this.persistSession(id, state);
         break;
+      }
       case "reconnect":
         state.status = "reconnect_wait";
         state.pendingAuthAction = null;
@@ -436,6 +456,7 @@ export class GatewayCoordinatorCore {
         state.heartbeatAt = null;
         state.heartbeatAckDeadline = null;
         state.awaitingHeartbeatAck = false;
+        state.pendingHeartbeatAcks = 0;
         state.reconnectAt = this.now() + 1000 + Math.floor(this.random() * 4000);
         state.status = "auth_wait";
         await this.persistSession(id, state);
@@ -496,19 +517,31 @@ export class GatewayCoordinatorCore {
     await this.persistSession(id, state);
   }
 
-  async sendHeartbeat(id, socket, sequence) {
+  async sendHeartbeat(id, socket, sequence, serverRequested = false) {
     const state = this.sessions.get(id);
-    if (state.awaitingHeartbeatAck) {
+    const pending = Number.isSafeInteger(state.pendingHeartbeatAcks)
+      ? state.pendingHeartbeatAcks
+      : 0;
+    if (pending > 0 && !serverRequested) {
       state.status = "heartbeat_unacknowledged";
       state.lastError = "heartbeat_ack_timeout";
       await this.persistSession(id, state);
       socket.close(4000, "Gateway heartbeat acknowledgement missing");
       return;
     }
+    if (pending >= 4) {
+      state.status = "heartbeat_unacknowledged";
+      state.lastError = "too_many_unacknowledged_heartbeats";
+      await this.persistSession(id, state);
+      socket.close(4000, "Too many unacknowledged Gateway heartbeats");
+      return;
+    }
+    const interval = Math.max(1000, state.heartbeatInterval ?? 1000);
     socket.send(JSON.stringify(createHeartbeat(sequence)));
+    state.pendingHeartbeatAcks = pending + 1;
     state.awaitingHeartbeatAck = true;
-    state.heartbeatAckDeadline = this.now() + Math.max(1000, state.heartbeatInterval ?? 1000);
-    state.heartbeatAt = this.now() + (state.heartbeatInterval ?? 1000);
+    state.heartbeatAckDeadline = this.now() + interval;
+    state.heartbeatAt = this.now() + interval;
     await this.persistSession(id, state);
   }
 
@@ -522,6 +555,7 @@ export class GatewayCoordinatorCore {
     state.heartbeatAt = null;
     state.heartbeatAckDeadline = null;
     state.awaitingHeartbeatAck = false;
+    state.pendingHeartbeatAcks = 0;
     if (decision.clearSession) await this.getInbox(id).clearSession();
     if (decision.action === "fatal") {
       state.status = "fatal";
@@ -631,6 +665,7 @@ export class GatewayCoordinatorCore {
         state.heartbeatAt = null;
         state.heartbeatAckDeadline = null;
         state.awaitingHeartbeatAck = false;
+        state.pendingHeartbeatAcks = 0;
         state.reconnectAt = null;
         await this.persistSession(state.clientId, state);
       }
