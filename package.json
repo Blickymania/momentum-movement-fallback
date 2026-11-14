@@ -9,7 +9,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "node --test",
-    "check": "npm run typecheck && npm test && npm run dry-run"
+    "check": "npm run typecheck && npm test && npm run dry-run && npm run dry-run:router",
+    "dry-run:router": "wrangler deploy --dry-run --config wrangler.router.jsonc"
   },
   "dependencies": {
     "pg": "^8.16.3"
