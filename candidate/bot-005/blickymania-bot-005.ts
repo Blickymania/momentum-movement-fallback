@@ -3,7 +3,7 @@
 - Candidate only. This is not deployed or connected to a Discord Gateway.
 - Based on the read-only recovered live Bot 005 source, whose configured live payload was verified exactly against this recovery snapshot after decompression.
 - Production remains untouched on Railway.
-- Requires BOT005_DEPLOYMENT_ID, GATEWAY_LEASE_URL, LEASE_SERVICE_TOKEN and COACHING_WORKFLOW_URL to be provisioned only in a future approved candidate environment.
+- Requires BOT005_DEPLOYMENT_ID, GATEWAY_LEASE_URL, LEASE_SERVICE_TOKEN, COACHING_WORKFLOW_URL, COACHING_WORKFLOW_SOURCE=bot005 and a unique COACHING_WORKFLOW_AUTH_SECRET to be provisioned only in a future approved candidate environment.
 - The lease scope is momentum-movement:bot-005-gateway.
 - The app listeners are registered only after the owner guard is installed; login happens only after lease acquisition.
 - The existing coaching interaction JSON payload and acknowledgement behavior are preserved.
