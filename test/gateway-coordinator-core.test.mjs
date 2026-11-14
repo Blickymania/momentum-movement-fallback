@@ -215,7 +215,7 @@ test("resumes the saved session and last committed sequence after coordinator re
   });
   await restarted.initialize();
   await restarted.start();
-  const resumed = h.sockets.at(-1);
+  const resumed = h.sockets.findLast((socket) => socket.context.id === "bot-alpha");
   assert.ok(resumed.url.startsWith("wss://resume.restart.example/"));
   frame(resumed, { op: 10, d: { heartbeat_interval: 30000 } });
   await restarted.serial;
