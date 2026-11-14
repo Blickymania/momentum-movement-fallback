@@ -36,8 +36,19 @@ Railway is not a deployment dependency. Bot 005 remains the sole production Gate
 - Re-read committed files and verified the digit-only fencing epoch validator, expired-lease epoch guard, and test assertion are present.
 - No live database schema was created and no service was deployed.
 
+## Cycle 3 — Render workspace inspection and event-driven test runner (completed with limitations)
+- User explicitly confirmed use of Render workspace `My Workspace` (`tea-dbcqe7ss728c73fthlug`).
+- Render service inventory endpoint returned literal `null` on two reads; this is inconclusive and cannot be represented as proof that no services exist.
+- Render PostgreSQL inventory returned `No Postgres instances found`.
+- No Render service, database, key-value instance, or paid resource was created.
+- Added `package.json` with `npm test` using Node's built-in test runner.
+- Added `.github/workflows/failover-tests.yml`, event-triggered on relevant pushes and pull requests; no cron/scheduled trigger.
+- The GitHub connector's workflow-run lookup returned an empty list for the commit and only exposes PR-triggered runs. Therefore CI execution/result is not yet verified.
+- **Correction to prior checkpoint wording:** six test cases were authored, but no actual Node test execution occurred in the earlier cycle. The prior statement that 6 tests passed was inaccurate. Treat all six as unexecuted until a workflow run or local Node test result is inspected.
+- Current Render pricing documentation indicates Free web services sleep after 15 minutes without inbound traffic and free Postgres expires after 30 days; neither is suitable as production always-on standby/coordination. Current public pricing lists the smallest paid web compute at $7/month and smallest paid Postgres at $6/month. No paid service is provisioned without explicit cost approval. Sources: Render Free docs https://render.com/docs/free and pricing https://render.com/pricing.
+
 ## Remaining objectives
-1. Confirm Render workspace scope: `My Workspace` (`tea-dbcqe7ss728c73fthlug`).
+1. Inspect Render inventory through a dashboard/API path that returns a definitive list; current list_services response was null.
 2. Inspect existing Render services and determine persistent-worker availability and real pricing/limits.
 3. Prepare portable independent-host deployment artifacts.
 4. Implement and unit-test an independent lease/fencing coordination module.
@@ -46,7 +57,9 @@ Railway is not a deployment dependency. Bot 005 remains the sole production Gate
 7. Complete deployment and end-to-end verification only after safe prerequisites are met.
 
 ## Active blockers / exact user action
-Render's tool requires workspace confirmation before workspace-scoped service reads/writes. Confirm: **Use the Render workspace “My Workspace” (ID tea-dbcqe7ss728c73fthlug) for this Dawn Dotta failover project.**
+- Workspace confirmation is complete.
+- Render service inventory tool returns literal `null`; inspect through an alternate supported account view before claiming the workspace is empty.
+- No paid plan or recurring spend has been approved. If an always-on paid Render worker and durable database are selected, obtain explicit cost approval before provisioning.
 
 No billing approval is being requested yet. A persistent always-on worker may require a paid plan; inspect actual options after workspace confirmation and do not provision paid resources without explicit cost approval.
 
@@ -64,4 +77,7 @@ No scheduler changes made. Do not create a duplicate. User's max-one-centralized
 The lease module and mock-backed unit tests are committed, but are not deployed or connected to production. The current legacy Bot 005 still has no lease adapter; the module alone cannot safely fence an already-open Gateway socket. Bot 005 remains the only active Gateway owner. No independent standby deployment exists. No lease/fencing protocol exists in production. Railway-independent architecture is documented, not deployed.
 
 ## Exact next execution step
-After workspace confirmation, call Render `list_services` using the confirmed workspace ID, inspect any existing candidate service, and determine whether it can host a persistent Bun process without Railway. Do not create a service until plan cost and persistence behavior are known. In parallel after workspace access, design the hard-fencing/cutover controller and primary Bot 005 adapter; do not enable standby Gateway takeover until the legacy primary can be safely stopped before standby login.
+1. Resolve the inconclusive Render service inventory through an alternate supported read-only route.
+2. Obtain and inspect the GitHub Actions run for `.github/workflows/failover-tests.yml`; run the tests and repair any failures.
+3. Determine whether Render's paid persistent worker path is available through a supported tool; no resource creation until cost is explicitly approved.
+4. Continue with independent database provider inspection and hard-fencing/cutover controller design. Do not connect standby Gateway until Bot 005 is safely integrated. In parallel after workspace access, design the hard-fencing/cutover controller and primary Bot 005 adapter; do not enable standby Gateway takeover until the legacy primary can be safely stopped before standby login.
