@@ -135,6 +135,25 @@ test("stores READY session before accepting its dispatch stream", async () => {
   }), /READY session state/);
 });
 
+test("clears non-resumable Gateway session state without discarding queued events", async () => {
+  const inbox = makeInbox({ namespace: "bot-alpha" });
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  await inbox.enqueueDispatch({
+    guildId: "guild", sessionId: "session-a", sequence: 11,
+    eventType: "MESSAGE_CREATE", payload: { id: "preserved-event" },
+  });
+  const cleared = await inbox.clearSession();
+  assert.equal(cleared.sessionId, null);
+  assert.equal(cleared.sequence, null);
+  assert.equal(cleared.resumeGatewayUrl, null);
+  assert.equal((await inbox.listPending()).length, 1);
+  await assert.rejects(() => inbox.enqueueDispatch({
+    guildId: "guild", sessionId: "session-a", sequence: 12,
+    eventType: "MESSAGE_CREATE", payload: { id: "not-accepted" },
+  }), InboxIntegrityError);
+});
+
 test("enqueue stores an event and advances the durable sequence atomically", async () => {
   const inbox = makeInbox();
   await inbox.initialize();
