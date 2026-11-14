@@ -93,7 +93,7 @@ Populate values through Render Dashboard Environment only; never paste secrets i
 - Render Free sleeps after idle time and is only a validation/cold-fallback target, not an always-on production failover.
 
 ## Remaining objectives
-1. Identify the actual Dawn-only database used by the Cloudflare Worker and decide how its persistent OAuth state is preserved/migrated. No guesswork.
+1. Resolve the OAuth database source with the user: preserve/migrate existing Railway OAuth PostgreSQL data, or explicitly start fresh on empty Neon staging and accept client/token re-registration.
 2. Configure the confirmed, externally reachable database connection securely in Render.
 3. Add Discord bot credentials, application ID, authorized guild ID, OAuth client ID/secret, provider-neutral manager key, and correct Render redirect URI via the dashboard.
 4. Register the exact Render redirect URI in Discord Developer Portal.
@@ -104,4 +104,4 @@ Populate values through Render Dashboard Environment only; never paste secrets i
 9. Only after all checks pass, separately review failover router integration. Do not change production routing without an explicit cutover decision.
 
 ## Exact next execution step
-Perform a read-only trace of the Cloudflare Worker configured PostgreSQL source and current OAuth data owner; compare it against the empty Neon staging branch and private Railway PostgreSQL. Then prepare a no-secret database migration/re-registration decision. Do not add Render to router config or change production traffic while this remains unresolved.
+External/user-only blocker: choose the OAuth database source before entering credentials. Option 1 is preserve the existing Railway OAuth PostgreSQL data by arranging a supported, secure migration to a database reachable from Render; do not expose the private Railway hostname. Option 2 is deliberately start with the empty Neon staging database and accept that existing OAuth client registrations, tokens, and grants will not be present and clients may need re-registration. The checked-in Cloudflare router has no database binding; a separate Worker configuration was not available in the connected GitHub repositories. Once the database decision is made, add its connection string, Discord bot token, Discord OAuth client secret, and manager service key directly in Render Dashboard Environment (never in chat or GitHub), register the exact Render callback in Discord Developer Portal, then validate /readyz and OAuth. Do not add Render to router config or change production traffic while this remains unresolved.
