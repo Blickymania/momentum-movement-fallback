@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import worker from "../cloudflare/worker.mjs";
 
 const token = "coaching-idempotency-test-secret-at-least-32";
-const route = "https://control.example.com/claim";
+const route = "https://control.example.com/coaching/interaction/claim";
 
 function makeNamespace() {
   const claims = new Set();
