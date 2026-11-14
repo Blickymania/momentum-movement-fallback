@@ -10,6 +10,11 @@ const bytes=new Uint8Array(out.length);for(let i=0;i<out.length;i++)bytes[i]=out
 const source=new TextDecoder().decode(bytes);
 if(!source.includes("client.login(token)")||!source.includes("Bun.serve"))throw new Error("Bot 005 source integrity check failed");
 console.log(JSON.stringify({event:"bot005_compressed_bootstrap_ready",sourceBytes:bytes.length}));
+if(Bun.env.BOT_GATEWAY_ACTIVE==="true"){
 const js=new Bun.Transpiler({loader:"tsx"}).transformSync(source);
 const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
 await new AsyncFunction("Client","GatewayIntentBits","Partials","Events","PermissionFlagsBits","GuildScheduledEventEntityType","GuildScheduledEventPrivacyLevel",js)(Client,GatewayIntentBits,Partials,Events,PermissionFlagsBits,GuildScheduledEventEntityType,GuildScheduledEventPrivacyLevel);
+}else{
+console.log(JSON.stringify({event:"bot005-standby",active:false,noDiscordWrites:true}));
+while(true)await Bun.sleep(60000);
+}
