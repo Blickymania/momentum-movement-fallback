@@ -65,7 +65,14 @@ export function installGatewayOwnershipGuards({
   };
 
   client.once = function guardedOnce(event, listener) {
-    return originalOnce.call(this, event, wrapListener(listener));
+    const guarded = wrapListener(listener);
+    if (typeof guarded !== "function") return originalOnce.call(this, event, listener);
+    function onceWrapper(...args) {
+      this.removeListener(event, onceWrapper);
+      return guarded.apply(this, args);
+    }
+    onceWrapper.listener = listener;
+    return originalOn.call(this, event, onceWrapper);
   };
 
   client.rest.request = function guardedRestRequest(...args) {
