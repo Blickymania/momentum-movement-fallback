@@ -38,6 +38,20 @@ These are candidates, not active deployments. Verify account eligibility, free-s
 5. Confirm `GET /health` returns the expected service name.
 6. Store the resulting HTTPS Worker URL and the same secret only in the primary/standby listener secret managers as `LISTENER_LEASE_URL` and `LISTENER_LEASE_TOKEN`.
 
+## Prepared GitHub Actions deployment path
+
+A manual-only workflow is available at `.github/workflows/deploy-dawn-dotta-lease.yml`. It deploys only the isolated lease coordinator; it does not touch Railway or connect a Discord Gateway client.
+
+Before using it, add these three repository Actions secrets to the private recovery repository:
+
+- `CLOUDFLARE_API_TOKEN` — scoped Cloudflare API token authorized to deploy Workers and manage the SQLite Durable Object binding
+- `CLOUDFLARE_ACCOUNT_ID` — the account ID for the Free-plan account
+- `LEASE_CONTROL_TOKEN` — a newly generated high-entropy secret used only by this lease coordinator and both listener hosts
+
+Then open GitHub Actions → **Deploy Momentum Movement lease coordinator** → **Run workflow** and select the recovery branch. The workflow installs Wrangler, sets the Worker secret without printing it, and deploys the coordinator. Do not add these secrets to source files, issue comments, build logs, or the Discord bot.
+
+After deployment, capture the Worker HTTPS `workers.dev` URL from the deployment output and set it as `LISTENER_LEASE_URL` on both listener hosts. Set the same `LEASE_CONTROL_TOKEN` as `LISTENER_LEASE_TOKEN` on both. The GitHub workflow does not provision Botkeep/Silly Development accounts and does not perform production cutover.
+
 ## Safety gate before deployment and cutover
 
 - Keep the existing Railway listener online and unchanged throughout build and isolated testing.
