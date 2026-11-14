@@ -175,3 +175,55 @@ test("validates timeout and payload limits", () => {
     maxPayloadBytes: 10
   }), /coaching_workflow_payload_limit_invalid/);
 });
+
+
+test("checks workflow readiness without sending an interaction payload", async () => {
+  const requests = [];
+  const client = createCoachingWorkflowClient({
+    endpoint: "https://coaching.example.com/interaction",
+    fetchFn: async (url, init) => {
+      requests.push({ url: String(url), method: init.method, body: init.body });
+      return {
+        ok: true,
+        status: 200,
+        async json() { return { ready: true }; }
+      };
+    }
+  });
+  const readiness = await client.checkReady();
+  assert.deepEqual(readiness, { ok: true, status: 200, ready: true });
+  assert.deepEqual(requests, [{
+    url: "https://coaching.example.com/readyz",
+    method: "GET",
+    body: undefined
+  }]);
+});
+
+test("readiness reports false when the service is healthy HTTP but application is not ready", async () => {
+  const client = createCoachingWorkflowClient({
+    endpoint: "https://coaching.example.com/interaction",
+    fetchFn: async () => ({
+      ok: true,
+      status: 200,
+      async json() { return { ready: false }; }
+    })
+  });
+  assert.deepEqual(await client.checkReady(), { ok: true, status: 200, ready: false });
+});
+
+test("readiness fails closed on HTTP and network errors", async () => {
+  const unavailable = createCoachingWorkflowClient({
+    endpoint: "https://coaching.example.com/interaction",
+    fetchFn: async () => { throw new Error("private network detail"); }
+  });
+  await assert.rejects(() => unavailable.checkReady(), /coaching_workflow_unavailable/);
+  const failed = createCoachingWorkflowClient({
+    endpoint: "https://coaching.example.com/interaction",
+    fetchFn: async () => ({
+      ok: false,
+      status: 503,
+      async json() { return { ready: false }; }
+    })
+  });
+  assert.deepEqual(await failed.checkReady(), { ok: false, status: 503, ready: false });
+});
