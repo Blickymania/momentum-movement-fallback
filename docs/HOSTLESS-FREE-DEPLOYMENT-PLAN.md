@@ -155,3 +155,10 @@ The V2 process keeps `panelId` in memory after initial publication. Its page/nav
 ### Next execution step
 
 Integrate the helper into a distinct LIVE NOW V2 candidate's existing passive audit, preserving the current one-per-30-minute audit cadence and the publisher's duplicate/legacy protection. Add the V2 workload's own independent ownership scope and verify exact process-stop proof before any new Gateway login. Keep production untouched until these conditions are met.
+
+ 
+## Rules acceptance candidate integration — source-only
+
+The separate `codex/dawn-rules-acceptance` branch extends the recovered Bot 005 candidate with a rules-acceptance button workflow. It stores versioned acceptance in the existing encrypted Discord member vault, does not change roles or channel permissions, and leaves the existing Hostless app start command on `start:listener`. Its separate candidate command is `bun run start:bot005`.
+
+The candidate is not deployed or activated. Do not start a second Bot 005 Gateway while the Railway primary remains active. The Hostless worker, secure environment, ownership lease, and verified primary stop are not provisioned. This appendix is source information only; it does not approve a cutover. See `docs/RULES-ACCEPTANCE-CHECKPOINT-2026-11-14.md`.

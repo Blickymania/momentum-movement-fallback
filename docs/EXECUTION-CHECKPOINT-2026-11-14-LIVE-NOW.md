@@ -88,3 +88,16 @@ The read-only production inventory and Hostless plan now document seven Gateway-
 - Railway, bot roles, and Hostless provisioning remain untouched.
 
 **Next execution step:** import `createLiveNowPanelRepairAudit` into a separate LIVE NOW V2 candidate and wire it into the existing 30-minute passive audit using the current Discord message scanner, guarded `publishPanel`, and `panelId` getter/setter. Test in standby mode without a Gateway token. Before any activation, implement the V2 workload's independent ownership fencing and prove the old process is physically stopped. Do not restart Railway or create another Gateway session in parallel.
+
+ 
+## Rules acceptance candidate — 2026-11-14
+
+A separate feature branch, `codex/dawn-rules-acceptance`, contains the isolated Bot 005 rules-acceptance candidate. It does not alter the LIVE NOW V2 candidate or this branch's passive-audit cadence.
+
+- Added a strict source-bound button handler for the existing rules dashboard, with versioned acknowledgement stored in the existing encrypted member vault.
+- Repeated and concurrent clicks are idempotent/serialized; storage failure fails closed; receipt DM follows only after successful persistence.
+- Added 12 focused rules-acceptance tests. Combined local focused run for rules acceptance and LIVE NOW recovery: **23/23 passed** on Node.js 22.16.0.
+- GitHub Actions continues failing before job creation (`startup_failure`, latest observed 0 jobs); remote CI is not verified.
+- No production Discord write, Railway operation, Hostless provisioning, secret change, Gateway activation, or bot-role change has occurred.
+- The candidate worker is not activated. Production Bot 005 remains the Railway primary; cutover requires separately verifiable stop/fence and secure worker provisioning.
+- See `docs/RULES-ACCEPTANCE-CHECKPOINT-2026-11-14.md` for the dedicated recovery checkpoint.
