@@ -63,3 +63,29 @@ Scope: Dawn Dotta / Momentum Movement only. No other Discord community or projec
 - Current browser tab is authenticated and already on Workers & Pages. Open https://dash.cloudflare.com/7738d94fbc5466ad91eb65045ee746f2/workers/hyperdrive in that same tab, then allow read-only inspection of the page contents. This will establish the account's actual Hyperdrive inventory and creation requirements.
 - No credentials, passwords, API tokens, or payment details should be sent in chat.
 - No paid plan, card, production secret, production DB, or DNS change is authorized.
+
+
+## Follow-up audit — 2026-11-13
+
+### Additional code and infrastructure findings
+- Re-read the Worker port, router, package scripts, Wrangler configs, Render deployment notes, and test suite from the current branch.
+- The Cloudflare port's use of `pg@8.16.3` and a fresh per-request PostgreSQL client matches Cloudflare's current official Hyperdrive guidance. This confirms driver compatibility on paper only; it does not prove a working database route or successful build. Source: https://developers.cloudflare.com/hyperdrive/examples/connect-to-postgres/
+- The production Railway OAuth Postgres endpoint previously inventoried is private-only. Cloudflare Hyperdrive requires a database hostname/IP and port reachable from Cloudflare; the private Railway service hostname must not be assumed reachable. Before binding anything, verify whether Railway exposes a TCP proxy/public endpoint or provision a separate Dawn-only database with an explicit data migration and rollback plan. Source: https://developers.cloudflare.com/hyperdrive/get-started/
+- The Worker currently derives its OAuth issuer and Discord callback from `OAUTH_ISSUER_URL` and `DISCORD_OAUTH_REDIRECT_URI`. These values must be set specifically for the new Worker origin and the exact `/oauth/callback` route, and the corresponding redirect must be registered with Discord. Copying Railway's existing values unchanged could send the callback back to Railway. Do not change production OAuth settings during testing.
+- The router config currently has only the Railway fallback origin; no Cloudflare primary origin is configured. The Cloudflare router itself is not an independent failover if Cloudflare edge is unavailable. Treat it as an upstream selector only while Cloudflare is reachable, and retain manual direct-origin recovery.
+- Render deployment notes correctly identify a free service as a sleeping cold fallback, not a production-availability guarantee. It remains uncreated pending explicit workspace selection.
+
+### CI status — newly rechecked
+- The branch contains `.github/workflows/validate-worker.yml`, but the latest GitHub Actions run records report `startup_failure`, `path: BuildFailed`, and zero jobs. The latest commits also have zero check runs and no commit statuses. Therefore GitHub Actions is not currently providing executable validation; this is not evidence that the code passed or failed its tests.
+- The corrected no-replay static assertion remains committed as `978a6060ce66bbd0dc62904ec1193fda48eb0adf`; it has still not executed.
+- No runtime test, Wrangler dry-run, Cloudflare deployment, OAuth integration test, or failover test has passed.
+
+### Current Cloudflare browser state
+- The authenticated tab is still on Workers & Pages, not the Hyperdrive page. The account inventory remains unchanged: only `empress-discord-cloudflare` is listed. Do not touch it.
+- No Hyperdrive resource or Dawn Worker has been created.
+- Exact next dashboard page to inspect in the same authenticated tab: https://dash.cloudflare.com/7738d94fbc5466ad91eb65045ee746f2/workers/hyperdrive
+
+### Cycle outcome
+- Inspection completed; one false-positive test repaired in the prior cycle; additional OAuth/network/CI blockers documented.
+- No production resources, Discord state, secrets, databases, billing settings, DNS, or schedules were changed.
+- Status: `BLOCKED — awaiting Hyperdrive dashboard inspection and a reachable Dawn-only database endpoint; code remains unbuilt/unverified.`
