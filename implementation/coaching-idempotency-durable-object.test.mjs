@@ -98,3 +98,19 @@ test("internal claim endpoint validates strict JSON and returns atomic duplicate
     assert.deepEqual(await duplicate.json(), { ok: true, claimed: false, duplicate: true });
   } finally { env.db.close(); }
 });
+
+
+test("readiness endpoint confirms the isolated Durable Object is initialized", async () => {
+  const env = createCoordinator();
+  try {
+    const response = await env.coordinator.fetch(new Request(
+      "https://coaching-idempotency.internal/healthz"
+    ));
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      status: "ok",
+      service: "coaching-interaction-idempotency",
+      ready: true
+    });
+  } finally { env.db.close(); }
+});
