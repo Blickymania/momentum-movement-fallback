@@ -35,6 +35,10 @@ test("lease client only accepts public HTTPS coordinator URLs", () => {
     serviceToken: token
   }), /public_https/);
   assert.throws(() => createCloudflareGatewayLeaseStore({
+    baseUrl: "https://localhost./",
+    serviceToken: token
+  }), /public_https/);
+  assert.throws(() => createCloudflareGatewayLeaseStore({
     baseUrl: "https://lease.example.com",
     serviceToken: "too-short"
   }), /token_invalid/);
@@ -223,4 +227,19 @@ test("Cloudflare Worker + SQLite Durable Object + remote lease-store supervisor 
   assert.equal(standbyLogins, 1);
   await standby.shutdown();
   db.close();
+});
+
+
+test("lease client composes the path correctly when the Worker base URL has no path", async () => {
+  let capturedUrl;
+  const store = createCloudflareGatewayLeaseStore({
+    baseUrl: "https://lease.example.com",
+    serviceToken: token,
+    fetchFn: async (url) => {
+      capturedUrl = String(url);
+      return jsonResponse({ ok: true, lease });
+    }
+  });
+  assert.deepEqual(await store.acquire({}), lease);
+  assert.equal(capturedUrl, "https://lease.example.com/lease/acquire");
 });
