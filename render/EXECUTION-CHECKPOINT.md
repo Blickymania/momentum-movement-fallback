@@ -105,3 +105,45 @@ Populate values through Render Dashboard Environment only; never paste secrets i
 
 ## Exact next execution step
 External/user-only blocker: choose the OAuth database source before entering credentials. Option 1 is preserve the existing Railway OAuth PostgreSQL data by arranging a supported, secure migration to a database reachable from Render; do not expose the private Railway hostname. Option 2 is deliberately start with the empty Neon staging database and accept that existing OAuth client registrations, tokens, and grants will not be present and clients may need re-registration. The checked-in Cloudflare router has no database binding; a separate Worker configuration was not available in the connected GitHub repositories. Once the database decision is made, add its connection string, Discord bot token, Discord OAuth client secret, and the current Railway shared manager key as MANAGER_SERVICE_KEY directly in Render Dashboard Environment (never in chat or GitHub). Register the exact Render callback in Discord Developer Portal, then validate /readyz and OAuth. Do not add Render to router config or change production traffic while this remains unresolved.
+
+
+## Option A selected — preserve Railway OAuth PostgreSQL
+
+User selected Option A on 2026-11-14: preserve the existing Railway OAuth PostgreSQL database and migrate it to an externally reachable PostgreSQL destination. Do not reset or replace the source database.
+
+### Source database verified
+- Railway project: a1d6b0e4-3169-4c5d-add3-84a70f7dc525
+- Environment: production (c72ea3d9-2c1c-4651-a265-79723e317fa5)
+- Service: OAuth PostgreSQL (3e71f6b5-a248-40b6-b185-a748a5f5b436)
+- Image: postgres:18-alpine
+- Region: SFO
+- Persistent volume: OAuth PostgreSQL Data, 1024 MB, mounted at /var/lib/postgresql/data
+- Latest database deployment: c231847f-46aa-4808-a026-106062f2f860, SUCCESS
+- Private DNS endpoint: oauth-postgresql
+- Source variables include DATABASE_URL, PGHOST, PGPORT, PGDATABASE, PGUSER and PGPASSWORD, but Railway's connected OAuth integration redacts their values.
+- No Railway TCP proxy currently exists. The service is not publicly exposed.
+- Railway connector-tunnel listing returned an internal tool error; do not assume a tunnel is available.
+- Database schema/data row counts and current backup state have not yet been verified directly against the Railway source.
+
+### Destination prepared
+- Neon project: autumn-moon-71501044
+- Source template branch: staging (br-long-rice-bfm97hf6), database momentum_oauth_staging
+- Neon staging database reports PostgreSQL 18.7, matching the Railway PostgreSQL 18 major version.
+- Created a separate, non-default, no-compute branch for the migration target:
+  - Name: railway-oauth-migration
+  - Branch ID: br-summer-union-bfqjjfbw
+  - Parent: staging branch br-long-rice-bfm97hf6
+  - State: ready
+  - No compute endpoint provisioned; no compute usage yet.
+- This branch inherits the staging schema, which includes the five OAuth tables, gateway lease tables/functions, and schema-version table. It does not yet contain Railway source data.
+- Do not run destructive restore/clean operations on the staging parent or production database. Restore only into this isolated migration branch after source backup and target schema plan are verified.
+
+### Migration method and current blocker
+- Neon documents pg_dump/pg_restore as the supported PostgreSQL migration approach; use an unpooled target connection and inspect/test before cutover. The official Neon guide currently documents PostgreSQL 14–17 in its general import text, while the actual Neon staging server reports PostgreSQL 18.7. Confirm the destination branch's actual server version before restore.
+- A same-project Railway migration job could reach the private source, but Railway is currently blocked by the past-due billing state and must not be used to create paid resources.
+- The other available route is a temporary Railway TCP proxy. This would expose the database on a public TCP endpoint during migration and may incur network egress. It is NOT enabled. Do not enable it without explicit user authorization to the temporary exposure and any associated egress charges.
+- No database credentials were revealed or copied into chat, GitHub, or Render.
+- No source writes, schema changes, service restarts, public exposure, or production routing changes were made.
+
+### Exact next step
+Resolve a secure, cloud-only path to read the private Railway PostgreSQL source without enabling an unapproved public TCP endpoint or incurring Railway charges. If no private migration runner is available under the current account, explain the one-time temporary TCP proxy requirement and obtain explicit approval before creating it. Then take a source backup, restore into Neon branch br-summer-union-bfqjjfbw, verify schema and row counts, and only then configure Render to use the new Neon branch.
