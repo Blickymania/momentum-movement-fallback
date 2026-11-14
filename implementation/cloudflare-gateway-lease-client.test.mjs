@@ -289,7 +289,7 @@ test("Cloudflare Worker + SQLite Durable Object + remote hard-stop controller re
   const workerEnv = {
     LEASE_SERVICE_TOKEN: token,
     LEASE_BOOTSTRAP_TOKEN: bootstrapToken,
-    FENCE_REQUEST_TOKEN: fenceRequestToken,
+    FENCE_REQUEST_TOKENS_JSON: JSON.stringify({ "primary-deploy": primaryFenceToken, "standby-deploy": fenceRequestToken }),
     RENDER_API_KEY: "render-test-api-key-123456",
     RENDER_SERVICE_IDS_JSON: JSON.stringify({
       "primary-deploy": "srv-primary-12345678",
