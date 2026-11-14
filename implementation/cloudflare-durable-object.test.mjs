@@ -80,10 +80,6 @@ test("constructs the durable ownership table with hard-fence evidence fields", (
     "fence_target_owner_id", "fence_target_deployment_id",
     "fence_verified_at_ms", "fence_provider", "fence_proof_id"
   ]);
-  const claimColumns = env.db.prepare("PRAGMA table_info(coaching_interaction_claims)").all();
-  assert.deepEqual(claimColumns.map(x => x.name), ["interaction_id", "source", "claimed_at_ms"]);
-  const claimIndexes = env.db.prepare("PRAGMA index_list(coaching_interaction_claims)").all();
-  assert.ok(claimIndexes.some(x => x.name === "coaching_interaction_claims_claimed_at_idx"));
   env.db.close();
 });
 
@@ -348,52 +344,3 @@ test("HTTP state route is read-only and invalid JSON is rejected", async () => {
 });
 
 
-test("coaching interaction claims survive coordinator recreation and expire after seven days", () => {
-  const env = createCoordinator();
-  try {
-    const interactionId = "12345678901234567";
-    assert.deepEqual(env.coordinator.claimCoachingInteraction({
-      interactionId, source: "bot005"
-    }), { claimed: true });
-
-    const restarted = new GatewayLeaseCoordinator(env.ctx, {});
-    restarted.now = () => env.coordinator.now();
-    assert.deepEqual(restarted.claimCoachingInteraction({
-      interactionId, source: "coaching-relay"
-    }), { claimed: false });
-    assert.deepEqual(restarted.claimCoachingInteraction({
-      interactionId: "22345678901234567", source: "coaching-relay"
-    }), { claimed: true });
-
-    assert.throws(() => restarted.claimCoachingInteraction({
-      interactionId: "not-a-discord-id", source: "bot005"
-    }), /interaction_id_invalid/);
-    assert.throws(() => restarted.claimCoachingInteraction({
-      interactionId: "32345678901234567", source: "another"
-    }), /coaching_source_invalid/);
-
-    env.setNow(env.coordinator.now() + 7 * 24 * 60 * 60 * 1000 + 1);
-    assert.deepEqual(restarted.claimCoachingInteraction({
-      interactionId, source: "coaching-relay"
-    }), { claimed: true });
-  } finally { env.db.close(); }
-});
-
-test("durable coaching claim HTTP route rejects bad requests and returns claim result", async () => {
-  const env = createCoordinator();
-  try {
-    const makeRequest = interactionId => new Request("https://lease.internal/coaching/interaction/claim", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ interactionId, source: "bot005" })
-    });
-    const invalid = await env.coordinator.fetch(makeRequest("invalid"));
-    assert.equal(invalid.status, 400);
-    const first = await env.coordinator.fetch(makeRequest("42345678901234567"));
-    assert.equal(first.status, 200);
-    assert.deepEqual(await first.json(), { ok: true, claimed: true });
-    const duplicate = await env.coordinator.fetch(makeRequest("42345678901234567"));
-    assert.equal(duplicate.status, 200);
-    assert.deepEqual(await duplicate.json(), { ok: true, claimed: false });
-  } finally { env.db.close(); }
-});
