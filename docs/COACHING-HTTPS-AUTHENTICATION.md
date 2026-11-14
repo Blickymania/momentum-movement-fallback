@@ -40,7 +40,7 @@ The value generated for Bot 005 must be copied only to Bot 005's `COACHING_WORKF
 
 ## Durable replay protection
 
-The candidate workflow calls the separately authenticated Cloudflare Worker route `POST /coaching/interaction/claim` after HMAC verification and JSON parsing but before dispatch. The Worker uses its own `COACHING_IDEMPOTENCY_TOKEN` to reach a separate SQLite table, `coaching_interaction_claims`, in the existing independent Durable Object. The table uses Discord interaction ID as a primary key and retains claims for seven days. This table is separate from `gateway_ownership`; it does not add the Coaching Relay to Bot 005's Gateway lease scope.
+The candidate workflow calls the separately authenticated Cloudflare Worker route `POST /coaching/interaction/claim` after HMAC verification and JSON parsing but before dispatch. The Worker uses its own `COACHING_IDEMPOTENCY_TOKEN` and a dedicated `COACHING_IDEMPOTENCY_STORE` namespace binding to reach a separate `CoachingInteractionIdempotency` Durable Object class. That class has its own SQLite storage and a `coaching_interaction_claims` table keyed by Discord interaction ID, with a seven-day retention index. It is a different Durable Object class and instance from `GatewayLeaseCoordinator`, so coaching claims do not contend with Bot 005's lease heartbeat/fence operations and do not add the Coaching Relay to Bot 005's Gateway lease scope.
 
 The durable claim is at-most-once: if the workflow process crashes after the claim is stored but before dispatch completes, the interaction will not be replayed automatically and may require manual recovery. This failure mode remains an explicit release gate; a durable processing-state/recovery queue would be required to guarantee eventual processing after that crash window.
 
@@ -58,8 +58,11 @@ The durable claim is at-most-once: if the workflow process crashes after the cla
 
 - HMAC sender and receiver source is committed; the authenticated workflow client fails closed without per-source secret configuration.
 - Bot 005 and the separate Relay have distinct source identities and require different HMAC secrets.
-- Cloudflare Worker and Durable Object source now provide a separately authenticated, durable interaction-ID claim table with seven-day retention; it is separate from the Gateway lease row.
+- Cloudflare Worker and a separate `CoachingInteractionIdempotency` Durable Object class provide a separately authenticated, durable interaction-ID claim store with seven-day retention and isolated SQLite execution from the Bot 005 Gateway lease.
 - These are candidate/source changes only. No public endpoint, Cloudflare Worker/DO deployment, or secret provisioning occurred. The recovered Railway workflow and Relay remain untouched.
 - The full repository test suite has not run successfully in GitHub Actions because runs terminate as `startup_failure` before jobs are created. The auth helper alone passed a 4-test local Node 22.16.0 harness; SQLite claim semantics passed a separate local Node 22.16.0 harness. These are limited component checks, not full integration tests.
 
 **Remaining reliability gate:** the durable claim is at-most-once, not a durable work queue. A workflow crash after claiming but before handling can require manual recovery. Add a durable processing-state/recovery queue or explicitly accept this failure mode before public cutover.
+
+
+**Isolation improvement:** the first implementation co-located coaching claims and Gateway lease rows in one Durable Object class. That has been removed. Current code binds `CoachingInteractionIdempotency` separately, so lease heartbeats and Render fence control do not share the same Durable Object instance or SQLite database with coaching claim traffic.
