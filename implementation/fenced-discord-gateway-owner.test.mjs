@@ -108,7 +108,9 @@ test("prepared gateway cannot login or execute event side effects until lease ac
   assert.equal(events, 0);
   assert.equal(client.loginCount, 0);
 
+  const readySignal = prepared.waitUntilReady(5000);
   const owner = await prepared.start();
+  assert.equal(await readySignal, true);
   assert.equal(owner.ok, true);
   assert.equal(client.loginCount, 1);
   assert.equal(prepared.ready, true);
