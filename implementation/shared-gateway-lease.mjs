@@ -179,7 +179,6 @@ export function startLeaseHeartbeat({
         Promise.resolve().then(renew),
         new Promise((_, reject) => {
           timeout = setTimeout(() => reject(new Error("lease_renewal_timeout")), renewTimeoutMs);
-          timeout.unref?.();
         })
       ]);
       if (!result) {
