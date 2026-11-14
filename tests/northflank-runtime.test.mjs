@@ -16,7 +16,7 @@ test("Northflank image uses the same pinned Bun runtime as the existing Render c
 
 test("Northflank runtime retains the HTTP Manager and does not start a Discord Gateway", () => {
   assert.match(manager, /Bun\.serve\(/);
-  assert.match(manager, /if\(u\.pathname==="\/mcp"\|\|u\.pathname!==/);
+  assert.ok(manager.includes('if(u.pathname!=="/mcp"'));
   assert.doesNotMatch(manager, /client\.login\(/);
 });
 
