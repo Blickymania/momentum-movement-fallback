@@ -31,7 +31,7 @@ export function createCloudflareFenceRequester({
   baseUrl,
   requestToken,
   fetchFn = globalThis.fetch,
-  timeoutMs = 10000
+  timeoutMs = 30000
 }) {
   const base = validateBaseUrl(baseUrl);
   const token = requiredToken(requestToken);
