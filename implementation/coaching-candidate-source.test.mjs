@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const botPath = new URL("../candidate/bot-005/blickymania-bot-005.ts", import.meta.url);
 const relayPath = new URL("../candidate/coaching/one-on-one-coaching-interaction-relay.ts", import.meta.url);
 const ownerPath = new URL("./fenced-discord-gateway-owner.mjs", import.meta.url);
+const workflowPath = new URL("../candidate/coaching/one-on-one-coaching-workflow.ts", import.meta.url);
 
 test("Bot 005 candidate uses the HTTPS workflow client and no Railway-internal coaching host", async () => {
   const source = await readFile(botPath, "utf8");
@@ -59,4 +60,30 @@ test("candidate Relay and Bot 005 are separate Gateway workloads, not a shared l
   assert.match(bot, /prepareFencedDiscordGatewayOwner/);
   assert.match(relay, /raw Discord Gateway/);
   assert.doesNotMatch(relay, /prepareFencedDiscordGatewayOwner/);
+});
+
+
+test("Bot 005 and the separate Relay use distinct authenticated workflow identities", async () => {
+  const bot = await readFile(botPath, "utf8");
+  const relay = await readFile(relayPath, "utf8");
+  assert.match(bot, /COACHING_WORKFLOW_SOURCE=bot005/);
+  assert.match(bot, /COACHING_WORKFLOW_AUTH_SECRET/);
+  assert.match(relay, /COACHING_WORKFLOW_SOURCE=coaching-relay/);
+  assert.match(relay, /COACHING_WORKFLOW_AUTH_SECRET/);
+});
+
+test("candidate Coaching Workflow verifies sender HMAC and timestamp before parsing or accepting the body", async () => {
+  const source = await readFile(workflowPath, "utf8");
+  const routeAt = source.lastIndexOf('url.pathname==="/interaction"');
+  const authAt = source.indexOf("verifyCoachingRequest", routeAt);
+  const parseAt = source.indexOf("JSON.parse(rawBody)", routeAt);
+  const acceptedAt = source.indexOf("Response.json({accepted:true})", routeAt);
+  assert.ok(routeAt >= 0);
+  assert.ok(authAt > routeAt);
+  assert.ok(parseAt > authAt);
+  assert.ok(acceptedAt > parseAt);
+  assert.match(source, /COACHING_BOT005_AUTH_SECRET/);
+  assert.match(source, /COACHING_RELAY_AUTH_SECRET/);
+  assert.match(source, /status:401/);
+  assert.match(source, /x-coaching-signature/);
 });
