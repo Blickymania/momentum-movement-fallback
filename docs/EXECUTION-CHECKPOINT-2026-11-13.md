@@ -410,11 +410,11 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 
 ### Local tests executed
 - Ownership guard suite: 7/7 passed.
-- Durable Object, bot-facing fence client and Render service fencer component suite: 20/20 passed.
+- Durable Object, bot-facing fence client and Render service fencer component suite: 18/18 passed.
 - Worker-managed Render suspension/DO integration simulation: 2/2 passed after adding the deployment owner ID requirement and per-deployment request token map.
 - Prepared Discord owner adapter suite: 5/5 passed in a local reconstructed Node harness after adding the deployment-bound owner check.
 - Provider-neutral hard-stop contract plus e2e supervisor batch: 9/9 passed.
-- Total: 43 passed, 0 failed across these separate component-local batches.
+- Total: 41 passed, 0 failed across these separate component-local batches.
 - These were isolated local test folders/copies using Node.js v22.16.0, Node SQLite, mocked Discord clients and mocked Render HTTP. They are not a clean full repository checkout or GitHub Actions run, a real Cloudflare edge test, actual Render suspension, or actual production Gateway failover.
 - GitHub Actions remains a blocker: run 43553376060 previously returned startup_failure and zero jobs; no job logs/runner output exist. The exact cause remains unknown. Do not infer an account billing or permissions cause.
 
@@ -443,3 +443,8 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 7. Build a separate candidate Bot 005 source tree, install the guard before all listeners, and integrate verified app readiness with the supervisor. Do not change the recovered production snapshot.
 8. Only after the old Railway process is manually and verifiably stopped should an operator perform the one-time bootstrap. Subsequent Render-to-Render promotions require successful Render suspend/readback and exact fence confirmation.
 9. Deploy only authorized preproduction resources and run the full failure/recovery/rollback matrix before any live cutover.
+
+
+## Render credential isolation correction
+
+The unused helper that could combine a PostgreSQL/Cloudflare lease store with the Render API adapter inside a Bot process has been removed. The Render service fencer is now intentionally consumed only by cloudflare/worker.mjs. Bot-side code uses only cloudflare-fence-request-client.mjs, which sends candidate identity and a deployment-specific request token to the Worker; it never imports a Render API client or receives the Render API key. The current component suite no longer includes the two removed helper-wrapper tests. The Render fencer suite is 7/7, and the Worker-to-Render-to-Durable-Object flow remains separately simulated.
