@@ -27,7 +27,7 @@ Botkeep describes its Free runtime as continuous without manual renewal, but its
 2. Upload or connect the same private repository source; use `failover/listener` as the working directory.
 3. Select Bun and start with `bun run start`.
 4. Configure the same environment variable names below, using the same Dawn Dotta bot token and lease coordinator, with `LISTENER_RUNTIME_ACTIVE=false` during preparation.
-5. Deploy and verify the build plus the read-only `/preflight` endpoint without connecting to Discord. After the old Railway listener is stopped, set `LISTENER_RUNTIME_ACTIVE=true` on both hosts; the standby must remain disconnected while the primary owns the lease.
+5. Deploy and verify the build plus the read-only `/preflight` endpoint without connecting to Discord. After the old Railway listener is stopped, enable Botkeep first and wait until it logs `momentum-listener-lease-acquired` and `creator-widget-gateway-ready`. Only then enable Silly Development; it must log `momentum-listener-standby-waiting-for-lease` and must not open a Gateway connection.
 
 Silly Development's acceptable-use policy prohibits file storage, media-server, and CDN workloads. Use it only for the small listener process, never for the original media vault or backup storage. Its free service has no uptime guarantee.
 
@@ -36,7 +36,7 @@ Silly Development's acceptable-use policy prohibits file storage, media-server, 
 | Variable | Value |
 |---|---|
 | `DISCORD_BOT_TOKEN` | Dawn Dotta bot token only; store as a secret |
-| `LISTENER_RUNTIME_ACTIVE` | `false` during preparation; change to `true` on both hosts only after the old Railway listener is stopped |
+| `LISTENER_RUNTIME_ACTIVE` | `false` during preparation; set `true` on Botkeep first after stopping Railway, then set `true` on Silly Development only after Botkeep holds the lease |
 | `LISTENER_LEASE_URL` | HTTPS Worker origin, for example the deployed `workers.dev` URL |
 | `LISTENER_LEASE_TOKEN` | Same high-entropy `LEASE_CONTROL_TOKEN` stored in Cloudflare; secret |
 | `PORT` | Use provider-injected port if available; otherwise `8080` |
@@ -48,6 +48,6 @@ The listener is hard-scoped to the verified Momentum Movement guild and Dawn Dot
 
 - Keep the existing unleased Railway listener online while preparing and testing both new hosts.
 - Never run the old Railway listener concurrently with a new lease-aware owner.
-- For production cutover, stop/disable the old Railway listener first, then start the new primary and standby. Verify exactly one lease holder, one Gateway connection, and successful LIVE/event workflows.
+- For production cutover, stop/disable the old Railway listener first. Start Botkeep primary and verify it owns the lease and has one healthy Gateway connection. Then start Silly Development standby and verify it remains disconnected. Verify exactly one lease holder, one Gateway connection, and successful LIVE/event workflows.
 - For rollback, stop both new hosts before restarting the old Railway listener.
 - If the Railway service cannot be stopped safely or the new hosts cannot be verified, do not cut over.
