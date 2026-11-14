@@ -5,9 +5,9 @@
 - The /interaction route rejects requests without a valid per-service HMAC-SHA256 signature and a timestamp within 60 seconds.
 - The exact raw request body is signed before JSON parsing; body size is limited to 256 KiB.
 - Separate secrets are required for Bot 005 and the independent Coaching Interaction Relay.
-- Required environment variables: DISCORD_BOT_TOKEN, AUTHORIZED_GUILD_ID, APPLICATION_ID, COACHING_BOT005_AUTH_SECRET, COACHING_RELAY_AUTH_SECRET, WRITES_ENABLED.
+- Required environment variables: DISCORD_BOT_TOKEN, AUTHORIZED_GUILD_ID, APPLICATION_ID, COACHING_BOT005_AUTH_SECRET, COACHING_RELAY_AUTH_SECRET, COACHING_IDEMPOTENCY_URL, COACHING_IDEMPOTENCY_TOKEN, WRITES_ENABLED.
 - /readyz is a read-only health endpoint. Do not expose a public endpoint until both source secrets are provisioned and the candidate is deployed behind HTTPS.
-- Interaction IDs are deduplicated by a process-local map. This does not survive workflow restarts; a durable idempotency store is a mandatory blocker before public exposure.
+- Interaction IDs are claimed in the Cloudflare Durable Object SQLite store before dispatch, with a seven-day retention window; the local map is only a short-lived duplicate fast path. A successful durable claim is at-most-once: a crash after claim but before dispatch can require manual recovery.
 - No production service, database, or deployment has been changed.
 
 ---
@@ -16,7 +16,7 @@
 const G="1565048205970767992",APP="1565304619838742598",REQUEST="1569552594727215164",MANAGEMENT="1569552611995287745",VOICE="1569552605003124883",MOD="1565407676580499616",ADMIN="1565547110944735272";
 const API="https://discord.com/api/v10",token=()=>Bun.env.DISCORD_BOT_TOKEN||"";
 const { verifyCoachingRequest } = await import("../../implementation/coaching-workflow-auth.mjs");
-let ready=false,ownerId=null,lastError=null;
+let ready=false,ownerId=null,lastError=null,coachingIdempotencyEndpoint=null;
 const seenInteractions=new Map(),formSessions=new Map(),pendingActions=new Set();
 const activeStatuses=new Set(["Pending Review","Awaiting Member Response","Approved - Scheduling","Scheduled","Active Coaching"]);
 const closedStatuses=new Set(["Completed","Declined","Withdrawn","Cancelled"]),pendingUsers=new Set();
@@ -401,6 +401,20 @@ async function bootstrap(){
  try{
   const botAuthSecret=Bun.env.COACHING_BOT005_AUTH_SECRET||"",relayAuthSecret=Bun.env.COACHING_RELAY_AUTH_SECRET||"";
   if(botAuthSecret.length<32||botAuthSecret.length>512||relayAuthSecret.length<32||relayAuthSecret.length>512||botAuthSecret===relayAuthSecret)throw Error("Distinct Bot 005 and Relay authentication secrets are required");
+  const idempotencyToken=Bun.env.COACHING_IDEMPOTENCY_TOKEN||"";
+  let idempotencyUrl;
+  try{idempotencyUrl=new URL(Bun.env.COACHING_IDEMPOTENCY_URL||"")}catch{throw Error("Durable coaching idempotency endpoint is invalid")}
+  const idempotencyHost=idempotencyUrl.hostname.toLowerCase().replace(/\\.$/,"");
+  if(idempotencyToken.length<32||idempotencyToken.length>512||
+     idempotencyUrl.protocol!=="https:"||idempotencyUrl.pathname!=="/coaching/interaction/claim"||
+     idempotencyUrl.username||idempotencyUrl.password||idempotencyUrl.search||idempotencyUrl.hash||
+     idempotencyHost==="localhost"||idempotencyHost.endsWith(".localhost")||
+     idempotencyHost.endsWith(".local")||idempotencyHost.endsWith(".internal")||
+     idempotencyHost.includes("railway")||idempotencyHost.endsWith(".rlwy.net")||
+     /^\\d{1,3}(\\.\\d{1,3}){3}$/.test(idempotencyHost)||idempotencyHost.startsWith("[")) {
+   throw Error("Public HTTPS durable coaching idempotency endpoint and token are required");
+  }
+  coachingIdempotencyEndpoint=idempotencyUrl.href;
   if(Bun.env.AUTHORIZED_GUILD_ID!==G||Bun.env.APPLICATION_ID!==APP||!token()||Bun.env.WRITES_ENABLED!=="true")throw Error("Guild, application, token, or write authorization mismatch");
   const [self,guild,request,management,voice]=await Promise.all([api("GET","/users/@me"),api("GET","/guilds/"+G),api("GET","/channels/"+REQUEST),api("GET","/channels/"+MANAGEMENT),api("GET","/channels/"+VOICE)]);
   if(self.id!==APP||guild.id!==G||request.guild_id!==G||management.guild_id!==G||voice.guild_id!==G||request.type!==0||management.type!==0||voice.type!==2)throw Error("Coaching channel identity/type verification failed");
@@ -568,10 +582,23 @@ Bun.serve({hostname:"0.0.0.0",port:Number(Bun.env.PORT||3000),async fetch(req){
   if(!auth.ok)return Response.json({error:"unauthorized"},{status:401});
   let i;try{i=JSON.parse(rawBody)}catch{return Response.json({error:"invalid-json"},{status:400})}
   if(!i||typeof i!=="object"||Array.isArray(i)||typeof i.id!=="string"||
-     !String(i?.data?.custom_id||"").startsWith("coach:"))return Response.json({ignored:true});
-  if(!ready)return Response.json({error:"not-ready",lastError},{status:503});
+     !/^\\d{17,22}$/.test(i.id)||!String(i?.data?.custom_id||"").startsWith("coach:"))return Response.json({ignored:true});
+  if(!ready||!coachingIdempotencyEndpoint)return Response.json({error:"not-ready",lastError},{status:503});
   const now=Date.now();for(const [key,ts] of seenInteractions)if(now-ts>900000)seenInteractions.delete(key);
   if(seenInteractions.has(i.id))return Response.json({duplicate:true});
+  let claimResponse,claimPayload;
+  try{
+   claimResponse=await fetch(coachingIdempotencyEndpoint,{
+    method:"POST",
+    headers:{authorization:"Bearer "+(Bun.env.COACHING_IDEMPOTENCY_TOKEN||""),"content-type":"application/json",accept:"application/json"},
+    body:JSON.stringify({interactionId:i.id,source:auth.source}),
+    signal:AbortSignal.timeout(5000)
+   });
+   claimPayload=await claimResponse.json();
+  }catch{return Response.json({error:"idempotency-unavailable"},{status:503})}
+  if(!claimResponse.ok||claimPayload?.ok!==true||typeof claimPayload.claimed!=="boolean")
+   return Response.json({error:"idempotency-unavailable"},{status:503});
+  if(!claimPayload.claimed)return Response.json({duplicate:true});
   seenInteractions.set(i.id,now);void handle(i);return Response.json({accepted:true});
  }
  return Response.json({error:"not-found"},{status:404});
