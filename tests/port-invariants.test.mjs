@@ -120,3 +120,15 @@ test("oversized MCP and OAuth bodies are rejected with HTTP 413", () => {
 test("declared Content-Length is validated as decimal digits", () => {
   assert.ok(source.includes('!/^\\d+$/.test(declared)'));
 });
+
+test("MCP requests validate JSON-RPC 2.0 envelopes and identifiers", () => {
+  assert.match(source, /function validJsonRpcRequest/);
+  assert.match(source, /rpc\.jsonrpc!=="2\.0"/);
+  assert.match(source, /Number\.isFinite\(rpc\.id\)/);
+});
+
+test("malformed JSON-RPC requests return protocol errors and notifications do not execute", () => {
+  assert.match(source, /code:-32700,message:"Parse error"/);
+  assert.match(source, /code:-32600,message:"Invalid Request"/);
+  assert.match(source, /if\(!Object\.prototype\.hasOwnProperty\.call\(rpc,"id"\)\)return new Response\(null,\{status:202\}\)/);
+});
