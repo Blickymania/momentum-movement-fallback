@@ -1,5 +1,4 @@
 import {
-  GatewayOpcode,
   parseGatewayFrame,
   createIdentify,
   createResume,
@@ -63,7 +62,7 @@ function initialSession(id) {
 }
 
 function parseSocketData(event) {
-  return event && Object.prototype.hasOwnProperty.call(event, "data") ? event.data : event;
+  return event && typeof event === "object" && "data" in event ? event.data : event;
 }
 
 function eventMethod(socket, type, handler) {
@@ -254,6 +253,7 @@ export class GatewayCoordinatorCore {
       state.lastError = null;
       state.reconnectAt = null;
       state.heartbeatAt = null;
+      state.heartbeatInterval = null;
       state.heartbeatAckDeadline = null;
       state.awaitingHeartbeatAck = false;
       const generation = state.generation;
@@ -296,6 +296,11 @@ export class GatewayCoordinatorCore {
       this.log("gateway_socket_connecting", { clientId: id, generation, resume });
       return true;
     } catch (error) {
+      const failedSocket = this.sockets.get(id);
+      if (failedSocket) {
+        this.sockets.delete(id);
+        try { failedSocket.close(1011, "Gateway adapter initialization failed"); } catch {}
+      }
       state.lastError = String(error?.message || "gateway_connect_failed").slice(0, 120);
       state.status = "reconnect_wait";
       state.reconnectAttempt += 1;
@@ -329,11 +334,19 @@ export class GatewayCoordinatorCore {
         socket.close(4004, "Gateway protocol configuration failure");
         break;
       case "identify":
-        await this.sendIdentify(id, socket);
+      case "resume": {
+        state.heartbeatInterval = decision.heartbeatInterval;
+        state.heartbeatAt = this.now() + heartbeatJitterDelay(
+          decision.heartbeatInterval,
+          this.random(),
+        );
+        state.heartbeatAckDeadline = null;
+        state.awaitingHeartbeatAck = false;
+        await this.persistSession(id, state);
+        if (decision.action === "resume") await this.sendResume(id, socket);
+        else await this.sendIdentify(id, socket);
         break;
-      case "resume":
-        await this.sendResume(id, socket);
-        break;
+      }
       case "send_heartbeat":
         await this.sendHeartbeat(id, socket, saved.sequence);
         break;
