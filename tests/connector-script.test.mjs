@@ -24,7 +24,13 @@ test("connector keeps Railway and Cloudflare credentials out of logs and argv", 
   assert.match(script, /printf '%s' "\$CLOUDFLARE_TUNNEL_TOKEN" > "\$TOKEN_FILE"/);
   assert.match(script, /unset RAILWAY_TOKEN[\s\S]*cloudflared tunnel/);
   assert.match(script, /--token-file "\$TOKEN_FILE"/);
+  assert.match(script, /cloudflared tunnel --protocol quic/);
   assert.doesNotMatch(script, /cloudflared tunnel[^\n]*--token "\$CLOUDFLARE_TUNNEL_TOKEN"/);
+});
+
+test("connector forces QUIC for Workers VPC transport", async () => {
+  const script = await readFile(scriptUrl, "utf8");
+  assert.match(script, /cloudflared tunnel --protocol quic --no-autoupdate/);
 });
 
 test("connector never creates a public Railway TCP proxy", async () => {
