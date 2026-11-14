@@ -37,6 +37,7 @@ The three updated files were fetched back from GitHub and their blob SHAs verifi
 - `sh -n` shell syntax check: passed as part of that native test.
 - Version comparison boundary checks: 2025.6.x rejected; 2025.7.0, 2025.7.1, and 2026.0.0 accepted.
 - Five additional exact-blob source assertions: 5/5 passed for version guard, Railway output suppression, token-file handling, no public Railway TCP proxy, and version regression test presence.
+- The available global TypeScript 5.8.3 compiler passed a standalone **strict** `--noEmit` typecheck of the exact `src/failover-router.ts` source. This is a narrow router-only check; it does not replace the project's declared TypeScript 5.9.x dependency or typecheck the Worker entrypoint and its external typings.
 - These checks cover the connector script only. They do not validate the complete project TypeScript dependency graph, Wrangler bundling, Cloudflare deployment, live Railway SSH connectivity, VPC routing, Hyperdrive connectivity, OAuth database operations, or Discord manager behavior.
 
 ## Remaining blockers
