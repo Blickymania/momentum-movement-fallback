@@ -37,6 +37,10 @@ Add a real, persistent rules-acceptance workflow to the recovered Bot 005 candid
 - The existing private member-record vault is `1570614206926033077`; its permissions already restrict it to the bot. It had no messages when inspected.
 - Discord manager audit remains clean; no production write was made in this cycle.
 
+## CI runner result
+
+The repository's existing `.github/workflows/failover-tests.yml` is configured to run `npm test` when `implementation/**`, `candidate/**`, or `package.json` changes. Eleven push-triggered workflow runs were returned for this working branch. Each ended with GitHub Actions conclusion `startup_failure` before a job was created; the latest run's jobs endpoint returned `total_count: 0`. This is a runner/workflow-startup failure, not a failing test assertion. The focused 12-test local run remains the only executed test result for this feature. Do not claim remote CI success or repeatedly rerun the same failed workflow until the runner startup issue is resolved.
+
 ## Current production state
 
 - Production Bot 005 remains the primary Gateway owner on Railway.
