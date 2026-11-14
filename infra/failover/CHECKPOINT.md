@@ -489,3 +489,12 @@ No production service, variable, DB, volume, route, credential, schedule, Discor
 - No production service, database, schema, OAuth data, credential, Railway variable, route, or DNS change occurred.
 - The schema parity finding removes one compatibility uncertainty, but it does not prove the production Manager's `OAUTH_DATABASE_URL` target or database backup/restore coverage.
 - Next: obtain an owner-visible safe confirmation of the Manager's `OAUTH_DATABASE_URL` service reference; then verify backups and an isolated restore for that exact service. Keep Neon staging disabled and Northflank routing inactive until these gates and real tests pass.
+
+
+## Cycle 24 — quantify current PostgreSQL footprint (2026-11-14 UTC)
+
+- Read-only Railway service metrics over the last 24 hours (1,441 samples each) show current `DISK_USAGE_GB` of **0.068952064 GB** for `OAuth PostgreSQL` and **0.15433728 GB** for the separate `Postgres` service.
+- These are Railway service disk usage metrics, not exact logical database size, dump size, or confirmed recoverable backup size; use them only as rough staging/restore capacity context.
+- The existing daily backup worker has 168-hour metrics, but its network-flow destination matches `Postgres`, not `OAuth PostgreSQL`. Its successful archived dumps remain evidence only for the separate database.
+- No production DB queries, backups, migrations, service changes, or new schedules were created in this cycle.
+- Exact Manager target remains blocked on the redacted `OAUTH_DATABASE_URL` service reference. Next, have the owner confirm that one reference within the Railway dashboard or an authorized non-redacted Railway API token session; do not expose the full secret URL in chat.
