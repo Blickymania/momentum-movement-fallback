@@ -55,7 +55,7 @@ RETURNING lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch, l
           heartbeat_at_ms, deployment_id`;
 
 const READ_SQL = `
-SELECT lease_scope, owner_id, fencing_epoch, lease_until_ms,
+SELECT lease_scope, owner_id, CAST(fencing_epoch AS TEXT) AS fencing_epoch, lease_until_ms,
        heartbeat_at_ms, deployment_id,
        lease_until_ms > ? AS lease_active
 FROM gateway_ownership
@@ -73,6 +73,16 @@ function requiredTtl(value = DEFAULT_TTL_SECONDS) {
     throw new RangeError("lease_ttl_seconds_must_be_10_to_120");
   }
   return value;
+}
+
+function requiredEpoch(value) {
+  const text = String(value ?? "");
+  if (!/^\\d{1,16}$/.test(text)) throw new TypeError("fencing_epoch_invalid");
+  const number = Number(text);
+  if (!Number.isSafeInteger(number) || number < 1) {
+    throw new TypeError("fencing_epoch_invalid");
+  }
+  return number;
 }
 
 function first(cursor) {
@@ -127,8 +137,7 @@ export class GatewayLeaseCoordinator {
     const owner = requiredString(ownerId, "owner_id");
     const deployment = requiredString(deploymentId, "deployment_id");
     const ttl = requiredTtl(ttlSeconds);
-    const epoch = String(fencingEpoch ?? "");
-    if (!/^\\d{1,20}$/.test(epoch)) throw new TypeError("fencing_epoch_invalid");
+    const epoch = requiredEpoch(fencingEpoch);
     const now = this.now();
     return first(this.sql.exec(
       RENEW_SQL,
