@@ -145,3 +145,25 @@ test("router excludes origins already attempted during safe-read failover", asyn
   assert.match(router, /excluded\.add\(current\.name\)/);
   assert.match(router, /if \(excluded\.has\(candidate\.name\)\) continue/);
 });
+
+test("router accepts only credential-free HTTPS origin roots", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /url\.protocol !== "https:"/);
+  assert.match(router, /url\.username \|\| url\.password/);
+  assert.match(router, /url\.pathname !== "\/"/);
+  assert.match(router, /url\.search \|\| url\.hash/);
+});
+
+test("router rewrites only the upstream origin and strips URL credentials", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /const target = new URL\(incomingUrl\)/);
+  assert.match(router, /target\.protocol = upstream\.protocol/);
+  assert.match(router, /target\.host = upstream\.host/);
+  assert.match(router, /target\.username = ""/);
+  assert.match(router, /target\.password = ""/);
+});
+
+test("router readiness reports verified upstream Discord identity", async () => {
+  const router = await readFile(new URL("../src/failover-router.ts", import.meta.url), "utf8");
+  assert.match(router, /status: "ready", manager: MANAGER_NAME, discordVerified: true/);
+});
