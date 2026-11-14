@@ -4,17 +4,32 @@ This connector is a candidate path for the isolated Cloudflare failover Worker. 
 
 ## Architecture
 
-`Cloudflare Worker → Hyperdrive → Workers VPC TCP Service → cloudflared Tunnel → 127.0.0.1:15432 → Railway CLI SSH tunnel → private OAuth PostgreSQL`
+`Cloudflare Worker → Hyperdrive → Workers VPC TCP Service → cloudflared Tunnel → localhost:15432 → Railway CLI SSH tunnel → private OAuth PostgreSQL`
 
-Railway documents `railway connect --tunnel-only` as an SSH tunnel to a database when no public TCP proxy exists. The CLI prints database connection details, so the script suppresses all Railway CLI output. Cloudflare documents `cloudflared tunnel run --token-file`, so the tunnel token is written to a mode-600 temporary file rather than passed in process arguments.
+Railway documents `railway connect --tunnel-only` as an SSH tunnel that binds a local listener at `127.0.0.1:<port>` when no public TCP proxy exists. Cloudflare's Workers VPC getting-started guide explicitly supports `localhost` as a VPC Service host, so the intended service target is `localhost:15432` on the same host running `cloudflared`. This loopback route still requires an end-to-end TCP test before production use.
+
+Cloudflare Workers VPC requires `cloudflared` version **2025.7.0 or later**. The connector checks this prerequisite before creating temporary files or starting either tunnel process. Cloudflare also documents `cloudflared tunnel run --token-file`, so the tunnel token is written to a mode-600 temporary file rather than passed in process arguments.
+
+Example VPC Service creation (replace the tunnel ID with the newly created Dawn-specific tunnel):
+
+```sh
+npx wrangler vpc service create dawn-dotta-oauth-postgres \
+  --type tcp \
+  --tcp-port 15432 \
+  --app-protocol postgresql \
+  --tunnel-id <DAWN_TUNNEL_ID> \
+  --hostname localhost
+```
+
+The resulting VPC Service ID is then used by the Hyperdrive configuration. Do not create these resources until the isolated end-to-end test plan and account permissions are confirmed.
 
 ## Requirements
 
-- A trusted, continuously running Linux/macOS host with `railway`, `cloudflared` 2025.4.0 or later (for `--token-file`), and `nc` installed.
+- A trusted, continuously running Linux/macOS host with `railway`, `cloudflared` 2025.7.0 or later, and `nc` installed.
 - A Railway **project-scoped** token in `RAILWAY_TOKEN` (do not use a workspace token unless the CLI proves project-token access is insufficient).
 - The exact Dawn production project ID, production environment ID, and OAuth PostgreSQL service ID.
 - A remotely managed Cloudflare Tunnel token, stored as `CLOUDFLARE_TUNNEL_TOKEN`.
-- A Cloudflare Workers VPC TCP Service targeting `127.0.0.1:15432` on this tunnel connection.
+- A Cloudflare Workers VPC TCP Service targeting `localhost:15432` on this tunnel connection.
 
 ## Runtime variables
 
@@ -33,7 +48,7 @@ Run `sh infra/connector/railway-cloudflare-tunnel.sh` after installing the requi
 - Runs from a temporary working directory, so Railway link metadata is not written into the repository.
 - Suppresses Railway CLI stdout/stderr because `--tunnel-only` prints database connection credentials.
 - Writes the Cloudflare tunnel token to a temporary file with restrictive permissions and removes it on exit.
-- Waits up to 60 seconds for the local database tunnel before starting cloudflared.
+- Waits up to 60 seconds for the Railway SSH database tunnel before starting cloudflared.
 - If either tunnel process exits, stops the connector with a non-zero status. A host/container supervisor may restart it; this script creates no cron or scheduled job.
 - Does not read or write database credentials directly, migrate records, change production services, or change DNS.
 
