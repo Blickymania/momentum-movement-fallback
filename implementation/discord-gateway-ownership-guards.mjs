@@ -11,7 +11,8 @@ export function installGatewayOwnershipGuards({
   leaseCoordinatorUrl,
   fetchTarget = globalThis
 }) {
-  if (!client || typeof client.on !== "function" || typeof client.once !== "function") {
+  if (!client || typeof client.login !== "function" ||
+      typeof client.on !== "function" || typeof client.once !== "function") {
     throw new TypeError("discord_client_event_api_required");
   }
   if (!client.rest || typeof client.rest.request !== "function") {
