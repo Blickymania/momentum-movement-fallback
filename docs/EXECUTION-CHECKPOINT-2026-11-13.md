@@ -1,6 +1,6 @@
 # Execution Checkpoint — Dawn Dotta / Momentum Movement Failover
 
-Updated: 2026-11-13 US Eastern (latest execution through 2026-11-14 03:xx UTC)
+Updated: 2026-11-13 US Eastern (latest execution through 2026-11-14 03:22 UTC)
 
 ## Project and locked architecture
 Dawn Dotta / Momentum Movement — Railway-independent Core Shadow / Bot 005 failover.
@@ -74,7 +74,7 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 ## Verified state now
 - Lease module committed; mock-backed local tests: 6/6 passed.
 - Independent Node preflight service and tests committed; local Node tests: 8/8 passed.
-- GitHub Actions last inspected run: startup_failure, zero jobs; cause still unknown.
+- GitHub Actions latest run \`43551272700\`: startup_failure, zero jobs; cause still unknown. An exact local Git blob comparison confirmed both newly committed preflight source and test files match the versions that passed the local 8-test run.
 - Render workspace confirmed; services inventory inconclusive; no Render Postgres or Key Value instances listed.
 - No independent coordination database is connected.
 - No independent standby runtime is deployed.
