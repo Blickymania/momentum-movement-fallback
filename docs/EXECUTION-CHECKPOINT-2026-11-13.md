@@ -448,3 +448,53 @@ The prior automation inventory contained 25 tasks. Relevant five-server/Dawn/Mom
 ## Render credential isolation correction
 
 The unused helper that could combine a PostgreSQL/Cloudflare lease store with the Render API adapter inside a Bot process has been removed. The Render service fencer is now intentionally consumed only by cloudflare/worker.mjs. Bot-side code uses only cloudflare-fence-request-client.mjs, which sends candidate identity and a deployment-specific request token to the Worker; it never imports a Render API client or receives the Render API key. The current component suite no longer includes the two removed helper-wrapper tests. The Render fencer suite is 7/7, and the Worker-to-Render-to-Durable-Object flow remains separately simulated.
+
+
+## Cycle 12 — Durable Object identity enforcement and refreshed test verification
+
+### Implemented
+- Moved owner/deployment identity validation into the Durable Object itself. The coordinator now requires owner IDs in the form deployment-id:process-uuid for bootstrap and acquire.
+- Fence confirmation reads the current stored lease and verifies that:
+  - the previous owner's ID is prefixed by the deployment ID stored in the current lease row;
+  - the candidate owner ID is prefixed by the requested candidate deployment ID;
+  - the previous owner, previous fencing epoch, target owner and target deployment still match the exact expired lease/fence record before updating.
+- The Worker retains its own deployment-prefix and per-deployment token checks as a second boundary; a bot cannot bypass identity binding by calling the Durable Object method through an unintended route.
+- The Render fencer independently validates the previous and candidate owner/deployment binding before it calls the Render API.
+- Fixed two local harness mismatches: the Render test referred to an outdated helper name; the local helper now uses its actual options() name. The coordinator test was verified against the current prefix validation.
+- No production application source, runtime, or cloud account resource was changed.
+
+### Exact local test command and result
+A combined Node.js v22.16.0 invocation over isolated working directories completed:
+- Durable Object + Render fencer: 14 passed
+- Worker controller + fence requester + egress guard: 15 passed
+- Prepared Discord owner adapter: 5 passed
+- Provider-neutral hard-stop controller: 8 passed
+- Shared lease + Gateway supervisor + independent preflight: 23 passed
+- **Total: 65 tests, 65 passed, 0 failed.**
+
+This invocation used reconstructed local component folders, Node's SQLite engine, mocked Discord clients, simulated Worker/DO boundaries, and fake Render HTTP responses. It is not a clean checkout's npm test run, GitHub-hosted CI run, Cloudflare edge execution, real Render suspension, or live Discord Gateway failover.
+
+### Current GitHub Actions state
+- Latest run inspected: `43556643815`, commit `3d06db570263be426a62a846ffac64a2e044673c`, completed with `startup_failure`.
+- Jobs endpoint returned an empty jobs array. No GitHub runner started and no job output exists.
+- Immediately preceding runs `43556634163` and `43556557762` had the same result.
+- Exact account/repository Actions startup root cause remains unknown. Do not attribute it to billing, policy, permissions, or workflow YAML without evidence and do not keep creating commits merely to trigger repeat failures.
+
+### Verified remaining blockers
+- Cloudflare Worker and Durable Object remain undeployed; Cloudflare account authentication expired during read-only inspection. Account plan, quota usage, Worker/DO inventory, and existing namespaces remain unknown.
+- Render service list still returns literal null from the connector, which is inconclusive; no Render services, databases or Key Value resources were provisioned.
+- Current production Bot 005 still runs on Railway. The Render service suspension adapter cannot stop it. The first cutover requires a manual, independently verified shutdown of the old Railway Gateway and one-time operator bootstrap. The automated Render suspend/readback hard fence is only usable after both primary and standby are hosted as distinct Render services.
+- Recovered Bot 005 source has not been integrated with the guard or prepared owner adapter. Exact production Bun/Discord.js version and client.rest.request mutability remain unverified.
+- The hard-coded coaching workflow endpoint remains Railway-internal; ownership guard rejects it. Migrate that service and its state/features to public HTTPS before claiming independent operation.
+- Discord Manager OAUTH_DATABASE_URL host remains unknown; no credential has been printed or copied.
+- No live Gateway lease integration, Render service stop, Cloudflare edge test, production standby login, failover/failback, or rollback has been performed.
+
+### Next execution gates
+1. Resolve Render service inventory using the authenticated Render UI/API or obtain a trustworthy list response from the correct workspace. Do not infer the workspace is empty from null.
+2. Restore Cloudflare sign-in and inspect actual account plan, usage, existing Workers and Durable Objects read-only.
+3. Verify the persistent runtime pricing, service type, and exact service identifiers for two independent deployments before any provisioning.
+4. Reconstruct the production Bot 005's exact Bun/Discord.js dependencies and test method interception against that real version; do not patch the recovered source until that check and rollback path are ready.
+5. Migrate the coaching workflow and audit the Discord Manager OAuth DB location without disclosing secrets.
+6. Build the separate candidate Bot 005 source, install guards before every application listener, and connect actual Ready/guild identity verification to the prepared owner.
+7. Complete the manual Railway shutdown/verification plan and operator bootstrap authorization; never bootstrap before the old Gateway is provably closed.
+8. Deploy only authorized preproduction resources, then run Cloudflare edge, Render suspend/readback, expiry, stale epoch, lease-store outage, split-brain, late-login, duplicate-event, and rollback tests.
