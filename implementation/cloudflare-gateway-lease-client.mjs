@@ -8,7 +8,8 @@ function validateBaseUrl(raw) {
       host.endsWith(".localhost") || host.endsWith(".local") ||
       host.endsWith(".internal") || host.endsWith(".lan") ||
       host.endsWith(".home") || host.endsWith(".test") ||
-      host.endsWith(".invalid") || !host.includes(".") ||
+      host.endsWith(".invalid") || host.endsWith(".example") ||
+      host.endsWith(".onion") || !host.includes(".") ||
       host.startsWith("[") && host.endsWith("]") ||
       /^\d{1,3}(\.\d{1,3}){3}$/.test(host) ||
       url.username || url.password || url.search || url.hash) {
