@@ -35,7 +35,8 @@ test("Manager static bearer authentication supports neutral name and legacy comp
 
 test("Northflank deployment guidance prevents accidental paid provisioning and public database exposure", () => {
   assert.match(deployment, /no credit card required/i);
-  assert.match(deployment, /Do not select Pay as You Go/);
+  assert.match(deployment, /do not assume the full Manager \+ database stack fits for free/i);
+  assert.match(deployment, /do not select Pay as You Go/i);
   assert.match(deployment, /Do not expose the database publicly/);
   assert.match(deployment, /WRITES_ENABLED=false/);
   assert.match(deployment, /oauthDatabaseVerified: true/);
@@ -67,4 +68,25 @@ test("Cloudflare Worker fallback verifies PostgreSQL before reporting database r
 test("Northflank Manager OAuth database variable must point to the shared data plane", () => {
   assert.ok(deployment.includes("connection string for the selected shared OAuth data plane"));
   assert.ok(deployment.includes("must not point to an isolated Northflank-only production database"));
+});
+
+test("Neon Free candidate documents current quota and fixed scale-to-zero limits", () => {
+  assert.match(deployment, /100 CU-hours per project per month/);
+  assert.match(deployment, /1 GB PostgreSQL storage per project/);
+  assert.match(deployment, /5 GB public network transfer per project per month/);
+  assert.match(deployment, /Scale-to-zero after five minutes/i);
+  assert.match(deployment, /reactivation.*few hundred milliseconds/i);
+});
+
+test("Neon Free candidate documents network security and no artificial keepalive", () => {
+  assert.match(deployment, /IP Allow is currently a Scale-plan feature/);
+  assert.match(deployment, /strong unique credentials, TLS, secret-manager-only storage, least privilege/);
+  assert.match(deployment, /No periodic ping or keepalive should be added/);
+});
+
+test("Northflank compute estimate does not claim full Manager plus database fits in Sandbox", () => {
+  assert.match(deployment, /nf-compute-50.*\$12\.00\/month/);
+  assert.match(deployment, /nf-compute-100-2.*\$24\.00\/month/);
+  assert.match(deployment, /nf-compute-200:.*\$48\.00\/month/);
+  assert.match(deployment, /\$25\.17\/month and exceeds the Sandbox allowance/);
 });
