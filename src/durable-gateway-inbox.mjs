@@ -135,6 +135,20 @@ export class DurableGatewayInbox {
     return this.getState();
   }
 
+  async clearSession() {
+    await this.storage.transaction(async (txn) => {
+      const state = await txn.get(this.stateKey);
+      await txn.put(this.stateKey, {
+        ...(state ?? {}),
+        sessionId: null,
+        sequence: null,
+        resumeGatewayUrl: null,
+        updatedAt: Date.now(),
+      });
+    });
+    return this.getState();
+  }
+
   async enqueueDispatch(input) {
     const event = validateEvent(input);
     const bytes = jsonSize(event);
