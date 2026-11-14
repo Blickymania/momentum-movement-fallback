@@ -58,15 +58,28 @@ export function prepareFencedDiscordGatewayOwner({
   let closed = false;
   let applicationReady = false;
   let startPromise = null;
-  let destroyPromise = null;
+  let destroyInFlight = null;
+  let releaseVerified = false;
   const loginAbortController = new AbortController();
 
   function destroyClientOnce() {
-    if (!destroyPromise) {
-      destroyPromise = Promise.resolve().then(() => client.destroy());
+    if (!destroyInFlight) {
+      destroyInFlight = Promise.resolve()
+        .then(() => client.destroy())
+        .finally(() => { destroyInFlight = null; });
     }
-    return destroyPromise;
+    return destroyInFlight;
   }
+
+  const supervisedLeaseStore = {
+    acquire: input => leaseStore.acquire(input),
+    renew: input => leaseStore.renew(input),
+    async release(input) {
+      const result = await leaseStore.release(input);
+      if (result) releaseVerified = true;
+      return result;
+    }
+  };
   const readinessWaiters = new Set();
 
   function settleReadiness() {
@@ -100,7 +113,7 @@ export function prepareFencedDiscordGatewayOwner({
       const run = (async () => {
         try {
           supervisor = await startGatewayOwner({
-          leaseStore,
+          leaseStore: supervisedLeaseStore,
           scope: GATEWAY_LEASE_SCOPE,
           ownerId: processOwner,
           deploymentId: deployment,
@@ -118,9 +131,16 @@ export function prepareFencedDiscordGatewayOwner({
                 reject(new Error("gateway_start_aborted"));
               };
               signal.addEventListener("abort", onAbort, { once: true });
-              Promise.resolve()
+                    Promise.resolve()
                 .then(() => client.login(botToken))
-                .then(value => { cleanup(); resolve(value); }, error => { cleanup(); reject(error); });
+                .then(value => {
+                  cleanup();
+                  if (signal.aborted || closed) {
+                    void destroyClientOnce().catch(() => {});
+                    return;
+                  }
+                  resolve(value);
+                }, error => { cleanup(); reject(error); });
               if (signal.aborted) onAbort();
             });
           },
@@ -198,8 +218,7 @@ export function prepareFencedDiscordGatewayOwner({
         loginAbortController.abort(reason);
         await destroyClientOnce().catch(() => {});
         await startPromise.catch(() => {});
-        const current = await leaseStore.read().catch(() => null);
-        return { released: !current || !(current.lease_active === true || current.lease_active === 1), alreadyStopped: false };
+        return { released: releaseVerified, alreadyStopped: false };
       }
       if (!supervisor?.ok) {
         guards.revoke();
