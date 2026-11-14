@@ -5,8 +5,11 @@ import { GatewayLeaseCoordinator, GATEWAY_LEASE_SCOPE } from "../cloudflare/gate
 import { startGatewayOwner } from "./gateway-owner-supervisor.mjs";
 import worker from "../cloudflare/worker.mjs";
 import { createCloudflareGatewayLeaseStore } from "./cloudflare-gateway-lease-client.mjs";
+import { createCloudflareGatewayFencingClient } from "./cloudflare-gateway-fencing-client.mjs";
 
 const token = "x".repeat(48);
+const bootstrapToken = "b".repeat(48);
+const fenceToken = "f".repeat(48);
 const lease = {
   lease_scope: "momentum-movement:discord-gateway",
   owner_id: "instance-1",
