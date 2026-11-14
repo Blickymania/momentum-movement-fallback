@@ -150,6 +150,7 @@ test("fences all direct fetch calls except the configured lease coordinator orig
   assert.equal(discordResponse.status, 200);
   const coachingResponse = await fetchTarget.fetch("https://coaching.example.com/interaction");
   assert.equal(coachingResponse.status, 200);
+  assert.throws(() => fetchTarget.fetch("http://coaching-workflow.railway.internal:3000/interaction"), /railway_dependency_forbidden/);
   assert.equal(fetchTarget.calls.length, 3);
 
   guard.revoke();
