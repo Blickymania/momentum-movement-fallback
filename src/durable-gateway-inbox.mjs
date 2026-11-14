@@ -4,6 +4,21 @@ const STATE_KEY = "gateway:state";
 const META_KEY = "gateway:inbox:meta";
 const EVENT_PREFIX = "gateway:inbox:event:";
 
+function namespaceKeys(namespace = "") {
+  if (namespace === "") {
+    return { stateKey: STATE_KEY, metaKey: META_KEY, eventPrefix: EVENT_PREFIX };
+  }
+  if (typeof namespace !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(namespace)) {
+    throw new TypeError("Gateway inbox namespace must be a safe 1-64 character identifier");
+  }
+  const prefix = "gateway:" + namespace + ":";
+  return {
+    stateKey: prefix + "state",
+    metaKey: prefix + "inbox:meta",
+    eventPrefix: prefix + "inbox:event:",
+  };
+}
+
 export class InboxFullError extends Error {
   constructor(message = "Gateway event inbox is full; the Gateway must pause until queued events are delivered") {
     super(message);
@@ -18,8 +33,8 @@ export class InboxIntegrityError extends Error {
   }
 }
 
-function eventStorageKey(eventKey) {
-  return EVENT_PREFIX + encodeURIComponent(eventKey);
+function eventStorageKey(prefix, eventKey) {
+  return prefix + encodeURIComponent(eventKey);
 }
 
 function jsonSize(value) {
@@ -53,6 +68,7 @@ export class DurableGatewayInbox {
       throw new TypeError("SQLite-backed Durable Object storage is required");
     }
     this.storage = storage;
+    Object.assign(this, namespaceKeys(options.namespace ?? ""));
     this.maxPendingEvents = options.maxPendingEvents ?? 2000;
     this.maxPendingBytes = options.maxPendingBytes ?? 4 * 1024 * 1024;
     this.maxEventBytes = options.maxEventBytes ?? 256 * 1024;
@@ -73,13 +89,13 @@ export class DurableGatewayInbox {
 
   async initialize() {
     await this.storage.transaction(async (txn) => {
-      const meta = await txn.get(META_KEY);
+      const meta = await txn.get(this.metaKey);
       if (meta === undefined) {
-        await txn.put(META_KEY, { pendingEvents: 0, pendingBytes: 0, nextOrder: 0, updatedAt: Date.now() });
+        await txn.put(this.metaKey, { pendingEvents: 0, pendingBytes: 0, nextOrder: 0, updatedAt: Date.now() });
       }
-      const state = await txn.get(STATE_KEY);
+      const state = await txn.get(this.stateKey);
       if (state === undefined) {
-        await txn.put(STATE_KEY, {
+        await txn.put(this.stateKey, {
           sessionId: null,
           sequence: null,
           resumeGatewayUrl: null,
@@ -90,7 +106,7 @@ export class DurableGatewayInbox {
   }
 
   async getState() {
-    return (await this.storage.get(STATE_KEY)) ?? {
+    return (await this.storage.get(this.stateKey)) ?? {
       sessionId: null,
       sequence: null,
       resumeGatewayUrl: null,
@@ -107,14 +123,14 @@ export class DurableGatewayInbox {
     }
 
     await this.storage.transaction(async (txn) => {
-      const current = await txn.get(STATE_KEY);
+      const current = await txn.get(this.stateKey);
       const next = {
         sessionId: session.sessionId,
         sequence: session.sequence,
         resumeGatewayUrl: session.resumeGatewayUrl,
         updatedAt: Date.now(),
       };
-      await txn.put(STATE_KEY, next);
+      await txn.put(this.stateKey, next);
     });
     return this.getState();
   }
@@ -126,9 +142,9 @@ export class DurableGatewayInbox {
       throw new InboxFullError("Gateway event exceeds the configured per-event inbox limit");
     }
 
-    const key = eventStorageKey(event.key);
+    const key = eventStorageKey(this.eventPrefix, event.key);
     return this.storage.transaction(async (txn) => {
-      const state = await txn.get(STATE_KEY);
+      const state = await txn.get(this.stateKey);
       if (!state || state.sessionId !== event.sessionId ||
           !Number.isSafeInteger(state.sequence)) {
         throw new InboxIntegrityError("Gateway READY session must be stored before dispatch events");
@@ -145,7 +161,7 @@ export class DurableGatewayInbox {
         return { accepted: false, duplicate: true, eventKey: event.key };
       }
 
-      const meta = (await txn.get(META_KEY)) ?? { pendingEvents: 0, pendingBytes: 0 };
+      const meta = (await txn.get(this.metaKey)) ?? { pendingEvents: 0, pendingBytes: 0 };
       if (meta.pendingEvents + 1 > this.maxPendingEvents ||
           meta.pendingBytes + bytes > this.maxPendingBytes) {
         throw new InboxFullError();
@@ -168,12 +184,12 @@ export class DurableGatewayInbox {
       };
 
       await txn.put(key, record);
-      await txn.put(STATE_KEY, {
+      await txn.put(this.stateKey, {
         ...state,
         sequence: event.sequence,
         updatedAt: Date.now(),
       });
-      await txn.put(META_KEY, {
+      await txn.put(this.metaKey, {
         pendingEvents: meta.pendingEvents + 1,
         pendingBytes: meta.pendingBytes + bytes,
         nextOrder,
@@ -194,7 +210,7 @@ export class DurableGatewayInbox {
     let startAfter;
     while (pending.length < this.maxPendingEvents) {
       const pageLimit = Math.min(1000, this.maxPendingEvents - pending.length);
-      const options = { prefix: EVENT_PREFIX, limit: pageLimit };
+      const options = { prefix: this.eventPrefix, limit: pageLimit };
       if (startAfter !== undefined) options.startAfter = startAfter;
       const page = await this.storage.list(options);
       const entries = [...page.entries()];
@@ -221,18 +237,18 @@ export class DurableGatewayInbox {
     }
 
     return this.storage.transaction(async (txn) => {
-      const meta = (await txn.get(META_KEY)) ?? { pendingEvents: 0, pendingBytes: 0 };
+      const meta = (await txn.get(this.metaKey)) ?? { pendingEvents: 0, pendingBytes: 0 };
       let acknowledged = 0;
       let releasedBytes = 0;
       for (const eventKey of [...new Set(eventKeys)]) {
-        const key = eventStorageKey(eventKey);
+        const key = eventStorageKey(this.eventPrefix, eventKey);
         const record = await txn.get(key);
         if (record === undefined) continue;
         await txn.delete(key);
         acknowledged += 1;
         releasedBytes += record.payloadBytes;
       }
-      await txn.put(META_KEY, {
+      await txn.put(this.metaKey, {
         pendingEvents: Math.max(0, meta.pendingEvents - acknowledged),
         pendingBytes: Math.max(0, meta.pendingBytes - releasedBytes),
         updatedAt: Date.now(),
@@ -247,7 +263,7 @@ export class DurableGatewayInbox {
 
   async getMetrics() {
     const [meta, state] = await Promise.all([
-      this.storage.get(META_KEY),
+      this.storage.get(this.metaKey),
       this.getState(),
     ]);
     return {
