@@ -333,3 +333,22 @@ Continue repository/config compatibility audit and investigate any remaining sou
 
 ### Exact next execution step
 Continue investigating a genuine executable build path or a runner-side cause for the GitHub Actions startup failure. Do not claim the Worker is deployable until native test, typecheck, and Wrangler dry-run pass.
+
+
+## OAuth least-privilege scope cycle — implemented and exercised
+
+- Changed the default OAuth scope from read+write to read-only (`mcp:read`) when a client omits the scope parameter.
+- Explicit `mcp:read mcp:write` remains supported; write-only and unknown scopes remain rejected. This prevents a missing scope parameter from silently granting write access.
+- Source commit is the branch commit that introduced `String(value||"mcp:read")`; the file read-back confirms the exact change.
+- Added a static test for the least-privilege default.
+- Executed the extracted actual scope-normalization function in isolated V8: omitted scope → read-only; explicit read → read-only; explicit read+write → preserved; write-only → rejected; unknown scope → rejected. All five cases passed.
+- Re-executed the complete source test harness after this change: **31 actual test callbacks executed, 31 passed, 0 failed**. (Raw text occurrence counts include a `.test(` substring and should not be used as the test-case count.)
+- This remains an isolated JavaScript harness, not the native Node test runner or full project build.
+
+### CI
+- Latest observed push run: `43542766613`, commit `7cffee182a6e019fdcad50b6d047dadc1bf6638a`, conclusion `startup_failure`, path `BuildFailed`.
+- Jobs returned: 0.
+- GitHub Actions still has no job execution evidence.
+
+### Next execution step
+Continue security review of OAuth client registration and persistence growth, then inspect the full source diff for any regression from request parsing, scope defaults, and router failover changes.
