@@ -212,3 +212,18 @@ This is still not integrated into the recovered Bot 005 application. The guard m
 The guard prevents new REST/fetch calls after lease loss, but cannot recall a request already sent. Production safety still requires handler-level fencing/idempotency and out-of-band hard-stop before any standby Gateway login.
 
 The Bot 005 source still has a hard-coded http://coaching-workflow.railway.internal:3000/interaction endpoint. The new guard will reject that request even while ownership is active. That coaching workflow has to be migrated to a public HTTPS endpoint and configured via environment before coaching handlers can work on an independent host; there is no fallback to Railway.
+
+
+## Verified hard-stop orchestration — source-only
+
+Added implementation/standby-hard-stop-controller.mjs and eight unit tests. The controller does not trust lease expiry or health probes alone. Before it calls any standby start callback, it requires provider control to return exact positive proof that the expected primary process is stopped and its Discord Gateway is closed. It then releases only the matching old lease epoch, verifies that no active lease remains, and only then invokes the standby callback. An unexpected active owner, wrong process identity, failed/ambiguous stop result, or active lease after the stop all block takeover.
+
+The process-control interface is intentionally provider-neutral; no Render/Railway/Fly.io API implementation exists yet. No real host process has been stopped. This controller remains source-only until a persistent runtime provider is selected and a provider-specific adapter can be reviewed and tested.
+
+The prepared Bot 005 owner adapter now distinguishes:
+- Gateway login completion (the login Promise resolved);
+- application readiness (the expected bot identity and target guild have been verified).
+
+The application must call markApplicationReady() only after its real Ready/guild verification path, call markApplicationNotReady() when that status is lost, and standby must waitUntilReady() before treating the service as healthy. A successful socket login alone cannot satisfy the hard-stop controller's ready gate.
+
+Latest full local Node.js v22.16.0 suite: **35 passed, 0 failed** (19 Cloudflare coordinator tests, six ownership guard tests, two prepared owner adapter tests, eight hard-stop controller tests). This is local simulation only; no Cloudflare edge runtime, actual Discord.js client, or provider process-stop adapter has been exercised.
