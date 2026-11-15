@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertGuildAccess,
+  assertApprovalReady,
   isAdministrator,
   validateProposedAction,
   type ActionPolicyContext
@@ -141,5 +142,46 @@ describe("typed write policy", () => {
       channelId,
       patch: { position: 1 }
     }, context)).toThrow(/protected or unsupported/);
+  });
+});
+
+
+describe("single-use approval binding", () => {
+  const approval = {
+    status: "approved" as const,
+    proposalUserId: "222222222222222222",
+    approverUserId: "222222222222222222",
+    callerUserId: "222222222222222222",
+    proposalGuildId: guildId,
+    requestedGuildId: guildId,
+    actionHash: "sha256:approved-payload",
+    expectedActionHash: "sha256:approved-payload",
+    expiresAtEpochSeconds: 2000,
+    nowEpochSeconds: 1000,
+    consumed: false
+  };
+
+  it("accepts the exact unexpired approval for the same user and guild", () => {
+    expect(() => assertApprovalReady(approval)).not.toThrow();
+  });
+
+  it("rejects replayed approvals", () => {
+    expect(() => assertApprovalReady({ ...approval, consumed: true, status: "consumed" })).toThrow(/consumed/);
+  });
+
+  it("rejects approval reuse by another user", () => {
+    expect(() => assertApprovalReady({ ...approval, callerUserId: "333333333333333333" })).toThrow(/different Discord user/);
+  });
+
+  it("rejects approval use in another guild", () => {
+    expect(() => assertApprovalReady({ ...approval, requestedGuildId: "1440913253118115882" })).toThrow(/different Discord server/);
+  });
+
+  it("rejects a modified action payload", () => {
+    expect(() => assertApprovalReady({ ...approval, expectedActionHash: "sha256:changed-payload" })).toThrow(/does not match/);
+  });
+
+  it("rejects expired approvals", () => {
+    expect(() => assertApprovalReady({ ...approval, nowEpochSeconds: 2000 })).toThrow(/expired/);
   });
 });
