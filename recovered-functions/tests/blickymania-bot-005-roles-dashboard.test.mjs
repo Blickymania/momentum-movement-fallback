@@ -6,8 +6,8 @@ const sourceFile = new URL("../blickymania-bot-005.ts", import.meta.url);
 const file = await readFile(sourceFile, "utf8");
 const match = file.match(/const payload="([^"]+)";/);
 assert.ok(match, "Bot 005 compressed source payload exists");
-assert.match(file, /from"discord\\.js";/);
-assert.doesNotMatch(file, /from"discord\\.js@/);
+assert.match(file, /from"discord\.js";/);
+assert.doesNotMatch(file, /from"discord\.js@/);
 
 function decompress(payload) {
   const raw = Buffer.from(payload, "base64");
