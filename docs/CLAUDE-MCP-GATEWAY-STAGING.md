@@ -1,6 +1,6 @@
 # Claude Five-Server Discord Manager — Staging Plan
 
-**Status:** Design checkpoint; staging branch only. No Cloudflare deployment, no secrets configured, no Discord changes, no production routing changes.
+**Status:** Staging branch and architecture checkpoint. Initial authorization/write-policy helper and unit-test source have been added. The Worker entrypoints, OAuth flow, private manager adapters, and approval workflow are not yet implemented or tested. No Cloudflare deployment, no secrets configured, no Discord changes, no production routing changes.
 
 ## Owner constraints
 
@@ -155,6 +155,16 @@ The existing Dawn Hyperdrive configuration remains isolated to the Dawn staging 
 - OAuth tokens refresh and revoke correctly.
 - Production resources, current managers, current routing, and all five Discord servers remain unchanged throughout staging.
 - No GitHub Actions, Railway, or Render deployment dependency exists.
+
+## Current implementation checkpoint
+
+- Staging branch: infra/claude-five-server-gateway-staging (created from the isolated Dawn Dotta Worker branch).
+- Architecture document: this file.
+- Initial policy module: claude-gateway/src/policy.ts.
+- Initial test cases: claude-gateway/test/policy.test.ts.
+- Package and strict TypeScript configuration: claude-gateway/package.json and claude-gateway/tsconfig.json.
+- The policy helper denies cross-guild access, requires owner/Administrator status, separates read/write scopes, defaults staging writes off, blocks role mutations and destructive operations, protects managed/protected bot roles, and blocks @everyone/@here message mentions.
+- These tests have not yet been executed. Run npm install and npm run check from the claude-gateway directory in the browser Node environment before continuing.
 
 ## Current blockers
 
