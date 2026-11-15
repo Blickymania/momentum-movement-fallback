@@ -186,8 +186,8 @@ export interface ApprovalCheckInput {
 }
 
 export function assertApprovalReady(input: ApprovalCheckInput): void {
-  assert(input.status === "approved", "Change proposal is not approved.");
   assert(!input.consumed && input.status !== "consumed", "Approval has already been consumed.");
+  assert(input.status === "approved", "Change proposal is not approved.");
   assert(input.proposalUserId === input.callerUserId &&
     input.approverUserId === input.callerUserId,
   "Approval is bound to a different Discord user.");
