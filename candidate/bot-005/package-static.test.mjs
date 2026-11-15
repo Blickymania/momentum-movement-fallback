@@ -71,6 +71,7 @@ test("application readiness is fail-closed until the existing rules button and e
   assert.match(readyHandler, /await preparedGatewayOwner\.shutdown\("application_readiness_failed"\)/);
   assert.doesNotMatch(readyHandler, /rules_acceptance_not_ready/);
   assert.match(entry, /guildVerified,rulesAcceptanceReady,readOnly/);
+  assert.match(entry, /status:ready&&guildVerified&&rulesAcceptanceReady\?200:503/);
 });
 
 test("existing encrypted vault is fully validated before application readiness", () => {
