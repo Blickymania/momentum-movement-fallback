@@ -34,16 +34,16 @@ Other four managers have been verified connected and their role/channel inventor
 
 ## Target topology
 
-One public HTTPS MCP gateway for Claude, with five isolated manager Workers behind private Cloudflare Service Bindings:
+One public HTTPS MCP endpoint for Claude, one separate OAuth authorization Worker, and five isolated manager Workers behind private Cloudflare Service Bindings:
 
-1. Claude custom remote MCP connector -> one HTTPS /mcp endpoint.
-2. Gateway authenticates the Claude OAuth client and the Discord user.
-3. Gateway resolves an explicit guild selection and verifies the user's owner/administrator status for that guild.
-4. Gateway calls only that guild's private manager Worker through its dedicated Service Binding.
+1. Claude custom remote MCP connector -> one HTTPS /mcp endpoint on discord-claude-gateway.
+2. discord-claude-auth handles OAuth discovery, client registration, Discord sign-in/consent, token issuance, refresh, and revocation.
+3. discord-claude-gateway validates tokens by Service Binding to the authorization Worker, resolves an explicit guild selection, and checks the signed-in user's per-guild authorization grant.
+4. The gateway calls only that guild's private manager Worker through its dedicated Service Binding.
 5. Each manager Worker contains only that server's guild ID and bot token secret.
-6. OAuth grants and audit records live in a dedicated central authorization store. Operational guild data is never combined.
+6. The OAuth Worker has its own KV namespace. The gateway has a SQLite-backed Durable Object for immutable change proposals, single-use approvals, idempotency, and audit records. Operational guild data is never combined.
 
-The five manager Workers must not have public routes or public workers.dev endpoints. The gateway is the only Worker configured with bindings to them. The existing Empress Worker is out of scope and must not be repurposed.
+The five manager Workers must not have public routes or public workers.dev endpoints. The gateway is the only Worker configured with bindings to them. The OAuth Worker is bound only to the gateway's resource-server validation interface. The existing Empress Worker is out of scope and must not be repurposed.
 
 ## Claude compatibility
 
@@ -103,7 +103,8 @@ Do not expose a generic unrestricted Discord REST proxy as a write tool. Use typ
 ## Deployment layout
 
 Suggested Cloudflare Workers:
-- discord-claude-gateway: public MCP endpoint, OAuth resource checks, guild selection, proposal and approval orchestration.
+- discord-claude-auth: public OAuth authorization endpoints; bound to its dedicated OAUTH_KV namespace.
+- discord-claude-gateway: public MCP endpoint, OAuth resource checks, guild selection, proposal and approval orchestration; bound to discord-claude-auth, the approval Durable Object, and five managers.
 - manager-empress: private single-guild Discord adapter.
 - manager-blickymania: private single-guild Discord adapter.
 - manager-bestyouevahad: private single-guild Discord adapter.
@@ -112,7 +113,7 @@ Suggested Cloudflare Workers:
 
 Each child manager gets only its own bot token and authorized guild ID. The gateway uses Cloudflare Service Bindings to reach the private managers. No child manager receives another server's credentials. OAuth storage is dedicated to the gateway and is not used as a shared operational database.
 
-Use Cloudflare's maintained @cloudflare/workers-oauth-provider library for OAuth 2.1 rather than extending the custom single-guild OAuth implementation. Its supported architecture uses a KV namespace for OAuth state/tokens and exposes an authorization server/resource server with token validation over a Service Binding. The combined OAuthProvider form is also supported for one Worker hosting both /authorize and /mcp. Prefer the split model if it simplifies the trust boundary.
+Use Cloudflare's maintained @cloudflare/workers-oauth-provider library for OAuth 2.1 rather than extending the custom single-guild OAuth implementation. Use its documented split-worker pattern: OAuthAuthorizationServer in discord-claude-auth, OAuthResourceServer in discord-claude-gateway, and token validation over a Service Binding. The library supports client registration, PKCE, refresh/revocation, resource audiences, and OAuth metadata. The combined OAuthProvider form exists, but the split model is preferred for this trust boundary.
 
 Use a dedicated SQLite-backed Durable Object for exact-action proposals, one-time approvals, idempotency, and append-only audit events. Its transactional storage is preferable to KV for single-use approval consumption. The gateway OAuth KV namespace and approval Durable Object are central authorization infrastructure only; they do not contain merged guild operational data.
 
@@ -149,7 +150,7 @@ The existing Dawn Hyperdrive configuration remains isolated to the Dawn staging 
 ## Current blockers
 
 - Only the Dawn Dotta Worker source branch is available in this repository. Source code for the other four manager connectors has not been recovered into this project.
-- The existing Dawn source is single-guild and includes a generic Discord request tool. It is not safe to expose directly to Claude with writes enabled.
+- The existing Dawn source is single-guild and includes a generic Discord request tool. It is not safe to expose directly to Claude with writes enabled. Its current custom OAuth code should not be reused as the new gateway's OAuth provider; use the maintained Cloudflare OAuth provider library.
 - The Cloudflare account inventory previously showed only the separate Empress Worker; no dedicated Dawn or other manager Workers were present at that inspection.
 - Cloudflare deployment and secret configuration tools are not available in this session. Browser access currently provides read-only page inspection.
 - Claude connector creation must be completed by the user in their Claude account after the public HTTPS endpoint exists.
