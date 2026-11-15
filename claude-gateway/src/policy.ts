@@ -169,3 +169,33 @@ export function validateProposedAction(
 
   throw new Error("This action is not supported. Role mutations and destructive operations are blocked.");
 }
+
+
+export interface ApprovalCheckInput {
+  status: "pending" | "approved" | "consumed" | "expired";
+  proposalUserId: string;
+  approverUserId: string | null;
+  callerUserId: string;
+  proposalGuildId: string;
+  requestedGuildId: string;
+  actionHash: string;
+  expectedActionHash: string;
+  expiresAtEpochSeconds: number;
+  nowEpochSeconds: number;
+  consumed: boolean;
+}
+
+export function assertApprovalReady(input: ApprovalCheckInput): void {
+  assert(input.status === "approved", "Change proposal is not approved.");
+  assert(!input.consumed && input.status !== "consumed", "Approval has already been consumed.");
+  assert(input.proposalUserId === input.callerUserId &&
+    input.approverUserId === input.callerUserId,
+  "Approval is bound to a different Discord user.");
+  assert(input.proposalGuildId === input.requestedGuildId,
+    "Approval is bound to a different Discord server.");
+  assert(input.actionHash === input.expectedActionHash,
+    "Approved action payload does not match the proposed change.");
+  assert(Number.isFinite(input.expiresAtEpochSeconds) &&
+    input.expiresAtEpochSeconds > input.nowEpochSeconds,
+  "Approval has expired.");
+}
