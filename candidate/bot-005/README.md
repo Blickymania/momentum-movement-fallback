@@ -71,3 +71,6 @@ No production resource, token, lease, role, permission, hierarchy, or assignment
 Hostless's current shared-allowance documentation describes one account-wide pool of **0.5 vCPU and 1 GiB RAM** across apps, workers, cron jobs, databases, and marketplace services; it is not an extra allowance per worker. Usage beyond the eligible pool can be billable, and existing billing cycles may retain legacy terms until eligible for the new policy. Check the account's own Billing → Cost Breakdown before creating the worker. See [Hostless free entitlement](https://docs.hostless.cloud/plans/limits) and [cost breakdown](https://docs.hostless.cloud/billing/costbreakdown).
 
 Bot 005 stores its member records in the existing encrypted Discord vault and does not require a local durable volume. For the initial standby worker, use **one replica and no volume**. Do not create a volume or accept paid capacity for this candidate.
+
+
+The Bot 005 startup verifies that all bot-authored encrypted vault records can be decrypted before it marks the application ready. A corrupt record or mismatched encryption key fails closed; it is not treated as an empty vault. The initial Hostless standby mode does not run this Gateway startup and uses no production secret.
