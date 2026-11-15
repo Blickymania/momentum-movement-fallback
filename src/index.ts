@@ -275,7 +275,7 @@ async function invoke(name,args){
  const channelId=segments[1]==="channels"&&/^[0-9]{15,22}$/.test(segments[2]||"")?segments[2]:null;
  if(!(route===root||route.startsWith(root+"/")||channelId))return fail("Route is outside this manager's authorized guild.");
  if(channelId){const owner=await channelGuild(channelId,c.token);if(owner.status)return fail("Channel ownership could not be verified (Discord returned "+owner.status+").");if(owner.guildId!==c.guild)return fail("Channel is outside this manager's authorized guild.");}
- if(method!=="GET"){if(!c.writes)return fail("Writes are disabled until WRITES_ENABLED=true is set for this Railway service.");if(!/^\d{15,22}$/.test(c.app||""))return fail("Configured bot application identity is missing.");try{const who=await fetch(API+"/users/@me",{headers:{authorization:"Bot "+c.token},signal:AbortSignal.timeout(12000)});if(!who.ok||String((await who.json()).id)!==c.app)return fail("Discord bot application identity mismatch; no write performed.");}catch{return fail("Discord bot identity could not be verified; no write performed.");}}
+ if(method!=="GET"){if(!c.writes)return fail("Writes are disabled until WRITES_ENABLED=true is set for this deployment.");if(!/^\d{15,22}$/.test(c.app||""))return fail("Configured bot application identity is missing.");try{const who=await fetch(API+"/users/@me",{headers:{authorization:"Bot "+c.token},signal:AbortSignal.timeout(12000)});if(!who.ok||String((await who.json()).id)!==c.app)return fail("Discord bot application identity mismatch; no write performed.");}catch{return fail("Discord bot identity could not be verified; no write performed.");}}
  const url=new URL(API+route);
  for(const [k,v] of Object.entries(args.query||{})){if(!/^[a-zA-Z0-9_-]{1,80}$/.test(k))return fail("Invalid query parameter.");url.searchParams.set(k,String(v));}
  const headers={authorization:"Bot "+c.token,"user-agent":"DiscordManager/1.0"};
@@ -498,7 +498,7 @@ async function handleRequest(request){
  }
  if(u.pathname==="/healthz"&&request.method==="GET")return reply({status:"ok",manager:NAME,service:"cloudflare-workers"});
  if(u.pathname!=="/mcp"||request.method!=="POST")return reply({error:"Not found"},404);
- const provided=request.headers.get("authorization")||"";const secret=runtimeEnv().RAILWAY_SERVICE_KEY;const staticAuth=!!secret&&provided==="Bearer "+secret;let oauthAuth=null;if(!staticAuth&&provided.startsWith("Bearer ")){try{oauthAuth=await mcpOAuthAuthenticate(provided.slice(7));}catch{return reply({error:"OAuth authentication backend unavailable"},503);}}if(!staticAuth&&!oauthAuth)return mcpOAuthUnauthorized();
+ const provided=request.headers.get("authorization")||"";const secret=runtimeEnv().MANAGER_SERVICE_KEY;const staticAuth=!!secret&&provided==="Bearer "+secret;let oauthAuth=null;if(!staticAuth&&provided.startsWith("Bearer ")){try{oauthAuth=await mcpOAuthAuthenticate(provided.slice(7));}catch{return reply({error:"OAuth authentication backend unavailable"},503);}}if(!staticAuth&&!oauthAuth)return mcpOAuthUnauthorized();
  let rpc;try{rpc=JSON.parse(await readBoundedText(request,2*1024*1024));}catch(error){const tooLarge=error instanceof Error&&error.message==="request_body_too_large";return tooLarge?reply({error:"Request body too large"},413):reply({jsonrpc:"2.0",id:null,error:{code:-32700,message:"Parse error"}},400);}
  if(!validJsonRpcRequest(rpc))return reply({jsonrpc:"2.0",id:null,error:{code:-32600,message:"Invalid Request"}},400);
  if(!Object.prototype.hasOwnProperty.call(rpc,"id"))return new Response(null,{status:202});
