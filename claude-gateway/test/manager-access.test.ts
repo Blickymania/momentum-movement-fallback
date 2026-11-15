@@ -16,7 +16,7 @@ describe("current Discord authorization checks", () => {
       }))
     };
     await expect(assertCurrentGuildReadAccess(
-      env, auth, "dawn-dotta", "discord-user-1", ["mcp:read"]
+      env, auth, "dawn-dotta", "discord-user-1", ["mcp:read"], "test-access-token"
     )).resolves.toBeUndefined();
     expect(auth.checkGuildAccess).toHaveBeenCalledWith(
       "discord-user-1", "1565048205970767992"
@@ -32,7 +32,7 @@ describe("current Discord authorization checks", () => {
       }))
     };
     await expect(assertCurrentGuildReadAccess(
-      env, auth, "dawn-dotta", "discord-user-2", ["mcp:read"]
+      env, auth, "dawn-dotta", "discord-user-2", ["mcp:read"], "test-access-token"
     )).rejects.toThrow(/not been granted access/);
   });
 
@@ -45,7 +45,7 @@ describe("current Discord authorization checks", () => {
       }))
     };
     await expect(assertCurrentGuildReadAccess(
-      env, auth, "dawn-dotta", "discord-user-3", ["mcp:read"]
+      env, auth, "dawn-dotta", "discord-user-3", ["mcp:read"], "test-access-token"
     )).rejects.toThrow(/Administrator/);
   });
 
@@ -58,7 +58,7 @@ describe("current Discord authorization checks", () => {
       }))
     };
     await expect(assertCurrentGuildReadAccess(
-      env, auth, "dawn-dotta", "discord-user-4", []
+      env, auth, "dawn-dotta", "discord-user-4", [], "test-access-token"
     )).rejects.toThrow(/mcp:read/);
   });
 
@@ -71,7 +71,7 @@ describe("current Discord authorization checks", () => {
       }))
     };
     await expect(assertCurrentGuildReadAccess(
-      {}, auth, "dawn-dotta", "discord-user-5", ["mcp:read"]
+      {}, auth, "dawn-dotta", "discord-user-5", ["mcp:read"], "test-access-token"
     )).rejects.toThrow(/not configured/);
     expect(auth.checkGuildAccess).not.toHaveBeenCalled();
   });
