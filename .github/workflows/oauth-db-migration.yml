@@ -1,0 +1,90 @@
+name: OAuth PostgreSQL Backup Migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_key:
+        description: "Verified S3 backup object key"
+        required: true
+        default: "database-backups/20261114T090650Z.dump"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dawn-oauth-neon-import
+  cancel-in-progress: false
+
+jobs:
+  restore-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.S3_REGION }}
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      BACKUP_KEY: ${{ inputs.backup_key }}
+    steps:
+      - name: Install PostgreSQL and AWS clients
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client awscli
+
+      - name: Validate required secrets and backup key
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION S3_ENDPOINT S3_BUCKET NEON_DATABASE_URL BACKUP_KEY; do
+            if [[ -z "${!name:-}" ]]; then echo "::error::Missing required Actions secret/input: $name"; exit 1; fi
+          done
+          [[ "$BACKUP_KEY" == database-backups/*.dump ]] || { echo "::error::Unexpected backup object path"; exit 1; }
+          [[ "$S3_ENDPOINT" == https://* ]] || { echo "::error::S3_ENDPOINT must use HTTPS"; exit 1; }
+
+      - name: Download backup and checksum sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws --endpoint-url "$S3_ENDPOINT" s3 cp "s3://$S3_BUCKET/$BACKUP_KEY" /tmp/oauth-source.dump --only-show-errors
+          aws --endpoint-url "$S3_ENDPOINT" s3 cp "s3://$S3_BUCKET/$BACKUP_KEY.sha256" /tmp/oauth-source.dump.sha256 --only-show-errors
+          test -s /tmp/oauth-source.dump
+          test -s /tmp/oauth-source.dump.sha256
+          expected="$(awk 'NR==1 {print $1}' /tmp/oauth-source.dump.sha256)"
+          sidecar_key="$(awk 'NR==1 {print $2}' /tmp/oauth-source.dump.sha256)"
+          actual="$(sha256sum /tmp/oauth-source.dump | awk '{print $1}')"
+          [[ "$sidecar_key" == "$BACKUP_KEY" ]] || { echo "::error::Checksum sidecar references a different object"; exit 1; }
+          [[ "$expected" =~ ^[a-fA-F0-9]{64}$ && "$actual" == "$expected" ]] || { echo "::error::Backup SHA-256 verification failed"; exit 1; }
+          pg_restore --list /tmp/oauth-source.dump >/tmp/oauth-restore-list.txt
+          echo "Backup checksum and PostgreSQL archive format verified."
+
+      - name: Confirm isolated Neon import database is empty
+        shell: bash
+        run: |
+          set -euo pipefail
+          public_tables="$(psql "$NEON_DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';")"
+          [[ "$public_tables" == "0" ]] || { echo "::error::Destination is not empty; refusing to overwrite"; exit 1; }
+          echo "Destination confirmed empty."
+
+      - name: Restore backup transactionally
+        shell: bash
+        run: |
+          set -euo pipefail
+          pg_restore --no-owner --no-acl --exit-on-error --single-transaction --dbname="$NEON_DATABASE_URL" /tmp/oauth-source.dump
+          echo "PostgreSQL restore completed."
+
+      - name: Verify OAuth schema, indexes, and row counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_tables="$(psql "$NEON_DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';")"
+          expected_tables="mcp_oauth_access_tokens,mcp_oauth_authorization_codes,mcp_oauth_clients,mcp_oauth_login_requests,mcp_oauth_refresh_tokens"
+          [[ "$actual_tables" == "$expected_tables" ]] || { echo "::error::Restored table set does not match the five expected OAuth tables"; exit 1; }
+          for idx in mcp_oauth_access_expiry_idx mcp_oauth_refresh_expiry_idx; do
+            exists="$(psql "$NEON_DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname='$idx';")"
+            [[ "$exists" == "1" ]] || { echo "::error::Missing expected index: $idx"; exit 1; }
+          done
+          psql "$NEON_DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT 'mcp_oauth_clients' AS table_name, count(*) AS rows FROM public.mcp_oauth_clients UNION ALL SELECT 'mcp_oauth_login_requests', count(*) FROM public.mcp_oauth_login_requests UNION ALL SELECT 'mcp_oauth_authorization_codes', count(*) FROM public.mcp_oauth_authorization_codes UNION ALL SELECT 'mcp_oauth_access_tokens', count(*) FROM public.mcp_oauth_access_tokens UNION ALL SELECT 'mcp_oauth_refresh_tokens', count(*) FROM public.mcp_oauth_refresh_tokens ORDER BY table_name;"
+          echo "Schema, required indexes, and row-count queries verified."
