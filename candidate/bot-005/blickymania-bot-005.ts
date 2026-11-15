@@ -20,7 +20,7 @@ if(Bun.env.AUTHORIZED_GUILD_ID!==G||Bun.env.APPLICATION_ID!==A||!token)
 throw Error("Bot 005: guild/application credentials do not match Momentum Movement");
 
 const { createCoachingWorkflowClientFromEnv } = await import("../../implementation/coaching-workflow-client.mjs");
-const { createRulesAcceptanceHandler, addRulesAcceptanceButton, RULES_ACCEPTANCE_TARGET } = await import("../../implementation/rules-acceptance.mjs");
+const { createRulesAcceptanceHandler, addRulesAcceptanceButton, RULES_ACCEPTANCE_TARGET, decodeEncryptedMemberVaultPage } = await import("../../implementation/rules-acceptance.mjs");
 const coachingWorkflow = createCoachingWorkflowClientFromEnv({
   env: Bun.env,
   timeoutMs: 5000,
@@ -111,10 +111,8 @@ for(let page=0;page<=50;page++){
 const route="/channels/"+MV+"/messages?limit=100"+(before?"&before="+before:"");
 const messages=await caseApi("GET",route);
 if(!Array.isArray(messages))throw Error("profile_vault_response_invalid");
-for(const x of messages)if(x.author?.id===A&&x.content?.startsWith("MRV1.")){
-try{const v=await unseal(x.content);if(typeof v.userId!=="string"||!v.userId)throw Error("profile_vault_record_invalid");if(!mc.has(v.userId)){mc.set(v.userId,v);mi.set(v.userId,x.id)}}
-catch{throw Error("profile_vault_record_decryption_failed")}
-}
+const pageRecords=await decodeEncryptedMemberVaultPage(messages,A,unseal);
+for(const [userId,value] of pageRecords)if(!mc.has(userId)){mc.set(userId,value.record);mi.set(userId,value.messageId)}
 if(messages.length<100)return;
 const oldest=String(messages[messages.length-1]?.id||"");
 if(!oldest||oldest===before)throw Error("profile_vault_pagination_invalid");
