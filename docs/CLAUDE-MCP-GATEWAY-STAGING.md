@@ -32,6 +32,15 @@ Dawn Dotta's available read-only audit reported:
 
 Other four managers have been verified connected and their role/channel inventories were read using GET requests only. No resources were changed.
 
+Read-only inventory counts and managed-role names:
+- Dawn Dotta: 106 channels, 12 roles; managed roles include Blickymania Bot 005 and Railway Agent.
+- Blickymania: 87 channels, 10 roles; managed roles include Blickymania Bot and Railway Agent (plus Discord-managed Server Booster).
+- BestYouEvaHad: 88 channels, 10 roles; managed roles include Blickymania Bot 004 and Railway Agent.
+- Empress Reigns: 108 channels, 19 roles; managed roles include Yammie Gang Server Bot, Railway Agent, TikTok (plus Discord-managed Server Booster).
+- Red Kocaine: 91 channels, 10 roles; managed roles include Blickymania Bot 003 and Railway Agent (plus Discord-managed Server Booster).
+
+These names are recorded only to protect the current bot-role inventory. No bot role, role assignment, permission, position, or hierarchy was modified.
+
 ## Target topology
 
 One public HTTPS MCP endpoint for Claude, one separate OAuth authorization Worker, and five isolated manager Workers behind private Cloudflare Service Bindings:
