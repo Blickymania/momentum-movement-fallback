@@ -86,3 +86,14 @@ test("existing encrypted vault is loaded before application readiness and corrup
   assert.match(readySource, /rulesAcceptanceReady=await ensureRulesAcceptanceButton\(guild\)/);
   assert.match(readySource, /application_readiness_failed/);
 });
+
+test("startup verifies existing encrypted vault before it can mark the application ready", () => {
+  assert.match(entry, /decodeEncryptedMemberVaultPage/);
+  const readyStart = entry.indexOf("client.once(Events.ClientReady");
+  const readyEnd = entry.indexOf("client.on(Events.ShardDisconnect", readyStart);
+  const readySource = entry.slice(readyStart, readyEnd);
+  assert.match(readySource, /rulesAcceptanceReady=await ensureRulesAcceptanceButton\(guild\)/);
+  assert.match(readySource, /await load\(\)/);
+  assert.match(readySource, /if\(!rulesAcceptanceReady\)throw Error/);
+  assert.match(readySource, /preparedGatewayOwner\.shutdown\("application_readiness_failed"\)/);
+});
