@@ -112,7 +112,13 @@ Suggested Cloudflare Workers:
 
 Each child manager gets only its own bot token and authorized guild ID. The gateway uses Cloudflare Service Bindings to reach the private managers. No child manager receives another server's credentials. OAuth storage is dedicated to the gateway and is not used as a shared operational database.
 
-The existing Dawn Hyperdrive configuration is already present, but it is currently attached in the Dawn source configuration only. Do not assume it is attached to a deployed Worker. Decide whether the central OAuth store uses a dedicated Neon database/Hyperdrive or Cloudflare storage after quota, transaction, and security testing. Do not repurpose another community's database.
+Use Cloudflare's maintained @cloudflare/workers-oauth-provider library for OAuth 2.1 rather than extending the custom single-guild OAuth implementation. Its supported architecture uses a KV namespace for OAuth state/tokens and exposes an authorization server/resource server with token validation over a Service Binding. The combined OAuthProvider form is also supported for one Worker hosting both /authorize and /mcp. Prefer the split model if it simplifies the trust boundary.
+
+Use a dedicated SQLite-backed Durable Object for exact-action proposals, one-time approvals, idempotency, and append-only audit events. Its transactional storage is preferable to KV for single-use approval consumption. The gateway OAuth KV namespace and approval Durable Object are central authorization infrastructure only; they do not contain merged guild operational data.
+
+Cloudflare's published Free allowances currently include 100,000 Worker requests/day, 10 ms CPU per invocation, 100,000 KV reads/day, 1,000 KV writes/day, and 100,000 Durable Object requests/day with SQLite storage. These are hard limits: overages fail rather than silently becoming paid usage. Enforce a fail-closed usage budget and monitor consumption. Service Bindings do not add a separate charge and can reach Workers without public routes. Re-check pricing and limits before deployment.
+
+The existing Dawn Hyperdrive configuration remains isolated to the Dawn staging source and is not required for the central OAuth store in this design. Do not assume it is attached to a deployed Worker. Keep it unchanged and do not repurpose the Dawn Neon database for another community.
 
 ## Staging and verification sequence
 
@@ -120,7 +126,7 @@ The existing Dawn Hyperdrive configuration is already present, but it is current
 2. Build a generic single-guild manager adapter and unit-test guild isolation and typed tool allowlists.
 3. Create five isolated staging Worker configurations with no secrets and no public routes.
 4. Configure Service Bindings and verify the gateway cannot address an unbound manager.
-5. Add OAuth provider and Claude DCR compatibility; test callback, PKCE, refresh rotation, revocation, token audience, and guild authorization with synthetic identities.
+5. Integrate @cloudflare/workers-oauth-provider with a dedicated KV namespace and test Claude DCR, callback, PKCE, refresh rotation, revocation, token audience, and guild authorization with synthetic identities.
 6. Test read-only Discord access first, without changing production.
 7. Test all write workflows against a mocked Discord API or a separate test guild. Never test writes against the five production guilds during staging.
 8. Perform security tests: cross-guild ID injection, wrong-user access, expired/revoked token, replayed approval, altered payload, role hierarchy violation, protected role mutation, delete attempts, prompt-injected tool output, rate limits, and missing bindings.
