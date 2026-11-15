@@ -111,3 +111,12 @@ Reusing that lease for LIVE NOW V2 would be unsafe and is prohibited. A future s
 The existing Worker hard-stop adapter is Render-specific and cannot stop the current V2 primary while it remains on Railway. With Railway operations prohibited, no physical Gateway stop proof can be produced in this cycle. The V2 activation guard must remain. Do not connect a second V2 Gateway session until there is an independently verified hard stop and the dedicated scope is deployed and tested.
 
 No Worker or Durable Object source was changed during this inspection; no lease was provisioned and no secret was created.
+
+## Bot 005 standalone worker package — source-only checkpoint (2026-11-14)
+
+- Added `candidate/bot-005/index.ts`, which adds explicit Discord.js imports to the recovered Bot 005 source body; the original recovered snapshot remains intact.
+- Added a dedicated package manifest pinning `discord.js@14.27.0`, a Dockerfile with explicit copies of every transitive local runtime module, a standalone-worker README, and package-static tests.
+- The Dockerfile uses Bun 1.4.4 and refuses unlocked dependency installation using `--frozen-lockfile`. `candidate/bot-005/bun.lock` has not been generated because Bun is not installed here and registry access is unavailable. Build intentionally remains blocked until the lockfile is created in an authorized Bun 1.4.4 environment and a frozen install passes.
+- Deploy this as a **standalone Hostless worker** with its own build, start command, environment, and resources, rather than an embedded worker inheriting the LIVE & Events app environment. Hostless documents these as distinct deployment types and their independent settings. [Hostless worker documentation](https://docs.hostless.cloud/app/workers)
+- No Hostless worker, app, secret, volume, or deployment was created. Production Bot 005 remains the Railway primary; activation is prohibited until exact-process stop/fence proof exists.
+- No bot roles, permissions, hierarchy, assignments, or production Discord messages were changed.

@@ -40,3 +40,7 @@ The deployed code contains the Momentum guild/application identifiers and provid
 ## Recovery boundary
 
 Only the deployed function source was recovered. Railway environment-variable values, Discord credentials, runtime state, and other community projects were not copied.
+
+## Bot 005 rules acceptance candidate
+
+A separate source-only candidate is in `candidate/bot-005/`. Its standalone worker Dockerfile, package manifest, executable wrapper, and deployment prerequisites are documented in `candidate/bot-005/README.md`. Do not activate while the Railway Bot 005 Gateway primary may still be running. The candidate includes the versioned rules-acceptance integration under `implementation/rules-acceptance.mjs`.
