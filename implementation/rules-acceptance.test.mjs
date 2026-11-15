@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   RULES_ACCEPTANCE_TARGET,
+  decodeEncryptedMemberVaultPage,
   RULES_ACCEPTANCE_VERSION,
   addRulesAcceptanceButton,
   applyRulesAcceptance,
@@ -189,4 +190,37 @@ test("simultaneous clicks for one member are serialized without duplicate vault 
   const firstResult = await first;
   assert.equal(firstResult.persisted, true);
   assert.equal(saves, 1);
+});
+
+test("encrypted vault page keeps the newest valid record per member and ignores unrelated messages", async () => {
+  const records = await decodeEncryptedMemberVaultPage([
+    { id: "1000000000000000001", author: { id: "bot" }, content: "MRV1.newest" },
+    { id: "1000000000000000002", author: { id: "bot" }, content: "MRV1.older" },
+    { id: "1000000000000000003", author: { id: "other" }, content: "MRV1.other-bot" },
+    { id: "1000000000000000004", author: { id: "bot" }, content: "plain text" }
+  ], "bot", async content => ({
+    userId: content.endsWith("newest") || content.endsWith("older") ? "member-1" : "member-2",
+    profile: { source: content }
+  }));
+  assert.equal(records.size, 1);
+  assert.equal(records.get("member-1").messageId, "1000000000000000001");
+  assert.equal(records.get("member-1").record.profile.source, "MRV1.newest");
+});
+
+test("an undecryptable encrypted vault record fails closed", async () => {
+  await assert.rejects(
+    decodeEncryptedMemberVaultPage([
+      { id: "1000000000000000001", author: { id: "bot" }, content: "MRV1.corrupt" }
+    ], "bot", async () => { throw new Error("authentication tag mismatch"); }),
+    /member_vault_record_decryption_failed/
+  );
+});
+
+test("an encrypted vault record without a valid member ID fails closed", async () => {
+  await assert.rejects(
+    decodeEncryptedMemberVaultPage([
+      { id: "1000000000000000001", author: { id: "bot" }, content: "MRV1.invalid" }
+    ], "bot", async () => ({ userId: "" })),
+    /member_vault_record_invalid/
+  );
 });
