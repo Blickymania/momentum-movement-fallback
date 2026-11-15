@@ -168,3 +168,39 @@ export function createRulesAcceptanceHandler({
     }
   };
 }
+
+
+export async function decodeEncryptedMemberVaultPage(messages, botId, unsealRecord) {
+  if (!Array.isArray(messages)) {
+    throw new TypeError("Member vault page must be an array");
+  }
+  if (typeof botId !== "string" || !botId) {
+    throw new TypeError("Member vault bot ID is required");
+  }
+  if (typeof unsealRecord !== "function") {
+    throw new TypeError("Member vault decrypt function is required");
+  }
+
+  const records = new Map();
+  for (const message of messages) {
+    if (message?.author?.id !== botId ||
+        typeof message.content !== "string" ||
+        !message.content.startsWith("MRV1.")) {
+      continue;
+    }
+
+    let record;
+    try {
+      record = await unsealRecord(message.content);
+    } catch {
+      throw new Error("member_vault_record_decryption_failed");
+    }
+    if (!record || typeof record.userId !== "string" || !record.userId) {
+      throw new Error("member_vault_record_invalid");
+    }
+    if (!records.has(record.userId)) {
+      records.set(record.userId, { record, messageId: message.id });
+    }
+  }
+  return records;
+}
