@@ -145,3 +145,14 @@ Before worker activation: verify the exact Railway Bot 005 service, stop it thro
 - Root `Dockerfile`, root `package.json`, and `hostless.yaml` have SHA-identical contents to the Hostless base branch, so the existing LIVE & Events app configuration was not changed.
 - No `bun.lock` has been generated; no Docker build has run; no Hostless worker, volume, secrets, app settings, or deployment was created.
 - Production Bot 005 remains the Railway primary; no old-process stop proof exists. Use the no-token `bun run standby` command for the first Hostless process verification only after an actual frozen build is possible. Do not switch to `bun run start` or provision a bot token until the exact Railway primary is independently stopped and the stop is verified.
+
+ 
+## Readiness and encrypted vault fail-closed repair — 2026-11-14
+
+- Source audit found that the previous ClientReady handler caught rules-button/vault failures but still set `ready=true` and called `markApplicationReady()`. This could expose a healthy-looking deployment while the acceptance feature was unavailable.
+- Repaired the startup gate: `ensureRulesAcceptanceButton()` must complete with a verified button; otherwise the application shuts down and never marks itself ready. The `/healthz` output now explicitly includes `rulesAcceptanceReady`.
+- Source audit also found the member-vault loader silently ignored encrypted-record decryption failures. Added `decodeEncryptedMemberVaultPage()` to the reusable rules-acceptance module. It filters to the expected bot's `MRV1.` records, keeps the newest record per member on paginated reads, and throws a generic fail-closed error for a corrupt/authentication-failed record or missing member ID.
+- Bot 005 now calls `await load()` during startup before the rules dashboard update and before application readiness. Wrong encryption key/corrupt data therefore blocks readiness rather than treating the vault as empty and creating duplicate records.
+- Added three unit tests for newest-record selection, ignoring other authors/unrelated messages, corrupt/decrypt-failure rejection, and invalid record IDs. The rules acceptance unit suite now contains 15 tests. Added two package-static readiness assertions; package static suite now contains 9 tests.
+- These tests have not yet been executed in this runtime: GitHub Actions still fails before job creation, and Bun is unavailable. Source syntax and branch readback checks will be run after the entrypoint regeneration.
+- No live Discord message, role, permission, Gateway session, Hostless resource, token, Railway service, scheduler, or cron was changed.
