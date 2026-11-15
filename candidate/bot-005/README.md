@@ -64,3 +64,10 @@ Set secret values only in the Hostless worker's secret/environment settings. Nev
 Production Bot 005 remains the Railway primary. No worker may start while that process may still own a Gateway session. The only valid activation path is an independently verified hard stop/fence of the exact Railway Bot 005 service, followed by a verified unique Bot 005 lease and health check. Do not share the LIVE NOW V2 lease, LIVE & Events environment, or any other workload's Gateway scope.
 
 No production resource, token, lease, role, permission, hierarchy, or assignment was changed for this candidate.
+
+
+## Hostless free-pool and storage boundary
+
+Hostless's current shared-allowance documentation describes one account-wide pool of **0.5 vCPU and 1 GiB RAM** across apps, workers, cron jobs, databases, and marketplace services; it is not an extra allowance per worker. Usage beyond the eligible pool can be billable, and existing billing cycles may retain legacy terms until eligible for the new policy. Check the account's own Billing → Cost Breakdown before creating the worker. See [Hostless free entitlement](https://docs.hostless.cloud/plans/limits) and [cost breakdown](https://docs.hostless.cloud/billing/costbreakdown).
+
+Bot 005 stores its member records in the existing encrypted Discord vault and does not require a local durable volume. For the initial standby worker, use **one replica and no volume**. Do not create a volume or accept paid capacity for this candidate.
