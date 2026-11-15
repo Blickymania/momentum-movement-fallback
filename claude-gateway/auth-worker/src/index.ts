@@ -333,6 +333,17 @@ export async function checkGuildAccessForToken(
 
 export default class AuthServer extends WorkerEntrypoint<AuthWorkerEnv> {
   async fetch(request: Request): Promise<Response> {
+    if (
+      !this.env.OAUTH_KV ||
+      !this.env.OAUTH_ISSUER_URL ||
+      !this.env.MCP_RESOURCE_URL ||
+      !this.env.DISCORD_CLIENT_ID ||
+      !this.env.DISCORD_CLIENT_SECRET ||
+      !this.env.DISCORD_REDIRECT_URI ||
+      !this.env.AUTH_SESSION_ENCRYPTION_KEY
+    ) {
+      return new Response("OAuth authorization service is not configured.", { status: 503 });
+    }
     const path = new URL(request.url).pathname;
     if (path === "/authorize" && request.method === "GET") return beginDiscordLogin(request, this.env);
     if (path === "/discord/callback" && request.method === "GET") return finishDiscordLogin(request, this.env);
