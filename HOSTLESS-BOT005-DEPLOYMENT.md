@@ -59,3 +59,11 @@ Do not set `BOT_GATEWAY_ACTIVE=true` while the existing Railway Bot 005 process 
 The roles dashboard config is restored for the pinned message `1566161931377709137` in channel `1565643484965109781`. The shared handler acknowledges with `deferUpdate()` before editing the message. The buttons remain informational navigation tabs and do not modify roles.
 
 No Discord role, bot role, permission, hierarchy, or member assignment is changed by this branch.
+
+## Latest repair checkpoint — 2026-11-14/15
+
+- Corrected the runtime import to `from"discord.js";`, matching the pinned `discord.js@14.27.0` dependency in `package.json`. The prior versioned module specifier was not a valid package import form for this manifest.
+- Extended the regression test to guard against reintroducing a versioned module specifier and to check the privacy copy.
+- Revalidated the compressed LZW payload decode, the four role tab IDs, the existing channel/message binding, the shared handler acknowledgement order, and the page content with independent static assertions. All six checks passed in-session.
+- GitHub Actions is still blocked before job creation: the latest run for commit `601ed50634437ebb7cb4de608f69e807b628c6ec` ended as `startup_failure` with path `BuildFailed`; the jobs endpoint returned no jobs. The GitHub connector could not retry the run (HTTP 403, workflow run cannot be retried). Do not report CI as passed.
+- No Hostless app has been created or deployed. Do not activate the Gateway until the old Railway process is confirmed stopped.
