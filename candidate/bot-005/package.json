@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "bun run index.ts",
-    "test": "node --test package-static.test.mjs ../../implementation/rules-acceptance.test.mjs"
+    "test": "node --test package-static.test.mjs ../../implementation/rules-acceptance.test.mjs",
+    "standby": "bun run standby.ts"
   },
   "dependencies": {
     "discord.js": "14.27.0"

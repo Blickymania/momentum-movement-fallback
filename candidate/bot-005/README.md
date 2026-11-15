@@ -13,6 +13,12 @@ This package contains the executable wrapper for the recovered Bot 005 candidate
 
 The preserved `blickymania-bot-005.ts` file is the candidate source snapshot. The executable `index.ts` adds the required Discord.js imports and contains the candidate body. A static package test checks that the wrapper remains aligned with that source body and that all transitive local modules are copied.
 
+## Safe standby validation
+
+For the initial no-token deployment, override the worker start command to `bun run standby`. The `standby.ts` process exposes only a small `/healthz` response, logs `momentum_bot005_standby_ready`, and explicitly reports `gatewayConnected: false`. It does not import Discord.js, read a Discord token, or connect to the Gateway.
+
+Do not switch the worker to `bun run start` or provision production secrets until the exact Railway Bot 005 primary has been independently stopped and its Gateway session stop has been verified.
+
 ## Lockfile / build gate
 
 No Bun lockfile has been generated. Do not fabricate it or remove frozen-lock enforcement.

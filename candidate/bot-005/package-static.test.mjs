@@ -52,3 +52,14 @@ test("Docker install is pinned to Bun and requires a committed frozen lockfile",
 test("no production secret is baked into the image", () => {
   assert.doesNotMatch(dockerfile, /(?:DISCORD_BOT_TOKEN|LEASE_SERVICE_TOKEN|FENCE_REQUEST_TOKEN|PROFILE_DATA_ENCRYPTION_KEY)=/);
 });
+
+test("standby entrypoint exposes health without any Discord token or Gateway client", () => {
+  const standby = read("./standby.ts");
+  assert.match(standby, /Bun\.serve/);
+  assert.match(standby, /url\.pathname === "\/healthz"/);
+  assert.match(standby, /mode: "standby"/);
+  assert.match(standby, /gatewayConnected: false/);
+  assert.doesNotMatch(standby, /DISCORD_BOT_TOKEN|\.login\(|new Client/);
+  assert.ok(dockerfile.includes("COPY candidate/bot-005/standby.ts "));
+  assert.equal(packageJson.scripts.standby, "bun run standby.ts");
+});

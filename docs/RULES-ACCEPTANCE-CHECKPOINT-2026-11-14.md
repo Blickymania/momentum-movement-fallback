@@ -124,3 +124,12 @@ Before worker activation: verify the exact Railway Bot 005 service, stop it thro
 - Added package-static tests to verify executable wrapper equivalence, exact dependency pin, complete transitive module copying, frozen-lock enforcement, and absence of secret literals in the Dockerfile. Remote CI has not executed them; GitHub Actions continues to fail before job creation.
 - No production Discord write, Hostless resource, secret, Railway action, Gateway login, bot role, permission, hierarchy, assignment, scheduler or cron was changed.
 - Next step: execute `bun install --lockfile-only`, `bun install --frozen-lockfile`, `bun --check index.ts`, and both static/rules unit tests in a Bun 1.4.4 environment; then re-verify the exact Railway primary stop before worker creation or activation.
+
+ 
+## No-token standby entrypoint — 2026-11-14
+
+- Added `candidate/bot-005/standby.ts` and `start:standby` package script. It starts only a minimal HTTP `/healthz` responder, emits a structured standby-ready log, and explicitly reports `gatewayConnected: false`.
+- The standby entrypoint has no Discord.js import, does not read `DISCORD_BOT_TOKEN`, and does not create a Discord client. The Bot 005 production start command remains `bun run start`.
+- Updated the package Dockerfile to include the standby entrypoint and added a sixth static assertion verifying the no-token/no-Gateway standby boundary.
+- When a Hostless worker can be provisioned, the initial start command should be `bun run standby` with no production secrets. Do not change to production start or add the Bot token until the legacy Railway Bot 005 process is independently stopped and the stop is verified.
+- Docker build is still blocked pending a real Bun 1.4.4 lockfile. No Hostless worker has been created and no Gateway session has been started.
