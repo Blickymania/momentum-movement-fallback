@@ -31,7 +31,7 @@ async function discordGet(
   path: string,
   token: string,
   discordFetch: DiscordFetch
-): Promise<JsonObject> {
+): Promise<unknown> {
   const response = await discordFetch(`${API}${path}`, {
     method: "GET",
     headers: {
@@ -44,10 +44,17 @@ async function discordGet(
     throw new Error(`Discord API returned HTTP ${response.status}.`);
   }
   const data: unknown = await response.json();
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
+  if (!data || typeof data !== "object") {
     throw new Error("Discord API returned an unexpected response.");
   }
-  return data as JsonObject;
+  return data;
+}
+
+function asObject(value: unknown): JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Discord API returned an unexpected object.");
+  }
+  return value as JsonObject;
 }
 
 /**
@@ -83,14 +90,17 @@ export async function handleManagerRequest(
           discordGet("/users/@me", config.token, discordFetch),
           discordGet(`/guilds/${config.guildId}`, config.token, discordFetch)
         ]);
-        if (application.id !== config.applicationId) {
+        const applicationObject = asObject(application);
+        const botObject = asObject(bot);
+        const guildObject = asObject(guild);
+        if (applicationObject.id !== config.applicationId) {
           return json({ error: "Bot application identity does not match this manager." }, 502);
         }
         return json({
           connected: true,
           applicationId: config.applicationId,
-          bot: { id: bot.id, username: bot.username },
-          guild: { id: guild.id, name: guild.name }
+          bot: { id: botObject.id, username: botObject.username },
+          guild: { id: guildObject.id, name: guildObject.name }
         });
       }
       case "/internal/v1/channels":
