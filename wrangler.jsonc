@@ -1,9 +1,19 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "dawn-dotta-discord-manager-edge",
+  "name": "momentum-movement-discord-manager",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-13",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": true,
-  "observability": { "enabled": true }
+  "observability": {
+    "enabled": true
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "06807f77c8774dff9fad78123cc51bb4"
+    }
+  ]
 }
