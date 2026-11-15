@@ -23,6 +23,28 @@ The check runs strict TypeScript compilation and the Vitest suite, including the
 
 Do not mark the project verified until both commands complete successfully and their full output has been reviewed.
 
+## OAuth authorization Worker
+
+The OAuth Worker source is at `auth-worker/src/index.ts`. It uses the Cloudflare OAuth Provider split-worker API and Discord OAuth sign-in with the minimum Discord scopes `identify guilds`.
+
+- Claude authorization requests are validated with PKCE by the OAuth provider.
+- Discord sign-in uses a one-time random state value with a 10-minute KV lifetime.
+- The user sees a separate consent page before the MCP grant is issued.
+- The consent record, including the temporary Discord user access token, is encrypted with AES-GCM before its five-minute KV storage lifetime.
+- The OAuth grant props are stored by the OAuth provider's encrypted storage and carry the Discord identity credential for per-call revalidation.
+- The auth Worker exposes `validateToken` and `checkGuildAccess` RPC methods over its private Service Binding.
+- Every manager read rechecks the Discord user identity, current guild membership, and owner/Administrator permission. Expired Discord user credentials fail closed and require reauthorization.
+- The current consent catalog grants `mcp:read` only. Write scope is deliberately withheld until the independent proposal/approval executor is implemented.
+
+The auth Worker requires a dedicated KV namespace bound as `OAUTH_KV`. Create it in the Cloudflare account, then add the returned namespace ID to `auth-worker/wrangler.jsonc` before any deployment. The config intentionally does not contain a namespace ID.
+
+The following values are configured later in the Cloudflare staging environment, never committed as secrets:
+
+- Variables: `OAUTH_ISSUER_URL`, `MCP_RESOURCE_URL`, `DISCORD_CLIENT_ID`, `DISCORD_REDIRECT_URI`, and the five `GUILD_ID_*` values.
+- Worker secrets: `DISCORD_CLIENT_SECRET` and `AUTH_SESSION_ENCRYPTION_KEY`.
+
+Generate the 32-byte AES key locally with `openssl rand -base64 32`. Enter it only through the Cloudflare secret prompt. Do not paste it into chat, source code, or GitHub.
+
 ## Manager Worker isolation
 
 The same source at `manager-worker/src/index.ts` is intended to be used by five distinct Cloudflare Workers. Each worker has its own Wrangler config:
