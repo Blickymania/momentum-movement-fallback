@@ -594,15 +594,11 @@ try{
 if(client.user?.id!==A)throw Error("Discord bot/application mismatch");
 const guild=await client.guilds.fetch(G);
 if(guild.id!==G)throw Error("Wrong authorized guild");
-try{
 rulesAcceptanceReady=await ensureRulesAcceptanceButton(guild);
-log("rules_acceptance_ready",{messageId:RULES_ACCEPTANCE_TARGET.messageId,vaultConfigured:true,buttonVerified:rulesAcceptanceReady});
-}catch(e){
-rulesAcceptanceReady=false;
-log("rules_acceptance_not_ready",{kind:e instanceof Error?e.message:"unknown"});
-}
+if(!rulesAcceptanceReady)throw Error("rules_acceptance_not_verified");
+log("rules_acceptance_ready",{messageId:RULES_ACCEPTANCE_TARGET.messageId,vaultConfigured:true,buttonVerified:true});
 guildVerified=true;ready=true;preparedGatewayOwner.markApplicationReady();log("gateway_verified",{app:A,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",handlerCount:SAFE.size,commandRegistryManagedElsewhere:true});
-}catch(err){lastError=err instanceof Error?err.name:"identity_failed";ready=false;guildVerified=false;log("identity_failed",{kind:lastError});await preparedGatewayOwner.shutdown("identity_verification_failed");}
+}catch(err){lastError=err instanceof Error?err.message:"identity_failed";ready=false;guildVerified=false;rulesAcceptanceReady=false;log("application_readiness_failed",{kind:lastError});await preparedGatewayOwner.shutdown("application_readiness_failed");}
 });
 client.on(Events.ShardDisconnect,ev=>{ready=false;preparedGatewayOwner.markApplicationNotReady();log("disconnected",{code:ev.code})});
 client.on(Events.ShardResume,()=>{ready=true;preparedGatewayOwner.markApplicationReady();log("resumed")});
@@ -1333,7 +1329,7 @@ else unexpected++;
 }
 return Response.json({guild:G,verified:unexpected===0,asOf:new Date().toISOString(),...values,unexpected,presences:[...g.presences.cache.values()].filter(x=>["online","idle","dnd"].includes(x.status)).map(x=>({id:x.userId,status:x.status}))},{headers:{"cache-control":"no-store"}});
 }
-if(path==="/healthz")return Response.json({service:"Blickymania Bot 005",community:"Momentum Movement",gatewayReady:ready,guildVerified,readOnly,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",commandRegistryExecutor:true,rulesAcceptanceReady,supportedRecoveredCommands:SAFE.size,originalFeatureParity:false,commandsResponded,uptimeSeconds:Math.floor((Date.now()-started)/1000),errorKind:lastError},{status:ready&&guildVerified?200:503});
+if(path==="/healthz")return Response.json({service:"Blickymania Bot 005",community:"Momentum Movement",gatewayReady:ready,guildVerified,rulesAcceptanceReady,readOnly,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",commandRegistryExecutor:true,rulesAcceptanceReady,supportedRecoveredCommands:SAFE.size,originalFeatureParity:false,commandsResponded,uptimeSeconds:Math.floor((Date.now()-started)/1000),errorKind:lastError},{status:ready&&guildVerified?200:503});
 return Response.json({error:"not-found"},{status:404});
 };
 Bun.serve({hostname:"0.0.0.0",port:Number(Bun.env.PORT||8080),fetch:momentumHttpHandler});
