@@ -73,27 +73,20 @@ test("application readiness is fail-closed until the existing rules button and e
   assert.match(entry, /guildVerified,rulesAcceptanceReady,readOnly/);
 });
 
-test("existing encrypted vault is loaded before application readiness and corrupt records fail closed", () => {
+test("existing encrypted vault is fully validated before application readiness", () => {
   const loadStart = entry.indexOf("async function load()");
   const loadEnd = entry.indexOf("function empty(", loadStart);
   const loadSource = entry.slice(loadStart, loadEnd);
+  const ensureStart = entry.indexOf("async function ensureRulesAcceptanceButton");
+  const ensureEnd = entry.indexOf("client.on(Events.InteractionCreate", ensureStart);
+  const ensureSource = entry.slice(ensureStart, ensureEnd);
   const readyStart = entry.indexOf("client.once(Events.ClientReady");
   const readyEnd = entry.indexOf("client.on(Events.ShardDisconnect", readyStart);
   const readySource = entry.slice(readyStart, readyEnd);
-  assert.match(loadSource, /profile_vault_record_decryption_failed/);
-  assert.match(loadSource, /profile_vault_record_invalid/);
-  assert.match(readySource, /await load\(\)/);
+  assert.match(loadSource, /decodeEncryptedMemberVaultPage\(messages,A,unseal\)/);
+  assert.match(ensureSource, /await key\(\);\s*await load\(\);/);
   assert.match(readySource, /rulesAcceptanceReady=await ensureRulesAcceptanceButton\(guild\)/);
-  assert.match(readySource, /application_readiness_failed/);
-});
-
-test("startup verifies existing encrypted vault before it can mark the application ready", () => {
-  assert.match(entry, /decodeEncryptedMemberVaultPage/);
-  const readyStart = entry.indexOf("client.once(Events.ClientReady");
-  const readyEnd = entry.indexOf("client.on(Events.ShardDisconnect", readyStart);
-  const readySource = entry.slice(readyStart, readyEnd);
-  assert.match(readySource, /rulesAcceptanceReady=await ensureRulesAcceptanceButton\(guild\)/);
-  assert.match(readySource, /await load\(\)/);
   assert.match(readySource, /if\(!rulesAcceptanceReady\)throw Error/);
   assert.match(readySource, /preparedGatewayOwner\.shutdown\("application_readiness_failed"\)/);
+  assert.match(entry, /guildVerified,rulesAcceptanceReady,readOnly/);
 });
