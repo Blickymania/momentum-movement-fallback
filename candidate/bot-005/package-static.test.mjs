@@ -63,3 +63,12 @@ test("standby entrypoint exposes health without any Discord token or Gateway cli
   assert.ok(dockerfile.includes("COPY candidate/bot-005/standby.ts "));
   assert.equal(packageJson.scripts.standby, "bun run standby.ts");
 });
+
+test("application readiness is fail-closed until the existing rules button and encrypted vault are verified", () => {
+  const readyHandler = entry.slice(entry.indexOf("client.once(Events.ClientReady"));
+  assert.match(readyHandler, /rulesAcceptanceReady=await ensureRulesAcceptanceButton\(guild\)/);
+  assert.match(readyHandler, /if\(!rulesAcceptanceReady\)throw Error\("rules_acceptance_not_verified"\)/);
+  assert.match(readyHandler, /await preparedGatewayOwner\.shutdown\("application_readiness_failed"\)/);
+  assert.doesNotMatch(readyHandler, /rules_acceptance_not_ready/);
+  assert.match(entry, /guildVerified,rulesAcceptanceReady,readOnly/);
+});
