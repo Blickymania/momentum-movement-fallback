@@ -50,7 +50,7 @@ One public HTTPS MCP endpoint for Claude, one separate OAuth authorization Worke
 3. discord-claude-gateway validates tokens by Service Binding to the authorization Worker, resolves an explicit guild selection, and checks the signed-in user's per-guild authorization grant.
 4. The gateway calls only that guild's private manager Worker through its dedicated Service Binding.
 5. Each manager Worker contains only that server's guild ID and bot token secret.
-6. The OAuth Worker has its own KV namespace. The gateway has a SQLite-backed Durable Object for immutable change proposals, single-use approvals, idempotency, and audit records. Operational guild data is never combined.
+6. The OAuth Worker has its own KV namespace. The gateway has a dedicated Cloudflare D1 database for immutable change proposals, single-use approvals, idempotency, and audit records. Consume approvals with a conditional atomic UPDATE so an approval cannot be replayed. Operational guild data is never combined.
 
 The five manager Workers must not have public routes or public workers.dev endpoints. The gateway is the only Worker configured with bindings to them. The OAuth Worker is bound only to the gateway's resource-server validation interface. The existing Empress Worker is out of scope and must not be repurposed.
 
@@ -124,9 +124,9 @@ Each child manager gets only its own bot token and authorized guild ID. The gate
 
 Use Cloudflare's maintained @cloudflare/workers-oauth-provider library for OAuth 2.1 rather than extending the custom single-guild OAuth implementation. Use its documented split-worker pattern: OAuthAuthorizationServer in discord-claude-auth, OAuthResourceServer in discord-claude-gateway, and token validation over a Service Binding. The library supports client registration, PKCE, refresh/revocation, resource audiences, and OAuth metadata. The combined OAuthProvider form exists, but the split model is preferred for this trust boundary.
 
-Use a dedicated SQLite-backed Durable Object for exact-action proposals, one-time approvals, idempotency, and append-only audit events. Its transactional storage is preferable to KV for single-use approval consumption. The gateway OAuth KV namespace and approval Durable Object are central authorization infrastructure only; they do not contain merged guild operational data.
+Use a dedicated Cloudflare D1 database for exact-action proposals, one-time approvals, idempotency, and audit events. Use a conditional atomic SQL update to consume an approved proposal once; KV is not suitable for that race-sensitive operation. The gateway OAuth KV namespace and approval D1 database are central authorization infrastructure only; they do not contain merged guild operational data.
 
-Cloudflare's published Free allowances currently include 100,000 Worker requests/day, 10 ms CPU per invocation, 100,000 KV reads/day, 1,000 KV writes/day, and 100,000 Durable Object requests/day with SQLite storage. These are hard limits: overages fail rather than silently becoming paid usage. Enforce a fail-closed usage budget and monitor consumption. Service Bindings do not add a separate charge and can reach Workers without public routes. Re-check pricing and limits before deployment.
+Cloudflare's published Free allowances currently include 100,000 Worker requests/day, 10 ms CPU per invocation, 100,000 KV reads/day, 1,000 KV writes/day, and D1 allowances of 5 million rows read/day, 100,000 rows written/day, and 5 GB total storage. These are hard limits: overages fail rather than silently becoming paid usage. Enforce a fail-closed usage budget and monitor consumption. Service Bindings do not add a separate charge and can reach Workers without public routes. Re-check pricing and limits before deployment.
 
 The existing Dawn Hyperdrive configuration remains isolated to the Dawn staging source and is not required for the central OAuth store in this design. Do not assume it is attached to a deployed Worker. Keep it unchanged and do not repurpose the Dawn Neon database for another community.
 
