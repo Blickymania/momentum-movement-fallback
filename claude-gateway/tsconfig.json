@@ -9,5 +9,5 @@
     "types": ["@cloudflare/workers-types"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "manager-worker/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "manager-worker/**/*.ts", "auth-worker/**/*.ts"]
 }
