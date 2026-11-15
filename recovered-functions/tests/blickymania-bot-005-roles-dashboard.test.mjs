@@ -6,6 +6,8 @@ const sourceFile = new URL("../blickymania-bot-005.ts", import.meta.url);
 const file = await readFile(sourceFile, "utf8");
 const match = file.match(/const payload="([^"]+)";/);
 assert.ok(match, "Bot 005 compressed source payload exists");
+assert.match(file, /from"discord\\.js";/);
+assert.doesNotMatch(file, /from"discord\\.js@/);
 
 function decompress(payload) {
   const raw = Buffer.from(payload, "base64");
@@ -69,6 +71,6 @@ test("shared dashboard handler acknowledges before editing the message", () => {
 
 test("roles dashboard navigation contains no role mutation", () => {
   assert.match(roles.pages[2], /do not add, remove or change roles/i);
-  assert.match(roles.pages[2], /do not add, remove or change roles/i);
+  assert.match(roles.pages[2], /never need your password, login code, recovery code/i);
   assert.match(roles.pages[3], /does not grant moderation authority/i);
 });
