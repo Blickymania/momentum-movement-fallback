@@ -53,6 +53,7 @@ interface ConsentPayload {
   discordAccessToken: string;
   discordTokenExpiresAt: number;
   authorizedGuildIds: string[];
+  authorizedGuildNames: string[];
   clientName: string;
 }
 
@@ -216,9 +217,11 @@ async function finishDiscordLogin(request: Request, env: AuthWorkerEnv): Promise
   ]);
 
   const configured = new Set(configuredGuildIds(env));
-  const authorizedGuildIds = guilds
-    .filter((guild) => configured.has(guild.id) && (guild.owner === true || isAdministrator(guild.permissions ?? "0")))
-    .map((guild) => guild.id);
+  const authorizedGuilds = guilds.filter(
+    (guild) => configured.has(guild.id) && (guild.owner === true || isAdministrator(guild.permissions ?? "0"))
+  );
+  const authorizedGuildIds = authorizedGuilds.map((guild) => guild.id);
+  const authorizedGuildNames = authorizedGuilds.map((guild) => guild.name);
 
   if (authorizedGuildIds.length === 0) {
     return new Response("Your Discord account is not the owner of, or an Administrator in, any configured server.", {
@@ -237,6 +240,7 @@ async function finishDiscordLogin(request: Request, env: AuthWorkerEnv): Promise
     discordAccessToken: token.access_token,
     discordTokenExpiresAt: Date.now() + token.expires_in * 1000,
     authorizedGuildIds,
+    authorizedGuildNames,
     clientName
   };
 
@@ -246,7 +250,7 @@ async function finishDiscordLogin(request: Request, env: AuthWorkerEnv): Promise
 
   const displayName = escapeHtml(user.global_name || user.username);
   const safeClientName = escapeHtml(clientName);
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Discord Manager</title></head><body style="font-family:system-ui;max-width:38rem;margin:3rem auto;padding:0 1rem"><h1>Connect your Discord servers</h1><p>Signed in as <strong>${displayName}</strong>.</p><p><strong>${safeClientName}</strong> is requesting read-only access to the Discord communities where your account is an owner or Administrator.</p><p>Eligible communities: ${authorizedGuildIds.length} of 5.</p><p>This connection cannot change roles, channel permissions, or delete resources.</p><form method="post" action="/consent"><input type="hidden" name="handle" value="${handle}"><button name="decision" value="approve" type="submit">Allow read-only access</button> <button name="decision" value="deny" type="submit">Deny</button></form><p>This approval expires in five minutes.</p></body></html>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Discord Manager</title></head><body style="font-family:system-ui;max-width:38rem;margin:3rem auto;padding:0 1rem"><h1>Connect your Discord servers</h1><p>Signed in as <strong>${displayName}</strong>.</p><p><strong>${safeClientName}</strong> is requesting read-only access to the Discord communities where your account is an owner or Administrator.</p><p>Eligible communities: ${authorizedGuildNames.map(escapeHtml).join(", ")}.</p><p>This connection cannot change roles, channel permissions, or delete resources.</p><form method="post" action="/consent"><input type="hidden" name="handle" value="${handle}"><button name="decision" value="approve" type="submit">Allow read-only access</button> <button name="decision" value="deny" type="submit">Deny</button></form><p>This approval expires in five minutes.</p></body></html>`;
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
