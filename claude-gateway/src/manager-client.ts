@@ -35,7 +35,7 @@ const MANAGERS: Record<ServerKey, {
   "dawn-dotta": { binding: "MANAGER_DAWN_DOTTA", guildId: "GUILD_ID_DAWN_DOTTA" }
 };
 
-const SNOWFLAKE = /^\\d{15,22}$/;
+const SNOWFLAKE = /^\d{15,22}$/;
 const SENSITIVE_KEY = /(authorization|token|secret|password|api[_-]?key|client[_-]?secret)/i;
 const MAX_RESPONSE_BYTES = 1_000_000;
 
