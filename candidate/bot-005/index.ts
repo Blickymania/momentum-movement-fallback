@@ -101,7 +101,11 @@ const route="/channels/"+MV+"/messages?limit=100"+(before?"&before="+before:"");
 const messages=await caseApi("GET",route);
 if(!Array.isArray(messages))throw Error("profile_vault_response_invalid");
 for(const x of messages)if(x.author?.id===A&&x.content?.startsWith("MRV1.")){
-try{const v=await unseal(x.content);if(typeof v.userId==="string"&&!mc.has(v.userId)){mc.set(v.userId,v);mi.set(v.userId,x.id)}}catch{}
+try{
+const v=await unseal(x.content);
+if(typeof v.userId!=="string"||!v.userId)throw Error("profile_vault_record_invalid");
+if(!mc.has(v.userId)){mc.set(v.userId,v);mi.set(v.userId,x.id)}
+}catch{throw Error("profile_vault_record_decryption_failed")}
 }
 if(messages.length<100)return;
 const oldest=String(messages[messages.length-1]?.id||"");
@@ -119,6 +123,7 @@ async function ensureRulesAcceptanceButton(guild){
 if(MV!==RULES_ACCEPTANCE_TARGET.vaultChannelId)throw Error("member_vault_channel_mismatch");
 if(!/^[a-f0-9]{64}$/i.test(Bun.env.PROFILE_DATA_ENCRYPTION_KEY||""))throw Error("member_vault_encryption_key_missing");
 await key();
+await load();
 const me=await guild.members.fetchMe();
 const vault=await guild.channels.fetch(MV);
 if(!vault||vault.guildId!==G||Number(vault.type)!==0)throw Error("member_vault_not_found");
