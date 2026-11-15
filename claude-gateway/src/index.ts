@@ -10,6 +10,9 @@ import { SERVER_CATALOG, type ServerKey } from "./policy";
 
 interface AuthProps {
   userId: string;
+  discordAccessToken: string;
+  discordTokenExpiresAt: number;
+  authorizedGuildIds: string[];
 }
 
 interface ResourceEnv extends GatewayEnv {
@@ -41,7 +44,8 @@ function textResult(value: unknown) {
 function createReadOnlyMcpHandler(
   env: ResourceEnv,
   userId: string,
-  scopes: string[]
+  scopes: string[],
+  discordAccessToken: string
 ) {
   return createMcpHandler(() => {
     const server = new McpServer(
@@ -67,7 +71,7 @@ function createReadOnlyMcpHandler(
         },
         async ({ serverKey }) => {
           const key = serverKey as ServerKey;
-          await assertCurrentGuildReadAccess(env, env.AUTH_SERVER, key, userId, scopes);
+          await assertCurrentGuildReadAccess(env, env.AUTH_SERVER, key, userId, scopes, discordAccessToken);
           const result = await readManagerResource(env, key, resource);
           return textResult(result);
         }
@@ -118,11 +122,12 @@ export default {
       handler: {
         async fetch(mcpRequest, bindings, authContext) {
           const userId = authContext.props?.userId ?? authContext.auth.userId;
-          if (!userId) {
-            return Response.json({ error: "Authenticated Discord user is missing." }, { status: 403 });
+          const discordAccessToken = authContext.props?.discordAccessToken;
+          if (!userId || !discordAccessToken) {
+            return Response.json({ error: "Authenticated Discord identity is incomplete." }, { status: 403 });
           }
           const scopes = scopesFrom(authContext.auth.scope);
-          const mcp = createReadOnlyMcpHandler(bindings, userId, scopes);
+          const mcp = createReadOnlyMcpHandler(bindings, userId, scopes, discordAccessToken);
           return mcp.fetch(mcpRequest);
         }
       }
