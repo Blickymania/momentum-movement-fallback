@@ -156,3 +156,23 @@ Before worker activation: verify the exact Railway Bot 005 service, stop it thro
 - Added three unit tests for newest-record selection, ignoring other authors/unrelated messages, corrupt/decrypt-failure rejection, and invalid record IDs. The rules acceptance unit suite now contains 15 tests. Added two package-static readiness assertions; package static suite now contains 9 tests.
 - These tests have not yet been executed in this runtime: GitHub Actions still fails before job creation, and Bun is unavailable. Source syntax and branch readback checks will be run after the entrypoint regeneration.
 - No live Discord message, role, permission, Gateway session, Hostless resource, token, Railway service, scheduler, or cron was changed.
+
+ 
+## Latest readiness and encrypted-vault verification — 2026-11-14
+
+- Repaired a fail-open startup path: the earlier ClientReady callback could catch a vault/button verification error and still set the overall application ready. It now requires a successful vault load and a read-back-verified acceptance button before marking the application ready. On failure it shuts down; `/healthz` reports `rulesAcceptanceReady` and only returns HTTP 200 when gateway, guild and rules acceptance are all ready.
+- Added `decodeEncryptedMemberVaultPage()` to the rules acceptance module. It only accepts bot-authored `MRV1.` records, requires every record to decrypt and contain a nonempty member ID, and selects the newest record per member across newest-first pagination. Corrupt ciphertext, an invalid AES-GCM key, or a malformed record now fails closed instead of being ignored as an empty vault.
+- Bot 005's startup calls the existing vault loader before attempting the dashboard update. The candidate must therefore decrypt existing records before it can publish/enable the acceptance button or report ready.
+- Added three unit tests for newest-first record selection, ignored non-bot/unrelated messages, decryption failure and invalid record IDs. Rules acceptance unit tests now total **15**. Package-static source tests now total **8**. LIVE NOW recovery tests remain **11**.
+- Current local checks executed in this turn: executable wrapper exactly matches the preserved candidate source plus import prelude; entrypoint, standby and static-test scripts syntax-parse; the extracted vault decoder was behavior-checked for newest-record selection, unrelated-message filtering, decrypt failure and invalid member IDs; readiness/health/Docker lockfile/standby source conditions all passed **18 source/behavior assertions**. This is not a full Node `node --test` run or a Bun build.
+- Previous local unit run before these latest vault-decoder additions passed 23 tests (12 rules acceptance + 11 LIVE NOW). The expanded 15-unit/8-static suite has not been executed yet. GitHub Actions run `43658295573` ended `startup_failure`; Jobs API returned zero jobs. Hosted CI remains unverified.
+- The candidate branch is still ahead of `hostless/dawn-dotta-bun-runtime` and not behind it. The root `Dockerfile`, root `package.json`, and `hostless.yaml` remain unchanged (SHA comparison below).
+- The live rules dashboard is still pinned and retains exactly its four original navigation buttons. The acceptance button is not live. Discord manager read-only audit passed again: 111 channels, 12 roles, 13 forums, 36 commands, 14 categories, zero warnings.
+- No bot roles, role permissions, hierarchy, assignments, Discord channel permissions, messages, Railway services, Hostless resources, secrets, schedules or cron jobs were changed. Production Bot 005 remains the Railway primary.
+- Remaining blockers: Bun 1.4.4 is unavailable here, no `bun.lock` exists, Docker image build has not run, there is no Hostless management connector/browser session to create a standalone worker, and no independently verifiable stop/fence for the exact Railway Bot 005 primary exists. The no-token standby command is ready in source but cannot yet be built or deployed. Do not provide a Bot token or start a Gateway until those gates are met.
+
+### Protected root app configuration hash check
+
+- `Dockerfile`: unchanged — feature `96673819d01df5555118738828d86485a920301b`, base `96673819d01df5555118738828d86485a920301b`
+- `package.json`: unchanged — feature `b49232a9df8db9117d0ab14ed5ae09f79d443bfc`, base `b49232a9df8db9117d0ab14ed5ae09f79d443bfc`
+- `hostless.yaml`: unchanged — feature `0bf8225d6d2f4fe7defabb75ae01ab75d646db10`, base `0bf8225d6d2f4fe7defabb75ae01ab75d646db10`
