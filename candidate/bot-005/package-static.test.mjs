@@ -72,3 +72,17 @@ test("application readiness is fail-closed until the existing rules button and e
   assert.doesNotMatch(readyHandler, /rules_acceptance_not_ready/);
   assert.match(entry, /guildVerified,rulesAcceptanceReady,readOnly/);
 });
+
+test("existing encrypted vault is loaded before application readiness and corrupt records fail closed", () => {
+  const loadStart = entry.indexOf("async function load()");
+  const loadEnd = entry.indexOf("function empty(", loadStart);
+  const loadSource = entry.slice(loadStart, loadEnd);
+  const readyStart = entry.indexOf("client.once(Events.ClientReady");
+  const readyEnd = entry.indexOf("client.on(Events.ShardDisconnect", readyStart);
+  const readySource = entry.slice(readyStart, readyEnd);
+  assert.match(loadSource, /profile_vault_record_decryption_failed/);
+  assert.match(loadSource, /profile_vault_record_invalid/);
+  assert.match(readySource, /await load\(\)/);
+  assert.match(readySource, /rulesAcceptanceReady=await ensureRulesAcceptanceButton\(guild\)/);
+  assert.match(readySource, /application_readiness_failed/);
+});
