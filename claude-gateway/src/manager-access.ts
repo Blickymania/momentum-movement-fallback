@@ -8,7 +8,7 @@ export interface CurrentGuildAuthorization {
 }
 
 export interface DiscordAuthorizationService {
-  checkGuildAccess(userId: string, guildId: string): Promise<CurrentGuildAuthorization>;
+  checkGuildAccess(userId: string, guildId: string, discordAccessToken: string): Promise<CurrentGuildAuthorization>;
 }
 
 function configuredGuildId(env: GatewayEnv, key: ServerKey): string {
@@ -33,11 +33,12 @@ export async function assertCurrentGuildReadAccess(
   authService: DiscordAuthorizationService,
   serverKey: ServerKey,
   userId: string,
-  scopes: readonly string[]
+  scopes: readonly string[],
+  discordAccessToken: string
 ): Promise<void> {
   if (!userId) throw new Error("Authenticated Discord user is missing.");
   const guildId = configuredGuildId(env, serverKey);
-  const current = await authService.checkGuildAccess(userId, guildId);
+  const current = await authService.checkGuildAccess(userId, guildId, discordAccessToken);
 
   assertGuildAccess({
     serverKey,
