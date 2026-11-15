@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "manager-dawn-dotta-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "vars": {
+    "DISCORD_GUILD_ID": "",
+    "DISCORD_APPLICATION_ID": ""
+  }
+}
