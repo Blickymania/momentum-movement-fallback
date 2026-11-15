@@ -133,3 +133,15 @@ Before worker activation: verify the exact Railway Bot 005 service, stop it thro
 - Updated the package Dockerfile to include the standby entrypoint and added a sixth static assertion verifying the no-token/no-Gateway standby boundary.
 - When a Hostless worker can be provisioned, the initial start command should be `bun run standby` with no production secrets. Do not change to production start or add the Bot token until the legacy Railway Bot 005 process is independently stopped and the stop is verified.
 - Docker build is still blocked pending a real Bun 1.4.4 lockfile. No Hostless worker has been created and no Gateway session has been started.
+
+ 
+## Hostless resource and no-token deployment checkpoint — 2026-11-14
+
+- Current Hostless documentation describes a shared account-wide pool of 0.5 vCPU and 1 GiB RAM across apps, workers, cron, databases and marketplace resources; it is not a separate free allowance for each worker. Existing billing cycles can retain legacy terms, and usage above the eligible pool can be billed. Check the account's own Cost Breakdown before provisioning.
+- Bot 005's member state is persisted in the existing encrypted Discord vault, so the candidate does not need a local durable volume. The initial standby worker should use one replica and no volume.
+- Added `standby.ts` and `start:standby`. Static source checks confirm it binds to `0.0.0.0`, serves only `/healthz`, emits a structured ready log, and does not read the Discord token, instantiate a Discord client, or log into a Gateway.
+- The executable `index.ts` syntax-parses and exactly matches the preserved recovered Bot 005 body after the explicit Discord.js import prelude. The Dockerfile includes all 10 local runtime modules in the transitive import graph and retains frozen lockfile enforcement.
+- The new six-case package-static suite has been syntax-parsed but not executed. The earlier rules acceptance + LIVE NOW focused unit run was 23/23 passed. Full hosted CI remains blocked: latest run `43657936968` returned `startup_failure` with zero jobs.
+- Root `Dockerfile`, root `package.json`, and `hostless.yaml` have SHA-identical contents to the Hostless base branch, so the existing LIVE & Events app configuration was not changed.
+- No `bun.lock` has been generated; no Docker build has run; no Hostless worker, volume, secrets, app settings, or deployment was created.
+- Production Bot 005 remains the Railway primary; no old-process stop proof exists. Use the no-token `bun run standby` command for the first Hostless process verification only after an actual frozen build is possible. Do not switch to `bun run start` or provision a bot token until the exact Railway primary is independently stopped and the stop is verified.
