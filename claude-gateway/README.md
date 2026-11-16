@@ -20,7 +20,7 @@ npm run check
 npm run test:workers
 ```
 
-`npm run check` runs strict TypeScript compilation and the regular Vitest suite, including policy, gateway manager-client, per-request authorization, private manager Worker, and one-time-store core tests. `npm run test:workers` runs two isolated Cloudflare Workers Vitest suites: the OAuth Worker using `auth-worker/wrangler.test.jsonc`, and the gateway proposal store using `wrangler.test.jsonc`. Discord HTTP requests are mocked with MSW; no live Discord credentials or external Discord API calls are used. The suites exercise OAuth registration, PKCE authorization, browser-bound callback state, owner/Administrator guild filtering, consent replay rejection, read-only token issuance, expired Discord-token fail-closed behavior, one-time OAuth records, and the SQLite-backed write-proposal Durable Object (idempotency, separate owner approval, explicit rejection, cross-guild/requester/hash checks, concurrent consume, expiry alarms, and immutable audit rows). Test credentials and KV IDs in the test-only Wrangler files are placeholders and are not used by staging or production. The Workers test plugin and pinned dependency graph are included in the package manifest and lockfile.
+`npm run check` runs strict TypeScript compilation and the regular Vitest suite, including policy, gateway manager-client, per-request authorization, private manager Worker, and one-time-store core tests. `npm run test:workers` runs two isolated Cloudflare Workers Vitest suites: the OAuth Worker using `auth-worker/wrangler.test.jsonc`, and the gateway proposal store using `wrangler.test.jsonc`. Discord HTTP requests are mocked with MSW; no live Discord credentials or external Discord API calls are used. The suites exercise OAuth registration, PKCE authorization, browser-bound callback state, owner/Administrator guild filtering, consent replay rejection, read-only token issuance, expired Discord-token fail-closed behavior, the separate owner-approval OAuth flow (actual guild owner only, requester self-approval blocked, one-time link/callback/decision), private gateway approval routes, and the SQLite-backed write-proposal Durable Object (idempotency, explicit rejection, cross-guild/requester/hash checks, concurrent consume, expiry alarms, and immutable audit rows). Test credentials and KV IDs in the test-only Wrangler files are placeholders and are not used by staging or production. The Workers test plugin and pinned dependency graph are included in the package manifest and lockfile.
 
 Do not mark the project verified until both commands complete successfully and their full output has been reviewed.
 
@@ -33,7 +33,8 @@ The OAuth Worker source is at `auth-worker/src/index.ts`. It uses the Cloudflare
 - The user sees a separate consent page before the MCP grant is issued.
 - The consent record, including the temporary Discord user access token, is encrypted with AES-GCM before its five-minute Durable Object lifetime; abandoned records are cleaned up by alarms.
 - The OAuth grant props are stored by the OAuth provider's encrypted storage and carry the Discord identity credential for per-call revalidation.
-- The auth Worker exposes `validateToken` and `checkGuildAccess` RPC methods over its private Service Binding.
+- The auth Worker exposes `validateToken`, `checkGuildAccess`, and `createOwnerApprovalSession` RPC methods over its private Service Binding.
+- A separate one-time owner-approval link authenticates through Discord, requires `guild.owner === true` (Administrator is not sufficient), and rechecks ownership at the final approve/reject submission. The auth Worker calls the gateway only through a private Service Binding and a shared internal secret; the gateway rechecks proposal ID, guild, requester, status, and action hash before recording the decision.
 - Every manager read enforces the exact guild list captured in the user's OAuth consent, then rechecks the Discord identity, current guild membership, and owner/Administrator permission. Expired Discord user credentials fail closed and require reauthorization.
 - The current consent catalog grants `mcp:read` only. A persistent write-proposal store and immutable audit log are implemented, but write scope remains withheld until a separate owner-verification/approval interface and typed manager write executor are implemented and verified.
 
@@ -44,9 +45,9 @@ Custom Discord login state and consent handles do **not** use KV. They use the `
 The following values are configured later in the Cloudflare staging environment, never committed as secrets:
 
 - Variables: `OAUTH_ISSUER_URL`, `MCP_RESOURCE_URL`, `DISCORD_CLIENT_ID`, `DISCORD_REDIRECT_URI`, and the five `GUILD_ID_*` values.
-- Worker secrets: `DISCORD_CLIENT_SECRET` and `AUTH_SESSION_ENCRYPTION_KEY`.
+- Worker secrets: `DISCORD_CLIENT_SECRET`, `AUTH_SESSION_ENCRYPTION_KEY`, and the same random `OWNER_APPROVAL_INTERNAL_SECRET` on both the gateway and auth Workers. The auth Worker declares a private `GATEWAY_SERVER` Service Binding back to `discord-claude-gateway-staging`; the gateway already declares `AUTH_SERVER`.
 
-Generate the 32-byte AES key locally with `openssl rand -base64 32`. Enter it only through the Cloudflare secret prompt. Do not paste it into chat, source code, or GitHub.
+Generate the 32-byte AES key locally with `openssl rand -base64 32` and the internal service secret with `openssl rand -hex 32`. Enter the exact same internal secret separately into both Workers using Cloudflare secret prompts. Do not paste either value into chat, source code, or GitHub. The future staging setup must set `OWNER_APPROVAL_INTERNAL_SECRET` on both Workers.
 
 ## Manager Worker isolation
 
@@ -77,4 +78,4 @@ Those services do not yet exist. The gateway's `MCP_RESOURCE_URL` and `OAUTH_ISS
 
 ## Do not deploy yet
 
-The OAuth authorization Worker is locally compiled and integration-tested but remains unconfigured and undeployed. The per-guild write-proposal Durable Object and immutable audit log are implemented and tested but are not connected to MCP tools or deployed. The separate verified owner-approval interface, trusted owner-verification call path, typed manager write executor, and write-tool integration remain outstanding. The five private manager Workers have not been deployed. Run the full source checks first, then complete integration and security tests. Production release requires a separate explicit decision.
+The OAuth authorization Worker is locally compiled and integration-tested but remains unconfigured and undeployed. The per-guild write-proposal Durable Object and immutable audit log are implemented and tested but are not connected to MCP tools or deployed. The separate Discord owner-approval interface and private gateway decision bridge are now implemented and locally tested, but the shared internal secret and circular Service Bindings are not configured/deployed. Proposal creation is not yet exposed as an MCP tool, and the typed manager write executor and write-tool integration remain outstanding. The five private manager Workers have not been deployed. Run the full source checks first, then complete integration and security tests. Production release requires a separate explicit decision.
