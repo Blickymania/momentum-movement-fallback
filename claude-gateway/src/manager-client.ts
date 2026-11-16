@@ -45,6 +45,19 @@ function requireServerKey(value: string): ServerKey {
   return match.key;
 }
 
+function duplicateConfiguredGuildIds(env: GatewayEnv): Set<string> {
+  const ids = Object.values(MANAGERS)
+    .map((config) => env[config.guildId] as string | undefined)
+    .filter((id): id is string => typeof id === "string" && SNOWFLAKE.test(id));
+  const duplicates = new Set<string>();
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) duplicates.add(id);
+    seen.add(id);
+  }
+  return duplicates;
+}
+
 function resolveTarget(env: GatewayEnv, key: ServerKey): ManagerTarget {
   const config = MANAGERS[key];
   const binding = env[config.binding] as ManagerBinding | undefined;
@@ -52,6 +65,9 @@ function resolveTarget(env: GatewayEnv, key: ServerKey): ManagerTarget {
   if (!binding) throw new Error(`Manager binding for ${key} is not configured.`);
   if (!guildId || !SNOWFLAKE.test(guildId)) {
     throw new Error(`A valid fixed guild ID for ${key} is not configured.`);
+  }
+  if (duplicateConfiguredGuildIds(env).has(guildId)) {
+    throw new Error("Each independent Discord manager must have a unique guild ID.");
   }
   return { binding, guildId };
 }
@@ -76,13 +92,14 @@ export function listConfiguredManagers(env: GatewayEnv): Array<{
   community: string;
   configured: boolean;
 }> {
+  const duplicateGuildIds = duplicateConfiguredGuildIds(env);
   return SERVER_CATALOG.map((server) => {
     const config = MANAGERS[server.key];
     const binding = env[config.binding];
     const guildId = env[config.guildId];
     return {
       ...server,
-      configured: !!binding && typeof guildId === "string" && SNOWFLAKE.test(guildId)
+      configured: !!binding && typeof guildId === "string" && SNOWFLAKE.test(guildId) && !duplicateGuildIds.has(guildId)
     };
   });
 }
