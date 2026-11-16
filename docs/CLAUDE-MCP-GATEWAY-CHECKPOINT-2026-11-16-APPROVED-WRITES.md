@@ -266,3 +266,36 @@ This section supersedes the earlier shared-Gateway blocker described above. A de
 - Other four communities, their services/configurations/secrets, and all production resources: **locked and untouched**.
 - Live Discord message/channel writes, bot-role changes, and production release: **not performed**.
 - No schedulers, cron jobs, reminders, or recurring maintenance were created.
+
+
+## Verification update — 2026-11-16 — OAuth refresh revocation and offline Wrangler validation
+
+This section supersedes the prior note above that MCP OAuth refresh preserves the linked Discord credential after expiry. The provider now refuses to refresh a grant whose underlying Discord credential is missing or within the 30-second expiry safety window.
+
+- Workflow run: 43951509049 — **success**.
+- Job: 133595049630.
+- Tested commit: bf41950dcb8d0ad02fbad29b7e5aa4dcb416f23e.
+- Locked dependency installation: passed.
+- Strict TypeScript: tsc --noEmit passed.
+- Unit/configuration suite: **88 passed** across 10 files.
+- Cloudflare Workers integration suite: **36 passed** across 7 files:
+  - Auth OAuth / owner approval / one-time store: 12 tests, including the new near-expiry refresh revocation test.
+  - OAuth-protected Resource Worker: 5.
+  - MCP handler: 4.
+  - Owner approval routes: 3.
+  - Write proposal/execution Durable Object: 12.
+- Total automated tests: **124 passed**.
+- Dawn offline Wrangler dry-runs: **3 passed** — Dawn manager, Dawn Auth, and Dawn Gateway. Logs confirm `--dry-run: exiting now` and “passed; no upload performed” for all three. No Cloudflare credentials or real namespace IDs were used; the script substitutes a dummy ID only in a temporary Auth config copy and cleans it up.
+- Auth Worker now configures the Cloudflare OAuth Provider's `tokenExchangeCallback`. On a `refresh_token` grant, it validates the linked Discord access token and expiry with the shared 30-second freshness policy. If missing, expired, or near expiry, it throws the package's `OAuthError("invalid_grant", ...)`. Cloudflare's OAuth provider revokes that grant and its access/refresh tokens when this error is raised, so Claude must complete a new Discord OAuth authorization. This avoids repeatedly minting MCP credentials tied to an expired Discord token.
+- The Discord refresh token remains intentionally unpersisted. The project does not automatically call Discord's upstream refresh endpoint; fresh Discord authorization remains the recovery mechanism.
+- The end-to-end auth-flow suite now includes a real Worker integration test that enters the 30-second expiry window, attempts MCP refresh, verifies OAuth `invalid_grant`, verifies the prior access token is revoked, and verifies no second Discord token exchange occurred.
+- Resource Worker continues to reject expired/near-expiry Discord credentials with an HTTP 401 Bearer `invalid_token` reconnect challenge before guild or manager lookups.
+- CI also runs `npm run validate:wrangler:dawn`, which executes Wrangler's compile/bundle dry-run for each authorized Dawn config. This is not a deploy or a live Service Binding test.
+- The runbook and README were updated afterward to correct the test totals, describe the grant-revocation behavior, and distinguish offline bundle checks from live staging acceptance.
+
+## Current verified state — Dawn-only
+
+- Code, strict TypeScript, 88 unit/config tests, 36 Worker integration tests, and all 3 Dawn Wrangler dry-runs: **verified green in CI**.
+- Dedicated Dawn-only Gateway/Auth pair and Dawn manager remain the only active deployment target; four other manager communities remain locked.
+- Cloudflare staging KV namespace, Worker deployments, Service Binding connectivity, public routes/custom hostnames, secrets, and real Discord/Claude OAuth acceptance: **not performed**.
+- No production deployment, no live Discord resource writes, no bot-role/permission changes, no scheduler/cron activity.
