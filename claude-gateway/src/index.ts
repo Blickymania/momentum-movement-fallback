@@ -4,11 +4,13 @@ import {
 } from "@cloudflare/workers-oauth-provider";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
-import { assertCurrentGuildReadAccess, type DiscordAuthorizationService } from "./manager-access";
+import { assertCurrentGuildReadAccess, getConfiguredGuildId, type DiscordAuthorizationService } from "./manager-access";
 import { listConfiguredManagers, readManagerResource, type GatewayEnv } from "./manager-client";
 import { SERVER_CATALOG, type ServerKey } from "./policy";
-import type { WriteProposalStore, WriteProposalRecord, ApproveWriteProposalInput } from "./write-proposals";
+import type { WriteProposalStore, WriteProposalRecord, ApproveWriteProposalInput, CreateWriteProposalInput } from "./write-proposals";
 import type { OwnerApprovalDecisionRequest, OwnerApprovalProposalSnapshot, OwnerApprovalSessionRequest, OwnerApprovalSessionResponse } from "./owner-approval-types";
+import { createProposalAndApproval } from "./proposal-service";
+import type { ProposedAction } from "./policy";
 export { WriteProposalStore } from "./write-proposals";
 
 interface AuthProps {
@@ -31,6 +33,7 @@ interface ResourceEnv extends GatewayEnv {
 }
 
 type WriteProposalStoreRpc = {
+  createProposal(input: CreateWriteProposalInput): Promise<WriteProposalRecord>;
   getProposal(proposalId: string): Promise<WriteProposalRecord | null>;
   approveProposal(input: ApproveWriteProposalInput): Promise<WriteProposalRecord>;
   rejectProposal(input: ApproveWriteProposalInput): Promise<WriteProposalRecord>;
@@ -139,7 +142,7 @@ async function handleInternalOwnerApproval(request: Request, env: ResourceEnv): 
   return new Response("Not found.", { status: 404 });
 }
 
-function createReadOnlyMcpHandler(
+function createReadAndProposeMcpHandler(
   env: ResourceEnv,
   userId: string,
   authorizedGuildIds: string[],
@@ -200,6 +203,73 @@ function createReadOnlyMcpHandler(
       "Read the registered command inventory for exactly one currently authorized Discord server."
     );
 
+    const proposalActionSchema = z.discriminatedUnion("type", [
+      z.object({
+        type: z.literal("message.send"),
+        channelId: z.string().regex(SNOWFLAKE),
+        content: z.string().min(1).max(2000)
+      }).strict(),
+      z.object({
+        type: z.literal("channel.update"),
+        channelId: z.string().regex(SNOWFLAKE),
+        patch: z.object({
+          name: z.string().min(1).max(100).optional(),
+          topic: z.string().max(1024).optional(),
+          nsfw: z.boolean().optional(),
+          rate_limit_per_user: z.number().int().min(0).max(21600).optional(),
+          default_auto_archive_duration: z.number().int().refine((value) => [60, 1440, 4320, 10080].includes(value)).optional(),
+          default_forum_layout: z.union([z.literal(1), z.literal(2)]).optional(),
+          default_sort_order: z.union([z.literal(0), z.literal(1)]).optional()
+        }).strict()
+      }).strict()
+    ]);
+
+    server.registerTool(
+      "discord_propose_change",
+      {
+        description: "Create a pending, idempotent change proposal for one authorized Discord server and return a one-time owner approval link. This tool does not execute a Discord write. Only message.send and channel.update are supported; permission overwrites, role or bot-role changes, deletes, and bulk actions are not available.",
+        inputSchema: z.object({
+          serverKey: z.enum(SERVER_KEYS),
+          action: proposalActionSchema,
+          idempotencyKey: z.string().min(8).max(128).regex(/^[A-Za-z0-9._:-]+$/)
+        })
+      },
+      async ({ serverKey, action, idempotencyKey }) => {
+        const key = serverKey as ServerKey;
+        await assertCurrentGuildReadAccess(
+          env, env.AUTH_SERVER, key, userId, authorizedGuildIds, scopes, discordAccessToken
+        );
+        const guildId = getConfiguredGuildId(env, key);
+        const channelInventory = await readManagerResource(env, key, "channels");
+        const store = env.WRITE_PROPOSAL_STORE.get(env.WRITE_PROPOSAL_STORE.idFromName(guildId)) as unknown as WriteProposalStoreRpc;
+        const result = await createProposalAndApproval({
+          serverKey: key,
+          guildId,
+          requesterUserId: userId,
+          action: action as ProposedAction,
+          channelInventory,
+          idempotencyKey
+        }, {
+          createProposal: (normalizedAction, policyContext) => store.createProposal({
+            serverKey: key,
+            guildId,
+            requesterUserId: userId,
+            action: normalizedAction,
+            policyContext,
+            idempotencyKey
+          }),
+          createOwnerApprovalSession: (proposal) => env.AUTH_SERVER.createOwnerApprovalSession({
+            proposalId: proposal.id,
+            guildId: proposal.guildId,
+            requesterUserId: proposal.requesterUserId,
+            serverKey: proposal.serverKey,
+            actionHash: proposal.actionHash
+          })
+        });
+        return textResult(result);
+      }
+    );
+
     return server;
   });
 }
@@ -236,7 +306,7 @@ export default {
             return Response.json({ error: "OAuth grant is missing its approved Discord server list." }, { status: 403 });
           }
           const scopes = scopesFrom(authContext.auth.scope);
-          const mcp = createReadOnlyMcpHandler(bindings, userId, authorizedGuildIds, scopes, discordAccessToken);
+          const mcp = createReadAndProposeMcpHandler(bindings, userId, authorizedGuildIds, scopes, discordAccessToken);
           return mcp.fetch(mcpRequest);
         }
       }
