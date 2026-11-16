@@ -5,9 +5,13 @@ const SNOWFLAKE = /^\d{15,22}$/;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{8,128}$/;
 const DEFAULT_TTL_SECONDS = 600;
 const MAX_TTL_SECONDS = 600;
+const MAX_EXECUTION_ATTEMPTS = 3;
+const DEFAULT_EXECUTION_LEASE_MS = 30_000;
+const MIN_EXECUTION_LEASE_MS = 1_000;
+const MAX_EXECUTION_LEASE_MS = 120_000;
 
 export type ProposalStatus = "pending" | "approved" | "consumed" | "expired" | "rejected";
-export type ProposalAuditEvent = "created" | "approved" | "rejected" | "consumed" | "expired" | "execution_succeeded" | "execution_failed";
+export type ProposalAuditEvent = "created" | "approved" | "rejected" | "consumed" | "expired" | "execution_started" | "execution_reclaimed" | "execution_retry_started" | "execution_succeeded" | "execution_failed";
 export type ProposalActorRole = "requester" | "owner" | "system";
 
 export interface CreateWriteProposalInput {
@@ -93,6 +97,32 @@ interface AuditRow extends Record<string, string | number | null> {
   details_json: string;
 }
 
+
+export type ExecutionStatus = "pending" | "running" | "succeeded" | "failed";
+export interface ExecutionState {
+  proposalId: string;
+  status: ExecutionStatus;
+  attempts: number;
+  leaseUntil: number | null;
+  retryable: boolean;
+  updatedAt: number;
+}
+export interface ExecutionClaim {
+  proposal: WriteProposalRecord;
+  attempt: number;
+  leaseToken: string;
+  leaseUntil: number;
+}
+interface ExecutionRow extends Record<string, string | number | null> {
+  proposal_id: string;
+  status: ExecutionStatus;
+  attempts: number;
+  lease_token: string | null;
+  lease_until: number | null;
+  retryable: number;
+  updated_at: number;
+}
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -147,10 +177,25 @@ export class WriteProposalStore extends DurableObject<unknown> {
       BEFORE DELETE ON write_proposal_audit
       BEGIN SELECT RAISE(ABORT, 'write proposal audit is immutable'); END
     `);
+    ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS write_proposal_executions (
+        proposal_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL CHECK (status IN ('pending','running','succeeded','failed')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        lease_token TEXT,
+        lease_until INTEGER,
+        retryable INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      )
+    `);
   }
 
   private proposalRow(proposalId: string): ProposalRow | undefined {
     return this.ctx.storage.sql.exec<ProposalRow>("SELECT * FROM write_proposals WHERE id = ?", proposalId).toArray()[0];
+  }
+
+  private executionRow(proposalId: string): ExecutionRow | undefined {
+    return this.ctx.storage.sql.exec<ExecutionRow>("SELECT * FROM write_proposal_executions WHERE proposal_id = ?", proposalId).toArray()[0];
   }
 
   private toRecord(row: ProposalRow): WriteProposalRecord {
@@ -316,6 +361,10 @@ export class WriteProposalStore extends DurableObject<unknown> {
         Date.now(), row.id, input.requesterUserId, input.guildId, input.expectedActionHash, Date.now()
       ).toArray()[0];
       assert(consumed, "Write proposal was consumed by another request or is no longer valid.");
+      this.ctx.storage.sql.exec(
+        "INSERT INTO write_proposal_executions (proposal_id, status, attempts, retryable, updated_at) VALUES (?, 'pending', 0, 0, ?)",
+        consumed.id, Date.now()
+      );
       this.appendAudit(consumed, input.requesterUserId, "requester", "consumed");
       return { row: consumed };
     });
@@ -324,25 +373,125 @@ export class WriteProposalStore extends DurableObject<unknown> {
     return this.toRecord(outcome.row);
   }
 
+  async claimExecution(input: {
+    proposalId: string;
+    guildId: string;
+    requesterUserId: string;
+    expectedActionHash: string;
+    leaseMs?: number;
+  }): Promise<ExecutionClaim> {
+    assert(SNOWFLAKE.test(input.requesterUserId), "Invalid execution requester ID.");
+    const leaseMs = input.leaseMs ?? DEFAULT_EXECUTION_LEASE_MS;
+    assert(Number.isInteger(leaseMs) && leaseMs >= MIN_EXECUTION_LEASE_MS && leaseMs <= MAX_EXECUTION_LEASE_MS,
+      "Execution lease duration is outside the permitted range.");
+    return this.ctx.storage.transactionSync(() => {
+      const proposal = this.proposalRow(input.proposalId);
+      assert(proposal?.status === "consumed", "Only consumed proposals can be executed.");
+      assert(proposal.guild_id === input.guildId && proposal.requester_user_id === input.requesterUserId &&
+        proposal.action_hash === input.expectedActionHash, "Execution request does not match the approved proposal.");
+      const current = this.executionRow(input.proposalId);
+      assert(current, "Execution state was not initialized by proposal consumption.");
+      const now = Date.now();
+      assert(current.status !== "succeeded", "This proposal has already executed successfully.");
+      assert(!(current.status === "failed" && current.retryable === 0), "The previous execution failure is terminal and not retryable.");
+      assert(!(current.status === "running" && current.lease_until !== null && current.lease_until > now),
+        "An execution lease is still active.");
+      assert(current.attempts < MAX_EXECUTION_ATTEMPTS, "Maximum execution retry count has been reached.");
+      const attempt = current.attempts + 1;
+      const leaseToken = crypto.randomUUID();
+      const leaseUntil = now + leaseMs;
+      const eventType: ProposalAuditEvent = current.attempts === 0
+        ? "execution_started"
+        : current.status === "running"
+          ? "execution_reclaimed"
+          : "execution_retry_started";
+      this.ctx.storage.sql.exec(
+        `UPDATE write_proposal_executions SET status = 'running', attempts = ?, lease_token = ?, lease_until = ?, retryable = 0, updated_at = ?
+         WHERE proposal_id = ?`,
+        attempt, leaseToken, leaseUntil, now, input.proposalId
+      );
+      this.appendAudit(proposal, input.requesterUserId, "requester", eventType, { attempt, leaseUntil });
+      return { proposal: this.toRecord(proposal), attempt, leaseToken, leaseUntil };
+    });
+  }
+
+  async renewExecutionLease(input: {
+    proposalId: string;
+    requesterUserId: string;
+    attempt: number;
+    leaseToken: string;
+    leaseMs?: number;
+  }): Promise<number> {
+    const leaseMs = input.leaseMs ?? DEFAULT_EXECUTION_LEASE_MS;
+    assert(Number.isInteger(leaseMs) && leaseMs >= MIN_EXECUTION_LEASE_MS && leaseMs <= MAX_EXECUTION_LEASE_MS,
+      "Execution lease duration is outside the permitted range.");
+    return this.ctx.storage.transactionSync(() => {
+      const proposal = this.proposalRow(input.proposalId);
+      const current = this.executionRow(input.proposalId);
+      const now = Date.now();
+      assert(proposal?.status === "consumed" && proposal.requester_user_id === input.requesterUserId,
+        "Execution lease is bound to another requester.");
+      assert(current?.status === "running" && current.attempts === input.attempt &&
+        current.lease_token === input.leaseToken && current.lease_until !== null && current.lease_until > now,
+        "Execution lease is expired or has been superseded.");
+      const leaseUntil = now + leaseMs;
+      this.ctx.storage.sql.exec(
+        "UPDATE write_proposal_executions SET lease_until = ?, updated_at = ? WHERE proposal_id = ? AND status = 'running' AND lease_token = ? AND attempts = ?",
+        leaseUntil, now, input.proposalId, input.leaseToken, input.attempt
+      );
+      return leaseUntil;
+    });
+  }
+
   recordExecutionResult(input: {
     proposalId: string;
     requesterUserId: string;
+    attempt: number;
+    leaseToken: string;
     succeeded: boolean;
+    retryable: boolean;
     details?: { httpStatus?: number; discordCode?: string; messageId?: string };
   }): void {
     this.ctx.storage.transactionSync(() => {
-      const row = this.proposalRow(input.proposalId);
-      assert(row?.status === "consumed", "Only consumed proposals can receive an execution result.");
-      assert(row.requester_user_id === input.requesterUserId, "Execution result is bound to another requester.");
-      assert(typeof input.succeeded === "boolean", "Invalid execution result.");
+      const proposal = this.proposalRow(input.proposalId);
+      const current = this.executionRow(input.proposalId);
+      const now = Date.now();
+      assert(proposal?.status === "consumed", "Only consumed proposals can receive an execution result.");
+      assert(proposal.requester_user_id === input.requesterUserId, "Execution result is bound to another requester.");
+      assert(current?.status === "running" && current.attempts === input.attempt &&
+        current.lease_token === input.leaseToken && current.lease_until !== null && current.lease_until > now,
+        "Execution result has a stale or expired fencing token.");
+      assert(typeof input.succeeded === "boolean" && typeof input.retryable === "boolean", "Invalid execution result.");
       const details = input.details ?? {};
       const allowedKeys = new Set(["httpStatus", "discordCode", "messageId"]);
       assert(Object.keys(details).every((key) => allowedKeys.has(key)), "Unsupported audit detail field.");
       if (details.httpStatus !== undefined) assert(Number.isInteger(details.httpStatus) && details.httpStatus >= 100 && details.httpStatus <= 599, "Invalid audit HTTP status.");
       if (details.discordCode !== undefined) assert(typeof details.discordCode === "string" && details.discordCode.length <= 64, "Invalid audit Discord code.");
       if (details.messageId !== undefined) assert(SNOWFLAKE.test(details.messageId), "Invalid audit message ID.");
-      this.appendAudit(row, "gateway", "system", input.succeeded ? "execution_succeeded" : "execution_failed", details);
+      const status: ExecutionStatus = input.succeeded ? "succeeded" : "failed";
+      const retryable = input.succeeded ? 0 : (input.retryable ? 1 : 0);
+      this.ctx.storage.sql.exec(
+        `UPDATE write_proposal_executions SET status = ?, lease_token = NULL, lease_until = NULL, retryable = ?, updated_at = ?
+         WHERE proposal_id = ? AND status = 'running' AND lease_token = ? AND attempts = ?`,
+        status, retryable, now, input.proposalId, input.leaseToken, input.attempt
+      );
+      this.appendAudit(proposal, "gateway", "system", input.succeeded ? "execution_succeeded" : "execution_failed", {
+        attempt: input.attempt, retryable: retryable === 1, ...details
+      });
     });
+  }
+
+  getExecutionState(proposalId: string): ExecutionState | null {
+    const row = this.executionRow(proposalId);
+    if (!row) return null;
+    return {
+      proposalId: row.proposal_id,
+      status: row.status,
+      attempts: row.attempts,
+      leaseUntil: row.lease_until,
+      retryable: row.retryable === 1,
+      updatedAt: row.updated_at
+    };
   }
 
   getProposal(proposalId: string): WriteProposalRecord | null {
