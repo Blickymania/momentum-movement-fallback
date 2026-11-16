@@ -69,13 +69,34 @@ describe("approved proposal execution orchestration", () => {
     expect(deps.recordExecutionResult).toHaveBeenCalledWith(expect.objectContaining({ succeeded: false, retryable: false }));
   });
 
-  it("treats a private manager network failure as retryable", async () => {
+  it("treats an ambiguous private manager timeout for a message as terminal", async () => {
     const deps = dependencies({ executeManagerWrite: vi.fn(async () => { throw new Error("service binding timeout"); }) });
     const result = await executeApprovedProposal(input, deps);
-    expect(result).toMatchObject({ status: "failed", retryable: true, httpStatus: 502 });
+    expect(result).toMatchObject({ status: "failed", retryable: false, httpStatus: 502 });
+    expect(result.error).toMatch(/unconfirmed|reconcile/);
     expect(deps.recordExecutionResult).toHaveBeenCalledWith(expect.objectContaining({
-      retryable: true, details: { httpStatus: 502, discordCode: "MANAGER_NETWORK_ERROR" }
+      retryable: false, details: { httpStatus: 502, discordCode: "MANAGER_NETWORK_ERROR" }
     }));
+  });
+
+  it("allows idempotent channel updates to retry after a private manager timeout", async () => {
+    const update = { type: "channel.update" as const, channelId: action.channelId, patch: { topic: "New topic" } };
+    const deps = dependencies({
+      getProposal: vi.fn(async () => ({ ...proposal("approved"), action: update })),
+      executeManagerWrite: vi.fn(async () => { throw new Error("service binding timeout"); })
+    });
+    const result = await executeApprovedProposal(input, deps);
+    expect(result).toMatchObject({ status: "failed", retryable: true, httpStatus: 502 });
+    expect(deps.recordExecutionResult).toHaveBeenCalledWith(expect.objectContaining({ retryable: true }));
+  });
+
+  it("does not retry an ambiguously rejected message without a confirmed Discord 429", async () => {
+    const deps = dependencies({
+      executeManagerWrite: vi.fn(async () => ({ ok: false, httpStatus: 503, error: "Unknown upstream result" }))
+    });
+    const result = await executeApprovedProposal(input, deps);
+    expect(result).toMatchObject({ status: "failed", retryable: false, httpStatus: 503 });
+    expect(deps.recordExecutionResult).toHaveBeenCalledWith(expect.objectContaining({ retryable: false }));
   });
 
   it("rejects mismatched requester/server and unapproved proposals before any write", async () => {

@@ -81,14 +81,19 @@ export async function executeApprovedProposal(
       proposalId: proposal.id, actionHash: proposal.actionHash, action: proposal.action
     });
   } catch {
+    // A network timeout after dispatch can hide a successful Discord message.
+    // Channel patches are idempotent; message sends must require reconciliation.
+    const retryable = proposal.action.type === "channel.update";
     await dependencies.recordExecutionResult({
       proposalId: proposal.id, requesterUserId: input.requesterUserId, attempt: claim.attempt,
-      leaseToken: claim.leaseToken, succeeded: false, retryable: true,
+      leaseToken: claim.leaseToken, succeeded: false, retryable,
       details: { httpStatus: 502, discordCode: "MANAGER_NETWORK_ERROR" }
     });
     return {
-      proposalId: proposal.id, status: "failed", attempt: claim.attempt, retryable: true,
-      httpStatus: 502, error: "The private manager connection failed. Retry after the lease is released or expires."
+      proposalId: proposal.id, status: "failed", attempt: claim.attempt, retryable,
+      httpStatus: 502, error: retryable
+        ? "The private manager connection failed. Retry after the lease is released or expires."
+        : "The message outcome is unconfirmed. Do not retry this proposal; reconcile the Discord channel first."
     };
   }
 
@@ -107,7 +112,11 @@ export async function executeApprovedProposal(
     };
   }
 
-  const retryable = retryableHttpStatus(result.httpStatus);
+  // Only a confirmed Discord 429 proves a message was rejected before sending.
+  // Other upstream or transport failures may conceal a successful send.
+  const retryable = proposal.action.type === "channel.update"
+    ? retryableHttpStatus(result.httpStatus)
+    : result.discordStatus === 429;
   await dependencies.recordExecutionResult({
     proposalId: proposal.id, requesterUserId: input.requesterUserId, attempt: claim.attempt,
     leaseToken: claim.leaseToken, succeeded: false, retryable,
