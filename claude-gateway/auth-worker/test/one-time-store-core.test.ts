@@ -52,6 +52,15 @@ describe("atomic OAuth one-time store core", () => {
     }
   });
 
+  it("clears a stored record for the alarm cleanup path", () => {
+    const sql = new MemorySql();
+    const store = new AtomicOneTimeStoreCore(sql as unknown as SqlStorage);
+    store.put("abandoned", 60);
+    store.clear();
+    expect(sql.record).toBeNull();
+    expect(store.consume()).toBeNull();
+  });
+
   it("rejects invalid TTLs and oversized payloads", () => {
     const store = new AtomicOneTimeStoreCore(new MemorySql() as unknown as SqlStorage);
     expect(() => store.put("value", 0)).toThrow(/TTL/);
