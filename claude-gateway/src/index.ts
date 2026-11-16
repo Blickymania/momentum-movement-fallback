@@ -5,11 +5,12 @@ import {
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { assertCurrentGuildReadAccess, getConfiguredGuildId, type DiscordAuthorizationService } from "./manager-access";
-import { listConfiguredManagers, readManagerResource, type GatewayEnv } from "./manager-client";
+import { executeManagerWrite, listConfiguredManagers, readManagerResource, type GatewayEnv } from "./manager-client";
 import { SERVER_CATALOG, type ServerKey } from "./policy";
-import type { WriteProposalStore, WriteProposalRecord, ApproveWriteProposalInput, CreateWriteProposalInput } from "./write-proposals";
+import type { WriteProposalStore, WriteProposalRecord, ApproveWriteProposalInput, CreateWriteProposalInput, ExecutionClaim } from "./write-proposals";
 import type { OwnerApprovalDecisionRequest, OwnerApprovalProposalSnapshot, OwnerApprovalSessionRequest, OwnerApprovalSessionResponse } from "./owner-approval-types";
 import { createProposalAndApproval } from "./proposal-service";
+import { executeApprovedProposal } from "./execution-service";
 import type { ProposedAction } from "./policy";
 export { WriteProposalStore } from "./write-proposals";
 
@@ -37,6 +38,13 @@ type WriteProposalStoreRpc = {
   getProposal(proposalId: string): Promise<WriteProposalRecord | null>;
   approveProposal(input: ApproveWriteProposalInput): Promise<WriteProposalRecord>;
   rejectProposal(input: ApproveWriteProposalInput): Promise<WriteProposalRecord>;
+  consumeApprovedProposal(input: { proposalId: string; guildId: string; requesterUserId: string; expectedActionHash: string }): Promise<WriteProposalRecord>;
+  claimExecution(input: { proposalId: string; guildId: string; requesterUserId: string; expectedActionHash: string }): Promise<ExecutionClaim>;
+  recordExecutionResult(input: {
+    proposalId: string; requesterUserId: string; attempt: number; leaseToken: string;
+    succeeded: boolean; retryable: boolean;
+    details?: { httpStatus?: number; discordCode?: string; messageId?: string };
+  }): Promise<void>;
 };
 
 const SERVER_KEYS = SERVER_CATALOG.map((server) => server.key) as [
@@ -265,6 +273,38 @@ function createReadAndProposeMcpHandler(
             serverKey: proposal.serverKey,
             actionHash: proposal.actionHash
           })
+        });
+        return textResult(result);
+      }
+    );
+
+    server.registerTool(
+      "discord_execute_approved_change",
+      {
+        description: "Execute one previously owner-approved Discord change for the original requester. The current requester must still be an owner or Administrator in the selected community. The exact action is consumed once, protected by a short execution lease, and audited. Only message.send and channel.update are supported; role changes, bot-role changes, permission overwrites, deletes, and bulk actions are unavailable.",
+        inputSchema: z.object({
+          serverKey: z.enum(SERVER_KEYS),
+          proposalId: z.string().uuid()
+        })
+      },
+      async ({ serverKey, proposalId }) => {
+        const key = serverKey as ServerKey;
+        await assertCurrentGuildReadAccess(
+          env, env.AUTH_SERVER, key, userId, authorizedGuildIds, scopes, discordAccessToken
+        );
+        const guildId = getConfiguredGuildId(env, key);
+        const store = env.WRITE_PROPOSAL_STORE.get(env.WRITE_PROPOSAL_STORE.idFromName(guildId)) as unknown as WriteProposalStoreRpc;
+        const result = await executeApprovedProposal({
+          proposalId,
+          serverKey: key,
+          guildId,
+          requesterUserId: userId
+        }, {
+          getProposal: (id) => store.getProposal(id),
+          consumeApprovedProposal: (input) => store.consumeApprovedProposal(input),
+          claimExecution: (input) => store.claimExecution(input),
+          executeManagerWrite: (input) => executeManagerWrite(env, key, input),
+          recordExecutionResult: async (input) => { await store.recordExecutionResult(input); }
         });
         return textResult(result);
       }
