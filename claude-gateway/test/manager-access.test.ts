@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { assertCurrentGuildReadAccess } from "../src/manager-access";
+import { assertCurrentGuildReadAccess, getConfiguredGuildId } from "../src/manager-access";
 import type { GatewayEnv } from "../src/manager-client";
 
 const env: GatewayEnv = {
@@ -7,6 +7,14 @@ const env: GatewayEnv = {
 };
 
 describe("current Discord authorization checks", () => {
+  it("returns the fixed guild ID for the selected independent manager", () => {
+    expect(getConfiguredGuildId(env, "dawn-dotta")).toBe("1565048205970767992");
+  });
+
+  it("rejects malformed fixed guild IDs", () => {
+    expect(() => getConfiguredGuildId({ GUILD_ID_DAWN_DOTTA: "not-a-snowflake" }, "dawn-dotta")).toThrow(/valid fixed guild ID/);
+  });
+
   it("allows a current guild Administrator with read scope", async () => {
     const auth = {
       checkGuildAccess: vi.fn(async () => ({
