@@ -15,11 +15,12 @@ This directory contains the isolated Claude MCP gateway and the reusable private
 From this directory in a Node.js 22 environment:
 
 ```bash
-npm install
+npm ci
 npm run check
+npm run test:workers
 ```
 
-The check runs strict TypeScript compilation and the Vitest suite, including the policy, gateway manager-client, per-request authorization, and private manager Worker tests.
+`npm run check` runs strict TypeScript compilation and the regular Vitest suite, including policy, gateway manager-client, per-request authorization, private manager Worker, and one-time-store core tests. `npm run test:workers` runs the separate Cloudflare Workers Vitest integration suite using the OAuth Worker Wrangler configuration. It exercises the SQLite-backed Durable Object through real RPC calls, including concurrent consumption and expiry. The Workers test plugin and pinned dependency graph are included in the package manifest and lockfile.
 
 Do not mark the project verified until both commands complete successfully and their full output has been reviewed.
 
