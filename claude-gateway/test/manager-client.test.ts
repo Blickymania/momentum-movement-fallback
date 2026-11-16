@@ -78,7 +78,7 @@ describe("isolated private manager client", () => {
     await expect(readManagerResource({
       MANAGER_DAWN_DOTTA: bindingReturning({}),
       GUILD_ID_DAWN_DOTTA: guildId
-    }, "dawn-dotta", "../roles")).rejects.toThrow(/Unsupported manager read resource/);
+    }, "dawn-dotta", "../roles" as never)).rejects.toThrow(/Unsupported manager read resource/);
   });
 
   it("redacts secret-like response fields before returning manager data", async () => {
