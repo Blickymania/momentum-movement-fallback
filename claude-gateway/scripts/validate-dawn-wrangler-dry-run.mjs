@@ -17,14 +17,32 @@ const targets = [
     requiresKvPlaceholder: false
   },
   {
-    label: "Dawn Auth",
+    label: "Dawn Auth bootstrap",
+    config: "auth-worker/wrangler.dawn-dotta-bootstrap.jsonc",
+    expectedWorkersDev: false,
+    requiresKvPlaceholder: true
+  },
+  {
+    label: "Dawn Auth private",
     config: "auth-worker/wrangler.dawn-dotta.jsonc",
+    expectedWorkersDev: false,
+    requiresKvPlaceholder: true
+  },
+  {
+    label: "Dawn Gateway private",
+    config: "wrangler.dawn-dotta.jsonc",
+    expectedWorkersDev: false,
+    requiresKvPlaceholder: false
+  },
+  {
+    label: "Dawn Auth workers.dev",
+    config: "auth-worker/wrangler.dawn-dotta-workers-dev.jsonc",
     expectedWorkersDev: true,
     requiresKvPlaceholder: true
   },
   {
-    label: "Dawn Gateway",
-    config: "wrangler.dawn-dotta.jsonc",
+    label: "Dawn Gateway workers.dev",
+    config: "wrangler.dawn-dotta-workers-dev.jsonc",
     expectedWorkersDev: true,
     requiresKvPlaceholder: false
   }
