@@ -68,6 +68,38 @@ describe("staging Wrangler configuration", () => {
     });
   });
 
+  it("isolates the authorized Dawn Dotta staging pair from the four locked manager projects", () => {
+    const gateway = readConfig("../wrangler.dawn-dotta.jsonc");
+    const auth = readConfig("../auth-worker/wrangler.dawn-dotta.jsonc");
+    expect(gateway.name).toBe("discord-claude-gateway-dawn-staging");
+    expect(gateway.workers_dev).toBe(false);
+    expect(gateway.preview_urls).toBe(false);
+    expect(gateway.keep_vars).toBe(true);
+    expect(gateway.vars).toBeUndefined();
+    expect(gateway.services).toEqual([
+      { binding: "AUTH_SERVER", service: "discord-claude-auth-dawn-staging" },
+      { binding: "MANAGER_DAWN_DOTTA", service: "manager-dawn-dotta-staging" }
+    ]);
+    expect(gateway.durable_objects?.bindings).toContainEqual({
+      name: "WRITE_PROPOSAL_STORE",
+      class_name: "WriteProposalStore"
+    });
+
+    expect(auth.name).toBe("discord-claude-auth-dawn-staging");
+    expect(auth.workers_dev).toBe(false);
+    expect(auth.preview_urls).toBe(false);
+    expect(auth.keep_vars).toBe(true);
+    expect(auth.vars).toBeUndefined();
+    expect(auth.services).toEqual([
+      { binding: "GATEWAY_SERVER", service: "discord-claude-gateway-dawn-staging" }
+    ]);
+    expect(auth.kv_namespaces).toContainEqual({ binding: "OAUTH_KV", id: "" });
+    expect(auth.durable_objects?.bindings).toContainEqual({
+      name: "OAUTH_ONE_TIME_STORE",
+      class_name: "OAuthOneTimeStore"
+    });
+  });
+
   it("declares the auth Worker gateway binding, dedicated KV placeholder, and no embedded secrets", () => {
     const auth = readConfig("../auth-worker/wrangler.jsonc");
     expect(auth.name).toBe("discord-claude-auth-staging");
