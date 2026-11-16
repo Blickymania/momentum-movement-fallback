@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   listConfiguredManagers,
   readManagerResource,
+  executeManagerWrite,
   type GatewayEnv,
   type ManagerBinding
 } from "../src/manager-client";
@@ -13,6 +14,19 @@ function bindingReturning(payload: unknown, status = 200): ManagerBinding {
     fetch: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = input instanceof Request ? input : new Request(input, init);
       expect(request.method).toBe("GET");
+      expect(new URL(request.url).origin).toBe("https://manager.internal");
+      return Response.json(payload, { status });
+    })
+  };
+}
+
+const proposalId = "a5c5d94c-6eac-4b6e-9b2f-3c7b4a95c8c1";
+const actionHash = `sha256:${"a".repeat(64)}`;
+function writeBinding(payload: unknown, status = 200): ManagerBinding {
+  return {
+    fetch: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      expect(request.method).toBe("POST");
       expect(new URL(request.url).origin).toBe("https://manager.internal");
       return Response.json(payload, { status });
     })
@@ -115,4 +129,63 @@ describe("isolated private manager client", () => {
       GUILD_ID_DAWN_DOTTA: guildId
     }, "dawn-dotta", "status")).rejects.toThrow(/invalid JSON/);
   });
+  it("sends a typed write to only the selected manager with its distinct secret", async () => {
+    const dawn = writeBinding({ ok: true, proposalId, actionHash, messageId: "1565048207178862764" });
+    const empress = writeBinding({ ok: true, proposalId, actionHash });
+    const env: GatewayEnv = {
+      MANAGER_DAWN_DOTTA: dawn, GUILD_ID_DAWN_DOTTA: guildId, MANAGER_WRITE_SECRET_DAWN_DOTTA: "dawn-write-secret",
+      MANAGER_EMPRESS: empress, GUILD_ID_EMPRESS: "1565048205970767993", MANAGER_WRITE_SECRET_EMPRESS: "empress-write-secret"
+    };
+    const result = await executeManagerWrite(env, "dawn-dotta", {
+      proposalId, actionHash, action: { type: "message.send", channelId: "1565048207178862762", content: "Hello" }
+    });
+    expect(result).toMatchObject({ ok: true, messageId: "1565048207178862764" });
+    expect(dawn.fetch).toHaveBeenCalledOnce();
+    expect(empress.fetch).not.toHaveBeenCalled();
+    const request = (dawn.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as Request;
+    expect(new URL(request.url).pathname).toBe("/internal/v1/write");
+    expect(request.headers.get("x-gateway-guild-id")).toBe(guildId);
+    expect(request.headers.get("x-manager-write-secret")).toBe("dawn-write-secret");
+    await expect(request.json()).resolves.toMatchObject({ proposalId, guildId, actionHash });
+  });
+
+  it("fails closed when the selected manager write secret is missing", async () => {
+    const dawn = writeBinding({ ok: true, proposalId, actionHash });
+    const env: GatewayEnv = { MANAGER_DAWN_DOTTA: dawn, GUILD_ID_DAWN_DOTTA: guildId };
+    await expect(executeManagerWrite(env, "dawn-dotta", {
+      proposalId, actionHash, action: { type: "message.send", channelId: "1565048207178862762", content: "Hello" }
+    })).rejects.toThrow(/Write execution secret/);
+    expect(dawn.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid proposal references and unsupported actions before calling the manager", async () => {
+    const dawn = writeBinding({ ok: true, proposalId, actionHash });
+    const env: GatewayEnv = { MANAGER_DAWN_DOTTA: dawn, GUILD_ID_DAWN_DOTTA: guildId, MANAGER_WRITE_SECRET_DAWN_DOTTA: "write-secret" };
+    await expect(executeManagerWrite(env, "dawn-dotta", {
+      proposalId: "not-a-uuid", actionHash, action: { type: "message.send", channelId: "1565048207178862762", content: "Hello" }
+    })).rejects.toThrow(/Invalid approved proposal/);
+    await expect(executeManagerWrite(env, "dawn-dotta", {
+      proposalId, actionHash, action: { type: "channel.permission.set" } as never
+    })).rejects.toThrow(/Unsupported manager write action/);
+    expect(dawn.fetch).not.toHaveBeenCalled();
+  });
+
+  it("returns bounded manager failures for retry classification", async () => {
+    const dawn = writeBinding({ error: "Discord rejected the change.", discordStatus: 429 }, 503);
+    const env: GatewayEnv = { MANAGER_DAWN_DOTTA: dawn, GUILD_ID_DAWN_DOTTA: guildId, MANAGER_WRITE_SECRET_DAWN_DOTTA: "write-secret" };
+    const result = await executeManagerWrite(env, "dawn-dotta", {
+      proposalId, actionHash, action: { type: "message.send", channelId: "1565048207178862762", content: "Hello" }
+    });
+    expect(result).toMatchObject({ ok: false, httpStatus: 503, discordStatus: 429 });
+  });
+
+  it("rejects manager success responses that do not bind to the approved proposal", async () => {
+    const dawn = writeBinding({ ok: true, proposalId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", actionHash });
+    const env: GatewayEnv = { MANAGER_DAWN_DOTTA: dawn, GUILD_ID_DAWN_DOTTA: guildId, MANAGER_WRITE_SECRET_DAWN_DOTTA: "write-secret" };
+    const result = await executeManagerWrite(env, "dawn-dotta", {
+      proposalId, actionHash, action: { type: "message.send", channelId: "1565048207178862762", content: "Hello" }
+    });
+    expect(result).toMatchObject({ ok: false, httpStatus: 502 });
+  });
+
 });
