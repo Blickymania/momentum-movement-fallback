@@ -72,9 +72,22 @@ Do not commit these values. The Auth/Gateway/Dawn manager configs use `keep_vars
 ### KV namespace
 
 - Create a dedicated staging KV namespace for the Dawn Auth Worker.
-- Enter its actual namespace ID in `auth-worker/wrangler.dawn-dotta.jsonc` under `OAUTH_KV`.
-- The current blank ID is a placeholder and is not deployable.
-- Do not reuse a production namespace.
+- Keep the committed Dawn Auth templates' `OAUTH_KV` IDs blank. Do not put the account-specific namespace ID in a tracked file, GitHub secret, or chat message.
+- Prepare the three ignored local Auth deployment profiles by entering the ID through a hidden terminal prompt from `claude-gateway`:
+  
+  ```bash
+  read -rsp "Dedicated Dawn staging OAUTH_KV namespace ID: " DAWN_OAUTH_KV_NAMESPACE_ID
+  printf '\\n'
+  export DAWN_OAUTH_KV_NAMESPACE_ID
+  npm run prepare:dawn:deploy-configs
+  unset DAWN_OAUTH_KV_NAMESPACE_ID
+  ```
+- The helper accepts only a nonzero 32-character hexadecimal namespace ID. It validates all three Auth templates and their binding/migration safeguards before creating any output, refuses to overwrite existing local files, writes them with owner-only permissions, and never prints the namespace ID.
+- The generated files are:
+  - `auth-worker/wrangler.dawn-dotta-bootstrap.local.jsonc`
+  - `auth-worker/wrangler.dawn-dotta.local.jsonc`
+  - `auth-worker/wrangler.dawn-dotta-workers-dev.local.jsonc`
+- These local files are git-ignored. Confirm that the namespace ID belongs to the dedicated Dawn staging namespace before proceeding. Do not reuse a production namespace.
 
 ### Secrets
 
@@ -128,10 +141,10 @@ Do not deploy or inspect the four locked manager projects.
 
 ### 2. Bootstrap Dawn Auth without the reciprocal Gateway binding
 
-Use the committed bootstrap-only config. It has the final Dawn Auth Worker name, a blank dedicated staging `OAUTH_KV` placeholder, the SQLite Durable Object binding/migration, no Service Binding, and no public `workers.dev` route.
+Use the generated local bootstrap-only config. It has the final Dawn Auth Worker name, the supplied dedicated staging `OAUTH_KV` namespace ID, the SQLite Durable Object binding/migration, no Service Binding, and no public `workers.dev` route.
 
 ```bash
-npx wrangler deploy --config auth-worker/wrangler.dawn-dotta-bootstrap.jsonc
+npx wrangler deploy --config auth-worker/wrangler.dawn-dotta-bootstrap.local.jsonc
 ```
 
 This creates the Auth target needed by the Gateway while keeping the OAuth endpoint private during bootstrap.
@@ -155,7 +168,7 @@ No other manager binding should be present in this Dawn-only config.
 Deploy the canonical private-final Dawn Auth config, which restores `GATEWAY_SERVER` while keeping the endpoint private:
 
 ```bash
-npx wrangler deploy --config auth-worker/wrangler.dawn-dotta.jsonc
+npx wrangler deploy --config auth-worker/wrangler.dawn-dotta.local.jsonc
 ```
 
 Confirm both private directions:
@@ -176,7 +189,7 @@ Do not enable the public `workers.dev` endpoint yet.
 Only after the private binding graph and dashboard variables are verified, deploy the public endpoint profiles:
 
 ```bash
-npx wrangler deploy --config auth-worker/wrangler.dawn-dotta-workers-dev.jsonc
+npx wrangler deploy --config auth-worker/wrangler.dawn-dotta-workers-dev.local.jsonc
 npx wrangler deploy --config wrangler.dawn-dotta-workers-dev.jsonc
 ```
 
