@@ -102,3 +102,38 @@ The prior "not run" test note above described the earlier blocked execution atte
 ## Next execution target
 
 Inspect and close the Discord access-token expiry/reconnect lifecycle with mocked OAuth/Discord tests. Then document the exact staging configuration prerequisites without reading, copying, or changing any secret values. Keep deployment and Discord writes disabled until the entire staging acceptance sequence is complete and separately authorized.
+
+
+## Verification update — 2026-11-16 — expiry guard and staging bindings green
+
+- Final staging-head workflow run: `43945836382` — **success**.
+- Job ID: `133575211235`.
+- Tested commit: `0542a2f78140b2410c0ed2c5a15e592266f5e83f` (includes the staging `OAUTH_KV` binding declaration and README setup correction).
+- Dependency installation: `npm ci --no-audit --no-fund` passed.
+- Strict TypeScript: `tsc --noEmit` passed.
+- Unit suite: **84 tests passed**, across 9 test files.
+- Workers integration suite: **31 tests passed**, across 7 test files:
+  - OAuth auth-flow, owner-approval, and one-time-store integration: 8 tests.
+  - OAuth-protected Resource Worker integration: 4 tests.
+  - MCP handler integration: 4 tests.
+  - Private owner-approval routes integration: 3 tests.
+  - SQLite-backed Durable Object proposal/execution integration: 12 tests.
+- Total verified tests in this run: **115 passed**. No failures or skipped test suites in the completed job.
+- The token-expiry/reconnect guard and its tests are included in this tested source: missing, expired, and near-expiry Discord access-token timestamps fail closed with a 401 `invalid_token` reconnect response; automatic Discord-token refresh is not implemented.
+- The staging OAuth Wrangler file now explicitly declares `OAUTH_KV` with a blank namespace-ID placeholder. The test-only Wrangler config continues to use its separate test namespace placeholder.
+- The five isolated manager Worker templates were audited: distinct names match gateway Service Bindings; `workers_dev` is disabled; guild/application IDs remain blank; no bot tokens or write-secret values are committed.
+
+## Remaining staging acceptance blockers
+
+- A real staging KV namespace still needs to be created and its ID entered into the blank `OAUTH_KV` config field.
+- Cloudflare staging Workers and Service Bindings still need to be created/deployed: auth Worker, MCP gateway Worker, and five separate manager Workers.
+- Real staging configuration remains missing: OAuth issuer/resource URLs, Discord application client ID and redirect URL, five distinct guild IDs, five distinct application IDs, per-manager bot tokens, per-manager write secrets, shared owner-approval internal secret, and auth session encryption key. Values must be entered through Cloudflare's secure variable/secret interfaces, never pasted into Git or chat.
+- Live Claude OAuth registration/callback/reconnect against a configured staging endpoint and the five actual Discord communities has not been performed.
+- Runtime host / free-renewable hosting selection and deployment rollback exercise remain pending.
+- Production deployment, production branch changes, live Discord resource writes, and bot-role changes remain **not performed**.
+
+## Last verified staging head
+
+- `0542a2f78140b2410c0ed2c5a15e592266f5e83f`
+- CI run `43945836382`: success; 84 unit + 31 Workers integration tests passed; TypeScript check passed.
+- No deployment was performed by this workflow.
