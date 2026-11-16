@@ -109,6 +109,24 @@ Do not treat successful deployment as acceptance. Perform only read-only live ch
 10. Record Worker version IDs, binding names, route states, test outcomes, and rollback targets without recording secret values.
 
 Do not send a real Discord message or perform a live channel update as part of this runbook.
+## Connect Claude after staging is deployed
+
+Anthropic documents remote MCP support for Claude and Claude Desktop on Pro, Max, Team, and Enterprise plans. Claude supports Streamable HTTP, OAuth-based remote MCP, Dynamic Client Registration, and token refresh. See [Anthropic's remote MCP connector guide](https://support.anthropic.com/en/articles/11503834-building-custom-connectors-via-remote-mcp-servers).
+
+After the resource and auth hostnames are live and the staging acceptance tests pass:
+1. In Claude or Claude Desktop, open **Settings → Connectors**.
+2. Choose **Add custom connector** (for Team/Enterprise, an Owner or Primary Owner must first enable the organization connector).
+3. Enter the staging MCP resource URL, including `/mcp`.
+4. Add the connector, then use **Search and tools → Connect** to complete the OAuth flow.
+5. Sign in to Discord, review the requested `mcp:read` and `offline_access` scopes, and consent only to the intended five-server list.
+6. Confirm the tool list appears. Test a read-only inventory call before testing the proposal/owner-approval flow.
+7. Verify the connector can refresh its MCP OAuth token. If the underlying Discord credential has expired, the gateway deliberately returns a 401 reconnect challenge; complete a fresh Discord authorization. The Discord refresh token is not persisted, so refreshing the MCP OAuth token alone does not renew the Discord credential.
+8. Disable any tools not needed for the test and review each owner-approved write carefully. Do not use Claude Research for write-capable tools.
+
+Claude's documented OAuth callback is currently `https://claude.ai/api/mcp/auth_callback`; Anthropic notes it may change to `https://claude.com/api/mcp/auth_callback`. The Auth Worker DCR test verifies that both callback URIs are accepted. Claude Desktop remote connectors must be added through **Settings → Connectors**, not by adding a remote server to `claude_desktop_config.json`.
+
+This project cannot complete the real Claude UI connection until the staging endpoint is deployed and the user performs the Discord consent interaction. No Claude connector has been connected in this work.
+
 ## Rollback
 
 - Record the previous deployed version ID for every staging Worker before enabling its endpoint.
