@@ -49,3 +49,6 @@ jobs:
 
       - name: Run Cloudflare Workers integration suites
         run: npm run test:workers
+
+      - name: Validate Dawn staging configs with offline Wrangler dry-runs
+        run: npm run validate:wrangler:dawn
