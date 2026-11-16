@@ -49,6 +49,18 @@ describe("isolated private manager client", () => {
     expect(request.headers.get("x-gateway-guild-id")).toBe(guildId);
   });
 
+  it("fails closed when two independent managers share a configured guild ID", async () => {
+    const sharedGuildId = "1565048205970767992";
+    const env: GatewayEnv = {
+      MANAGER_EMPRESS: bindingReturning({ ok: true }),
+      GUILD_ID_EMPRESS: sharedGuildId,
+      MANAGER_DAWN_DOTTA: bindingReturning({ ok: true }),
+      GUILD_ID_DAWN_DOTTA: sharedGuildId
+    };
+    await expect(readManagerResource(env, "dawn-dotta", "status")).rejects.toThrow(/unique guild ID/);
+    expect(listConfiguredManagers(env).filter((item) => item.configured)).toHaveLength(0);
+  });
+
   it("fails closed when a manager binding is missing", async () => {
     await expect(readManagerResource({}, "dawn-dotta", "status")).rejects.toThrow(/binding.*not configured/i);
   });
