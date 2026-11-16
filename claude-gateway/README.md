@@ -5,7 +5,7 @@ This directory contains the isolated Claude MCP gateway and the reusable private
 ## Current scope
 
 - Gateway MCP endpoint: read-only tools only.
-- OAuth: gateway expects a separate authorization Worker Service Binding; that Worker is not implemented yet.
+- OAuth: a separate Cloudflare OAuth authorization Worker source is implemented and exposed to the gateway through a Service Binding; it is not yet configured, compiled, tested, or deployed.
 - Manager adapters: one generic read-only Worker source, deployed as five separate private Workers only after staging setup.
 - Writes: not exposed. No role mutations or destructive operations.
 - Production: no routes, secrets, deployments, or Discord changes are authorized by this project checkpoint.
@@ -33,7 +33,7 @@ The OAuth Worker source is at `auth-worker/src/index.ts`. It uses the Cloudflare
 - The consent record, including the temporary Discord user access token, is encrypted with AES-GCM before its five-minute KV storage lifetime.
 - The OAuth grant props are stored by the OAuth provider's encrypted storage and carry the Discord identity credential for per-call revalidation.
 - The auth Worker exposes `validateToken` and `checkGuildAccess` RPC methods over its private Service Binding.
-- Every manager read rechecks the Discord user identity, current guild membership, and owner/Administrator permission. Expired Discord user credentials fail closed and require reauthorization.
+- Every manager read enforces the exact guild list captured in the user's OAuth consent, then rechecks the Discord identity, current guild membership, and owner/Administrator permission. Expired Discord user credentials fail closed and require reauthorization.
 - The current consent catalog grants `mcp:read` only. Write scope is deliberately withheld until the independent proposal/approval executor is implemented.
 
 The auth Worker requires a dedicated KV namespace bound as `OAUTH_KV`. Create it in the Cloudflare account, then add the returned namespace ID to `auth-worker/wrangler.jsonc` before any deployment. The config intentionally does not contain a namespace ID.
@@ -74,4 +74,4 @@ Those services do not yet exist. The gateway's `MCP_RESOURCE_URL` and `OAUTH_ISS
 
 ## Do not deploy yet
 
-The OAuth authorization Worker, approval database/UI, and integration tests remain outstanding. The five private manager Workers have not been deployed. Run tests first, then complete OAuth and mock-backend integration tests. Production release requires a separate explicit decision.
+The OAuth authorization Worker source exists but remains unconfigured, uncompiled, untested, and undeployed. The immutable write-proposal store, separate owner approval UI, and OAuth/MCP mock-backend integration tests remain outstanding. The five private manager Workers have not been deployed. Run the full source checks first, then complete integration and security tests. Production release requires a separate explicit decision.
