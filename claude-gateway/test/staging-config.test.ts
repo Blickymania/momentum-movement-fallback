@@ -72,7 +72,7 @@ describe("staging Wrangler configuration", () => {
     const gateway = readConfig("../wrangler.dawn-dotta.jsonc");
     const auth = readConfig("../auth-worker/wrangler.dawn-dotta.jsonc");
     expect(gateway.name).toBe("discord-claude-gateway-dawn-staging");
-    expect(gateway.workers_dev).toBe(false);
+    expect(gateway.workers_dev).toBe(true);
     expect(gateway.preview_urls).toBe(false);
     expect(gateway.keep_vars).toBe(true);
     expect(gateway.vars).toBeUndefined();
@@ -86,7 +86,7 @@ describe("staging Wrangler configuration", () => {
     });
 
     expect(auth.name).toBe("discord-claude-auth-dawn-staging");
-    expect(auth.workers_dev).toBe(false);
+    expect(auth.workers_dev).toBe(true);
     expect(auth.preview_urls).toBe(false);
     expect(auth.keep_vars).toBe(true);
     expect(auth.vars).toBeUndefined();
