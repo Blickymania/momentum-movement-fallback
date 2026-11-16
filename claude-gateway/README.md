@@ -20,7 +20,7 @@ npm run check
 npm run test:workers
 ```
 
-`npm run check` runs strict TypeScript compilation and the regular Vitest suite, including policy, gateway manager-client, per-request authorization, private manager Worker, and one-time-store core tests. `npm run test:workers` runs the separate Cloudflare Workers Vitest integration suite using the OAuth Worker Wrangler configuration. It exercises the SQLite-backed Durable Object through real RPC calls, including concurrent consumption and expiry. The Workers test plugin and pinned dependency graph are included in the package manifest and lockfile.
+`npm run check` runs strict TypeScript compilation and the regular Vitest suite, including policy, gateway manager-client, per-request authorization, private manager Worker, and one-time-store core tests. `npm run test:workers` runs the separate Cloudflare Workers Vitest integration suite using the test-only `auth-worker/wrangler.test.jsonc` configuration. Discord HTTP requests are mocked with MSW; no live Discord credentials or external Discord API calls are used. The suite exercises the OAuth registration, PKCE authorization, browser-bound callback state, owner/Administrator guild filtering, consent replay rejection, read-only token issuance, expired Discord-token fail-closed behavior, and the SQLite-backed Durable Object through real RPC calls (concurrent consume, expiry, and scheduled alarm cleanup). Test credentials and KV IDs in the test-only Wrangler file are placeholders and are not used by the staging or production configuration. The Workers test plugin and pinned dependency graph are included in the package manifest and lockfile.
 
 Do not mark the project verified until both commands complete successfully and their full output has been reviewed.
 
