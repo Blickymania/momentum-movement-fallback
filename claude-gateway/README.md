@@ -5,7 +5,7 @@ This directory contains the isolated Claude MCP gateway and the reusable private
 ## Current scope
 
 - Gateway MCP endpoint: read-only tools only.
-- OAuth: a separate Cloudflare OAuth authorization Worker source is implemented and exposed to the gateway through a Service Binding; it is not yet configured, compiled, tested, or deployed.
+- OAuth: a separate Cloudflare OAuth authorization Worker is implemented, compiled in dry-runs, and integration-tested in the local Workers runtime; it is not yet configured or deployed.
 - Manager adapters: one generic read-only Worker source, deployed as five separate private Workers only after staging setup.
 - Writes: not exposed. No role mutations or destructive operations.
 - Production: no routes, secrets, deployments, or Discord changes are authorized by this project checkpoint.
@@ -29,9 +29,9 @@ Do not mark the project verified until both commands complete successfully and t
 The OAuth Worker source is at `auth-worker/src/index.ts`. It uses the Cloudflare OAuth Provider split-worker API and Discord OAuth sign-in with the minimum Discord scopes `identify guilds`.
 
 - Claude authorization requests are validated with PKCE by the OAuth provider.
-- Discord sign-in uses a random state value with a 10-minute KV lifetime, bound to a per-flow `__Host-` Secure, HttpOnly, SameSite=Lax browser cookie; the callback rejects state values not present in the initiating browser session.
+- Discord sign-in uses a random state value in a SQLite-backed Durable Object with a 10-minute TTL and atomic consume, bound to a per-flow `__Host-` Secure, HttpOnly, SameSite=Lax browser cookie; the callback rejects state values not present in the initiating browser session.
 - The user sees a separate consent page before the MCP grant is issued.
-- The consent record, including the temporary Discord user access token, is encrypted with AES-GCM before its five-minute KV storage lifetime.
+- The consent record, including the temporary Discord user access token, is encrypted with AES-GCM before its five-minute Durable Object lifetime; abandoned records are cleaned up by alarms.
 - The OAuth grant props are stored by the OAuth provider's encrypted storage and carry the Discord identity credential for per-call revalidation.
 - The auth Worker exposes `validateToken` and `checkGuildAccess` RPC methods over its private Service Binding.
 - Every manager read enforces the exact guild list captured in the user's OAuth consent, then rechecks the Discord identity, current guild membership, and owner/Administrator permission. Expired Discord user credentials fail closed and require reauthorization.
@@ -77,4 +77,4 @@ Those services do not yet exist. The gateway's `MCP_RESOURCE_URL` and `OAUTH_ISS
 
 ## Do not deploy yet
 
-The OAuth authorization Worker source exists but remains unconfigured, uncompiled, untested, and undeployed. The immutable write-proposal store, separate owner approval UI, and OAuth/MCP mock-backend integration tests remain outstanding. The five private manager Workers have not been deployed. Run the full source checks first, then complete integration and security tests. Production release requires a separate explicit decision.
+The OAuth authorization Worker is locally compiled and integration-tested but remains unconfigured and undeployed. The write-proposal store, separate verified owner-approval flow, typed write executor, and immutable audit trail remain outstanding. The five private manager Workers have not been deployed. Run the full source checks first, then complete integration and security tests. Production release requires a separate explicit decision.
