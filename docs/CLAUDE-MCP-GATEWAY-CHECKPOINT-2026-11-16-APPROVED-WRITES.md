@@ -229,3 +229,40 @@ Inspect and close the Discord access-token expiry/reconnect lifecycle with mocke
 - Production branch/resources: **untouched**.
 - Live Discord message/channel writes and all bot-role mutations: **not performed**.
 - Schedulers/cron jobs: **none created**.
+
+
+## Verification update — 2026-11-16 — isolated Dawn-only Gateway/Auth pair
+
+This section supersedes the earlier shared-Gateway blocker described above. A dedicated Dawn-only Gateway/Auth pair has since been added and tested, so Dawn no longer depends on the four locked manager targets.
+
+- Workflow run: `43950059288` — **success**.
+- Job: `133589882690`.
+- Tested commit: `ff1684923ac9b7924cac684173c2f2dea4699984`.
+- `npm ci --no-audit --no-fund`: passed.
+- `npm run check`: strict TypeScript passed and **88 unit/configuration tests passed** across 10 files.
+- `npm run test:workers`: **35 Cloudflare Workers integration tests passed** across 7 files.
+- Total: **123 tests passed**.
+- The staging-config test suite now contains four tests. The new isolated-pair test confirms the Dawn Gateway binds only to the Dawn Auth Worker and Dawn manager, and the Dawn Auth Worker binds only back to the Dawn Gateway. It also checks that both configs omit dashboard-managed `vars`, set `workers_dev: false`, `preview_urls: false`, and `keep_vars: true`, and declare their respective Durable Object and KV bindings.
+- New Dawn-only config files:
+  - `claude-gateway/wrangler.dawn-dotta.jsonc` → `discord-claude-gateway-dawn-staging`.
+  - `claude-gateway/auth-worker/wrangler.dawn-dotta.jsonc` → `discord-claude-auth-dawn-staging`.
+  - Existing authorized Dawn manager config: `claude-gateway/manager-worker/wrangler.dawn-dotta.jsonc` → `manager-dawn-dotta-staging`.
+- Gateway service bindings are restricted to `AUTH_SERVER → discord-claude-auth-dawn-staging` and `MANAGER_DAWN_DOTTA → manager-dawn-dotta-staging`. The Gateway retains its own `WRITE_PROPOSAL_STORE` Durable Object binding.
+- Auth service binding is `GATEWAY_SERVER → discord-claude-gateway-dawn-staging`; it has a dedicated `OAUTH_KV` placeholder and `OAUTH_ONE_TIME_STORE` SQLite Durable Object.
+- These three authorized staging configs explicitly set `workers_dev: false`, `preview_urls: false`, and `keep_vars: true`. Their dashboard-managed runtime variables are omitted from their Wrangler `vars` blocks rather than declared as blank same-name values.
+- The four locked manager config files were not part of the Dawn-only config test or deployment scope. Do not inspect, modify, configure, or deploy those services.
+- The runbook documents the reciprocal binding bootstrap: initially deploy the Auth Worker without its Gateway binding, deploy the Gateway once Auth and Dawn manager exist, then redeploy Auth with the final Gateway binding. No temporary public bootstrap endpoints are used.
+- The latest runbook's Claude connector section was refreshed against Anthropic's current help page. It notes remote MCP connector availability for Free, Pro, Max, Ultra, Team, and Enterprise, Free's one-custom-connector limit, public HTTPS/443 reachability from Anthropic's cloud, and Team/Enterprise organization-owner setup.
+- The CI run tested commit `ff168...`. The later README, checkpoint, and runbook updates are documentation-only; no application code or Wrangler deployment configuration changed after that test.
+
+## Current deployment readiness — Dawn only
+
+- Dawn-only source, tests, isolated service graph, and static configuration: **CI green**.
+- Dedicated Dawn staging `OAUTH_KV` namespace ID: **not created/configured**.
+- Dawn guild ID and Discord application ID: **not configured**.
+- Cloudflare staging account access, project zone, HTTPS issuer/resource hostnames, Discord OAuth application/client secret, redirect URI, session encryption key, owner-approval internal secret, Dawn bot token, and Dawn manager write secret: **still required as account-owned inputs**. Enter secret values only through Cloudflare's secret manager; never in Git or chat.
+- Dawn manager, Auth Worker, Gateway Worker, their Service Bindings, custom domains/routes, and public endpoints: **not deployed by this work**.
+- Claude live connector registration, OAuth callback, token refresh/reconnect, and actual Dawn read-only inventory acceptance: **not performed**.
+- Other four communities, their services/configurations/secrets, and all production resources: **locked and untouched**.
+- Live Discord message/channel writes, bot-role changes, and production release: **not performed**.
+- No schedulers, cron jobs, reminders, or recurring maintenance were created.
