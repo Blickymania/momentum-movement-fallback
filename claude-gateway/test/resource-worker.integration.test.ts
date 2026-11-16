@@ -33,7 +33,7 @@ function approvedProposal(): WriteProposalRecord {
   };
 }
 
-function createHarness(options: { token?: string; audience?: string; scope?: string[] } = {}) {
+function createHarness(options: { token?: string; audience?: string; scope?: string[]; discordTokenExpiresAt?: number | null } = {}) {
   const token = options.token ?? "valid-test-token";
   const record = approvedProposal();
   const consumed = { ...record, status: "consumed" as const, consumedAt: Date.now() };
@@ -66,7 +66,7 @@ function createHarness(options: { token?: string; audience?: string; scope?: str
       props: {
         userId: requesterUserId,
         discordAccessToken: "discord-test-access-token",
-        discordTokenExpiresAt: Date.now() + 3_600_000,
+        discordTokenExpiresAt: Object.prototype.hasOwnProperty.call(options, "discordTokenExpiresAt")\n          ? options.discordTokenExpiresAt\n          : Date.now() + 3_600_000,
         authorizedGuildIds: [guildId]
       },
       audience: options.audience ?? resource,
