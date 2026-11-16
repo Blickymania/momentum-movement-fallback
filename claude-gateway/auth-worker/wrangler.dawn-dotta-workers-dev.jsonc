@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "discord-claude-auth-dawn-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-15",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "preview_urls": false,
+  "keep_vars": true,
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": ""
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "OAUTH_ONE_TIME_STORE",
+        "class_name": "OAuthOneTimeStore"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "OAuthOneTimeStore"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "binding": "GATEWAY_SERVER",
+      "service": "discord-claude-gateway-dawn-staging"
+    }
+  ]
+}
