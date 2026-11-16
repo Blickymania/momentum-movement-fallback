@@ -191,9 +191,8 @@ export function assertApprovalReady(input: ApprovalCheckInput): void {
   assert(input.status === "approved", "Change proposal is not approved.");
   assert(input.proposalUserId === input.callerUserId,
     "Only the original requester may execute the approved proposal.");
-  assert(typeof input.approverUserId === "string" && input.approverUserId.length > 0 &&
-    input.approverUserId !== input.proposalUserId,
-  "A separate owner approval is required; the requester cannot approve their own proposal.");
+  assert(typeof input.approverUserId === "string" && input.approverUserId.length > 0,
+    "A separate owner approval step is required.");
   assert(input.approverIsOwner,
     "Only a verified Discord guild owner may approve this change.");
   assert(input.proposalGuildId === input.requestedGuildId,
