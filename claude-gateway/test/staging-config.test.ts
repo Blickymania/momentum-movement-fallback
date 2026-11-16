@@ -6,7 +6,6 @@ type WranglerConfig = {
   name: string;
   workers_dev?: boolean;
   keep_vars?: boolean;
-  keep_vars?: boolean;
   vars?: Record<string, string>;
   services?: Array<{ binding: string; service: string }>;
   kv_namespaces?: Array<{ binding: string; id: string }>;
