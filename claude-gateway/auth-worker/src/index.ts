@@ -5,6 +5,8 @@ import {
   type AuthRequest
 } from "@cloudflare/workers-oauth-provider";
 import { WorkerEntrypoint } from "cloudflare:workers";
+import { checkGuildAccessForToken, discordStateCookieName, hasMatchingDiscordOAuthStateCookie } from "./discord-auth";
+export { checkGuildAccessForToken, discordStateCookieName, hasMatchingDiscordOAuthStateCookie } from "./discord-auth";
 
 export interface AuthWorkerEnv {
   OAUTH_KV: KVNamespace;
@@ -63,20 +65,6 @@ const LOGIN_TTL_SECONDS = 600;
 const CONSENT_TTL_SECONDS = 300;
 const SNOWFLAKE = /^\d{15,22}$/;
 
-function discordStateCookieName(state: string): string {
-  return `__Host-discord-oauth-${state}`;
-}
-
-export function hasMatchingDiscordOAuthStateCookie(request: Request, state: string): boolean {
-  const name = discordStateCookieName(state);
-  const cookieHeader = request.headers.get("cookie") ?? "";
-  return cookieHeader.split(";").some((part) => {
-    const separator = part.indexOf("=");
-    return separator >= 0 && part.slice(0, separator).trim() === name &&
-      part.slice(separator + 1).trim() === state;
-  });
-}
-
 function getAuthorizationServer(env: AuthWorkerEnv) {
   if (!env.OAUTH_ISSUER_URL || !env.MCP_RESOURCE_URL) {
     throw new Error("OAuth issuer and MCP resource URLs must be configured.");
@@ -131,7 +119,9 @@ function fromBase64(value: string): Uint8Array {
 async function encryptionKey(env: AuthWorkerEnv, usage: KeyUsage[]): Promise<CryptoKey> {
   const raw = fromBase64(env.AUTH_SESSION_ENCRYPTION_KEY);
   if (raw.byteLength !== 32) throw new Error("Session encryption key must be 32 bytes.");
-  return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, usage);
+  const rawBuffer = new ArrayBuffer(raw.byteLength);
+  new Uint8Array(rawBuffer).set(raw);
+  return crypto.subtle.importKey("raw", rawBuffer, { name: "AES-GCM" }, false, usage);
 }
 
 async function seal(env: AuthWorkerEnv, value: ConsentPayload): Promise<string> {
@@ -328,44 +318,6 @@ async function completeConsent(request: Request, env: AuthWorkerEnv): Promise<Re
   return Response.redirect(redirectTo, 302);
 }
 
-export async function checkGuildAccessForToken(
-  userId: string,
-  guildId: string,
-  discordAccessToken: string,
-  discordFetch: typeof fetch = fetch
-): Promise<{ isMember: boolean; isOwner: boolean; permissions: string }> {
-  if (!SNOWFLAKE.test(userId) || !SNOWFLAKE.test(guildId) || !discordAccessToken) {
-    return { isMember: false, isOwner: false, permissions: "0" };
-  }
-
-  const [userResponse, guildsResponse] = await Promise.all([
-    discordFetch(`${DISCORD_API}/users/@me`, {
-      headers: { authorization: `Bearer ${discordAccessToken}` },
-      redirect: "error"
-    }),
-    discordFetch(`${DISCORD_API}/users/@me/guilds`, {
-      headers: { authorization: `Bearer ${discordAccessToken}` },
-      redirect: "error"
-    })
-  ]);
-
-  if (!userResponse.ok || !guildsResponse.ok) {
-    return { isMember: false, isOwner: false, permissions: "0" };
-  }
-
-  const user = await userResponse.json() as DiscordUser;
-  if (user.id !== userId) return { isMember: false, isOwner: false, permissions: "0" };
-
-  const guilds = await guildsResponse.json() as DiscordGuild[];
-  const guild = guilds.find((item) => item.id === guildId);
-  if (!guild) return { isMember: false, isOwner: false, permissions: "0" };
-
-  return {
-    isMember: true,
-    isOwner: guild.owner === true,
-    permissions: guild.permissions ?? "0"
-  };
-}
 
 export default class AuthServer extends WorkerEntrypoint<AuthWorkerEnv> {
   async fetch(request: Request): Promise<Response> {
