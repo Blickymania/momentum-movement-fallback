@@ -322,3 +322,10 @@ This section supersedes the prior note above that MCP OAuth refresh preserves th
 - No Cloudflare Worker, KV namespace, Service Binding, workers.dev URL, route, domain, or secret was created or deployed by this work.
 - Live Claude connector registration, Discord consent, OAuth callback, MCP read-only inventory, live connectivity, expiry/reconnect behavior, and rollback still require staging acceptance after deployment.
 - Four locked manager projects and all production resources remain untouched. No Discord message/channel writes, bot-role changes, permission changes, or schedulers were performed.
+
+## Follow-on verification — latest branch-head CI
+
+- Workflow run `43952925727` (job `133599892957`) completed successfully on commit `56c7fc73babcb2f447e561b9450941e590773248` after the updated README entered the CI workflow.
+- Reconfirmed strict TypeScript, **89 unit/configuration tests**, **36 Worker integration tests**, and all six offline Wrangler dry-runs. Total: **125 tests passed**.
+- All six dry-run profiles again exited before upload: Dawn manager, Auth bootstrap, private Auth, private Gateway, public Auth workers.dev, and public Gateway workers.dev.
+- The current branch head includes only later deployment-runbook and checkpoint documentation commits (`1a4cb3e...`, `d717757...`, `a212231...`) after that successful run; no application source, tests, Wrangler configs, or dry-run script changed afterward.
