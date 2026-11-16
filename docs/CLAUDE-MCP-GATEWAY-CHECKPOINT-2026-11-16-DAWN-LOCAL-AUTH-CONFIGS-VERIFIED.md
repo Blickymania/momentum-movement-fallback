@@ -128,3 +128,16 @@
 - Existing schedulers unchanged; no cron or recurring process was created.
 - Next independent objective: inspect manager-side typed patch validation for divergence from the gateway policy, with a regression test if a concrete mismatch is found.
 - Cloudflare staging account-owned KV, secrets, hostnames and live deployment remain blocked externally. Live Claude OAuth/reconnect, live Discord inventory, and ChatGPT/Ui.Vision operational integration remain unverified.
+
+
+## Autonomous cycle 3 — strict manager forum-field validation
+- Scoped work strictly to the authorized Dawn staging gateway/manager implementation and its unit tests. The four other Discord manager projects remain locked; production and Discord resources were not touched.
+- Found a concrete policy mismatch: gateway action validation required numeric forum settings, while the private manager executor coerced strings/booleans through `Number(...)`, allowing the manager to accept incompatible input types.
+- Modified `claude-gateway/manager-worker/src/write-executor.ts` to require actual numbers for `default_auto_archive_duration`, `default_forum_layout`, and `default_sort_order`, preserving each field's existing allowed-value set.
+- Added unit regressions in `claude-gateway/manager-worker/test/write-executor.test.ts` that reject coercible string and boolean values before making any Discord HTTP requests.
+- Code commit: `d0f22d6f07ba1d292646b575310728dce7df5cb5`.
+- GitHub Actions [43982612715](https://github.com/Blickymania/momentum-movement-fallback/actions/runs/43982612715): success; Node 22 locked installation and strict TypeScript passed; 97 unit/config + 12 Auth Worker + 25 Gateway/Write integration = 134 passing tests. Six offline Wrangler dry-runs passed; no uploads.
+- Scheduler audit unchanged: the Claude Gateway Checks workflow runs only on scoped push/PR/manual triggers, with no cron or deploy step. No new scheduled process, reminder, or automation was created.
+- Last verified code state is `d0f22d6f07ba1d292646b575310728dce7df5cb5`; the next document-only checkpoint commit does not alter deployed source.
+- Remaining external blocker: no writable Cloudflare staging connection or account-owner session. Required dedicated Dawn staging `OAUTH_KV` namespace ID, account-provided HTTPS hostnames, guild/application IDs, OAuth configuration, and encrypted account-owned secrets remain unverified. No Cloudflare deployment, live Claude OAuth connection, live Discord read acceptance or UI.Vision operational test was performed.
+- Exact next execution step: use an authorized Cloudflare staging account to create/verify the isolated Dawn KV namespace and configure dashboard secrets/variables, then follow `docs/CLAUDE-MCP-GATEWAY-STAGING-DEPLOYMENT-RUNBOOK.md` private-before-public deployment order; validate private Service Bindings, then perform read-only Claude OAuth/MCP acceptance. Do not enable production or live Discord writes without explicit approval.
