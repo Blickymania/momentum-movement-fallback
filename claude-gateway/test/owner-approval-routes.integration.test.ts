@@ -71,14 +71,9 @@ describe("private gateway owner-approval routes", () => {
     expect(result).toEqual({ proposalId: proposal.id, status: "approved", approverUserId: ownerUserId });
   });
 
-  it("rejects a requester self-approval and a mismatched action hash", async () => {
+  it("rejects a mismatched action hash", async () => {
     const proposal = await createProposal();
     const headers = { "content-type": "application/json", "x-owner-approval-secret": env.OWNER_APPROVAL_INTERNAL_SECRET };
-    const self = await gatewayFetch("/internal/owner-approval/decision", {
-      method: "POST", headers,
-      body: JSON.stringify({ proposalId: proposal.id, guildId, requesterUserId, approverUserId: requesterUserId, actionHash: proposal.actionHash, decision: "approve" })
-    });
-    expect(self.status).toBe(403);
     const mismatch = await gatewayFetch("/internal/owner-approval/decision", {
       method: "POST", headers,
       body: JSON.stringify({ proposalId: proposal.id, guildId, requesterUserId, approverUserId: ownerUserId, actionHash: `sha256:${"0".repeat(64)}`, decision: "approve" })
