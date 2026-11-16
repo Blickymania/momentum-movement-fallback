@@ -58,6 +58,10 @@ Generate the 32-byte AES key locally with `openssl rand -base64 32` and the inte
 
 Permission overwrites, all role changes (including bot roles), deletes, bulk actions, and unsupported channel types are rejected. The proposal store uses a stable idempotency key; the tool returns a one-time owner approval URL. The current guild owner must inspect the exact action and explicitly approve or reject it through the separate Discord OAuth flow. No Discord write is performed at proposal time, and no executor is wired yet.
 
+## Execution recovery foundation
+
+When an approved proposal is consumed, the Durable Object creates a persistent execution record. The executor foundation supports an atomic claim, a unique fencing token per attempt, lease renewal, stale-worker rejection, retryable versus terminal failures, and a hard three-attempt limit. Expired leases are reclaimed on the next explicit execution attempt; no cron or recurring repair process is created. These are recovery primitives only: no Discord API write executor is connected, and `mcp:write` remains disabled.
+
 ## Manager Worker isolation
 
 The same source at `manager-worker/src/index.ts` is intended to be used by five distinct Cloudflare Workers. Each worker has its own Wrangler config:
@@ -87,4 +91,4 @@ Those services do not yet exist. The gateway's `MCP_RESOURCE_URL` and `OAUTH_ISS
 
 ## Do not deploy yet
 
-The OAuth authorization Worker is locally compiled and integration-tested but remains unconfigured and undeployed. The per-guild write-proposal Durable Object, immutable audit log, separate Discord owner-approval interface, private gateway decision bridge, and proposal-only `discord_propose_change` MCP tool are implemented and locally tested. The shared internal secret and reciprocal Service Bindings are not configured/deployed. The typed manager write executor, execution lease/retry handling, and actual Discord write-tool integration remain outstanding. The five private manager Workers have not been deployed. Run the full source checks first, then complete integration and security tests. Production release requires a separate explicit decision.
+The OAuth authorization Worker is locally compiled and integration-tested but remains unconfigured and undeployed. The per-guild write-proposal Durable Object, immutable audit log, separate Discord owner-approval interface, private gateway decision bridge, and proposal-only `discord_propose_change` MCP tool are implemented and locally tested. The shared internal secret and reciprocal Service Bindings are not configured/deployed. The proposal store now includes persistent execution state, lease renewal, fencing tokens, and a bounded three-attempt retry policy. The typed manager write executor and actual Discord write-tool integration remain outstanding. The five private manager Workers have not been deployed. Run the full source checks first, then complete integration and security tests. Production release requires a separate explicit decision.
