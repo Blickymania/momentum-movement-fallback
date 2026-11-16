@@ -38,11 +38,11 @@ export async function checkGuildAccessForToken(
   const [userResponse, guildsResponse] = await Promise.all([
     discordFetch(`${DISCORD_API}/users/@me`, {
       headers: { authorization: `Bearer ${discordAccessToken}` },
-      redirect: "error"
+      redirect: "manual"
     }),
     discordFetch(`${DISCORD_API}/users/@me/guilds`, {
       headers: { authorization: `Bearer ${discordAccessToken}` },
-      redirect: "error"
+      redirect: "manual"
     })
   ]);
 
