@@ -18,6 +18,12 @@
     "GUILD_ID_RED_KOCAINE": "",
     "GUILD_ID_DAWN_DOTTA": ""
   },
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": ""
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
