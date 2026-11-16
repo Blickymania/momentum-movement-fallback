@@ -1,6 +1,6 @@
 # Claude Five-Server Discord Manager — Staging Plan
 
-**Status:** Staging branch and architecture checkpoint. Initial authorization/write-policy helper and unit-test source have been added. The Worker entrypoints, OAuth flow, private manager adapters, and approval workflow are not yet implemented or tested. No Cloudflare deployment, no secrets configured, no Discord changes, no production routing changes.
+**Status (updated 2026-11-15):** The staging branch contains a read-only MCP gateway entrypoint, Cloudflare OAuth authorization Worker source, a reusable GET-only private manager Worker with five isolated Wrangler configs, typed write-policy helpers, and unit-test source. The code has not yet been compiled or tested. OAuth KV, secrets, real staging URLs, and private Service Bindings remain unconfigured. The immutable write-proposal/approval executor remains unimplemented. No Cloudflare deployment, no Discord changes, and no production routing changes have occurred.
 
 ## Owner constraints
 
@@ -168,8 +168,8 @@ The existing Dawn Hyperdrive configuration remains isolated to the Dawn staging 
 
 ## Current blockers
 
-- Only the Dawn Dotta Worker source branch is available in this repository. Source code for the other four manager connectors has not been recovered into this project.
-- The existing Dawn source is single-guild and includes a generic Discord request tool. It is not safe to expose directly to Claude with writes enabled. Its current custom OAuth code should not be reused as the new gateway's OAuth provider; use the maintained Cloudflare OAuth provider library.
+- One generic read-only manager Worker source now exists with five separate per-server Wrangler configurations. None of the five new private manager services has been deployed or configured with credentials.
+- The legacy Dawn manager source is not reused by this gateway. The new gateway exposes only fixed read-only resources; no generic Discord request proxy or write executor is exposed.
 - The Cloudflare account inventory previously showed only the separate Empress Worker; no dedicated Dawn or other manager Workers were present at that inspection.
 - Cloudflare deployment and secret configuration tools are not available in this session. Browser access currently provides read-only page inspection.
 - Claude connector creation must be completed by the user in their Claude account after the public HTTPS endpoint exists.
