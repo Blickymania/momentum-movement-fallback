@@ -15,9 +15,34 @@ export interface GatewayEnv {
   GUILD_ID_BESTYOUEVAHAD?: string;
   GUILD_ID_RED_KOCAINE?: string;
   GUILD_ID_DAWN_DOTTA?: string;
+  MANAGER_WRITE_SECRET_EMPRESS?: string;
+  MANAGER_WRITE_SECRET_BLICKYMANIA?: string;
+  MANAGER_WRITE_SECRET_BESTYOUEVAHAD?: string;
+  MANAGER_WRITE_SECRET_RED_KOCAINE?: string;
+  MANAGER_WRITE_SECRET_DAWN_DOTTA?: string;
 }
 
 export type ManagerReadResource = "status" | "channels" | "roles" | "commands";
+
+export type ManagerWriteAction =
+  | { type: "message.send"; channelId: string; content: string }
+  | { type: "channel.update"; channelId: string; patch: Record<string, unknown> };
+
+export interface ManagerWriteInput {
+  proposalId: string;
+  actionHash: string;
+  action: ManagerWriteAction;
+}
+
+export interface ManagerWriteResult {
+  ok: boolean;
+  httpStatus: number;
+  discordStatus?: number;
+  messageId?: string;
+  channelId?: string;
+  updatedFields?: string[];
+  error?: string;
+}
 
 interface ManagerTarget {
   binding: ManagerBinding;
@@ -27,12 +52,13 @@ interface ManagerTarget {
 const MANAGERS: Record<ServerKey, {
   binding: keyof GatewayEnv;
   guildId: keyof GatewayEnv;
+  writeSecret: keyof GatewayEnv;
 }> = {
-  empress: { binding: "MANAGER_EMPRESS", guildId: "GUILD_ID_EMPRESS" },
-  blickymania: { binding: "MANAGER_BLICKYMANIA", guildId: "GUILD_ID_BLICKYMANIA" },
-  bestyouevahad: { binding: "MANAGER_BESTYOUEVAHAD", guildId: "GUILD_ID_BESTYOUEVAHAD" },
-  "red-kocaine": { binding: "MANAGER_RED_KOCAINE", guildId: "GUILD_ID_RED_KOCAINE" },
-  "dawn-dotta": { binding: "MANAGER_DAWN_DOTTA", guildId: "GUILD_ID_DAWN_DOTTA" }
+  empress: { binding: "MANAGER_EMPRESS", guildId: "GUILD_ID_EMPRESS", writeSecret: "MANAGER_WRITE_SECRET_EMPRESS" },
+  blickymania: { binding: "MANAGER_BLICKYMANIA", guildId: "GUILD_ID_BLICKYMANIA", writeSecret: "MANAGER_WRITE_SECRET_BLICKYMANIA" },
+  bestyouevahad: { binding: "MANAGER_BESTYOUEVAHAD", guildId: "GUILD_ID_BESTYOUEVAHAD", writeSecret: "MANAGER_WRITE_SECRET_BESTYOUEVAHAD" },
+  "red-kocaine": { binding: "MANAGER_RED_KOCAINE", guildId: "GUILD_ID_RED_KOCAINE", writeSecret: "MANAGER_WRITE_SECRET_RED_KOCAINE" },
+  "dawn-dotta": { binding: "MANAGER_DAWN_DOTTA", guildId: "GUILD_ID_DAWN_DOTTA", writeSecret: "MANAGER_WRITE_SECRET_DAWN_DOTTA" }
 };
 
 const SNOWFLAKE = /^\d{15,22}$/;
@@ -147,4 +173,62 @@ export async function readManagerResource(
     throw new Error("Private manager returned an invalid JSON response.");
   }
   return redact(parsed);
+}
+
+/** Calls only the selected manager's private typed write endpoint. */
+export async function executeManagerWrite(
+  env: GatewayEnv,
+  serverKey: string,
+  input: ManagerWriteInput
+): Promise<ManagerWriteResult> {
+  const key = requireServerKey(serverKey);
+  if (!/^[0-9a-f-]{36}$/i.test(input.proposalId) || !/^sha256:[a-f0-9]{64}$/.test(input.actionHash)) {
+    throw new Error("Invalid approved proposal reference.");
+  }
+  if (input.action.type !== "message.send" && input.action.type !== "channel.update") {
+    throw new Error("Unsupported manager write action.");
+  }
+  const { binding, guildId } = resolveTarget(env, key);
+  const writeSecret = env[MANAGERS[key].writeSecret] as string | undefined;
+  if (!writeSecret) throw new Error("Write execution secret for " + key + " is not configured.");
+  const response = await binding.fetch(new Request("https://manager.internal/internal/v1/write", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "x-gateway-guild-id": guildId,
+      "x-manager-write-secret": writeSecret
+    },
+    body: JSON.stringify({ proposalId: input.proposalId, guildId, actionHash: input.actionHash, action: input.action })
+  }));
+  const bodyText = await response.text();
+  if (new TextEncoder().encode(bodyText).byteLength > 64_000) {
+    return { ok: false, httpStatus: 502, error: "Manager write response exceeded the gateway size limit." };
+  }
+  let body: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(bodyText);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid response object.");
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return { ok: false, httpStatus: 502, error: "Manager returned an invalid write response." };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      httpStatus: response.status,
+      discordStatus: typeof body.discordStatus === "number" ? body.discordStatus : undefined,
+      error: typeof body.error === "string" ? body.error.slice(0, 240) : "Manager write failed."
+    };
+  }
+  if (body.ok !== true || body.proposalId !== input.proposalId || body.actionHash !== input.actionHash) {
+    return { ok: false, httpStatus: 502, error: "Manager write response did not match the approved proposal." };
+  }
+  return {
+    ok: true,
+    httpStatus: response.status,
+    messageId: typeof body.messageId === "string" ? body.messageId : undefined,
+    channelId: typeof body.channelId === "string" ? body.channelId : undefined,
+    updatedFields: Array.isArray(body.updatedFields) ? body.updatedFields.filter((value): value is string => typeof value === "string") : undefined
+  };
 }
