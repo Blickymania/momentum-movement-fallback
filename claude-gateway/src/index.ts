@@ -4,7 +4,7 @@ import {
 } from "@cloudflare/workers-oauth-provider";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
-import { assertCurrentGuildReadAccess, getConfiguredGuildId, type DiscordAuthorizationService } from "./manager-access";
+import { assertCurrentGuildReadAccess, assertDiscordCredentialCurrent, getConfiguredGuildId, type DiscordAuthorizationService } from "./manager-access";
 import { executeManagerWrite, listConfiguredManagers, readManagerResource, type GatewayEnv } from "./manager-client";
 import { SERVER_CATALOG, type ServerKey } from "./policy";
 import type { WriteProposalStore, WriteProposalRecord, ApproveWriteProposalInput, CreateWriteProposalInput, ExecutionClaim } from "./write-proposals";
@@ -340,6 +340,21 @@ export default {
           const discordAccessToken = authContext.props?.discordAccessToken;
           if (!userId || !discordAccessToken) {
             return Response.json({ error: "Authenticated Discord identity is incomplete." }, { status: 403 });
+          }
+          const discordTokenExpiresAt = authContext.props?.discordTokenExpiresAt;
+          try {
+            assertDiscordCredentialCurrent(discordTokenExpiresAt);
+          } catch {
+            return Response.json(
+              { error: "Discord authorization has expired. Reconnect this MCP server to Discord and authorize access again." },
+              {
+                status: 401,
+                headers: {
+                  "cache-control": "no-store",
+                  "www-authenticate": 'Bearer error="invalid_token", error_description="Discord authorization expired; reconnect this MCP server."'
+                }
+              }
+            );
           }
           const authorizedGuildIds = authContext.props?.authorizedGuildIds;
           if (!Array.isArray(authorizedGuildIds) || !authorizedGuildIds.every((id) => typeof id === "string")) {
