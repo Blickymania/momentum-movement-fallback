@@ -7,6 +7,8 @@ import * as z from "zod/v4";
 import { assertCurrentGuildReadAccess, type DiscordAuthorizationService } from "./manager-access";
 import { listConfiguredManagers, readManagerResource, type GatewayEnv } from "./manager-client";
 import { SERVER_CATALOG, type ServerKey } from "./policy";
+import type { WriteProposalStore } from "./write-proposals";
+export { WriteProposalStore } from "./write-proposals";
 
 interface AuthProps {
   userId: string;
@@ -19,6 +21,7 @@ interface ResourceEnv extends GatewayEnv {
   AUTH_SERVER: AuthorizationServerBinding<AuthProps> & DiscordAuthorizationService;
   MCP_RESOURCE_URL: string;
   OAUTH_ISSUER_URL: string;
+  WRITE_PROPOSAL_STORE: DurableObjectNamespace<WriteProposalStore>;
 }
 
 const SERVER_KEYS = SERVER_CATALOG.map((server) => server.key) as [
