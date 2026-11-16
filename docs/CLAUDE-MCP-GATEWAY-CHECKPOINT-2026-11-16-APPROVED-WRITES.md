@@ -165,3 +165,32 @@ Inspect and close the Discord access-token expiry/reconnect lifecycle with mocke
 - Five staging manager service templates: structurally audited; actual Cloudflare service creation and connectivity not verified.
 - Real Discord app setup, five guild/application IDs, private credentials, staging URLs, reciprocal Service Bindings, and end-to-end Claude connection: pending secure staging configuration and acceptance.
 - No production deployment, no Discord live-resource writes, no bot-role changes, and no schedulers were made.
+
+
+## Verification update — 2026-11-16 — staging configuration suite green
+
+- Workflow run: `43946876040` — **success**.
+- Job ID: `133578779988`.
+- Tested source/config/test commit: `7faefa94551f66930626bf308e4cb12b262e9863`.
+- Locked dependency installation and strict TypeScript compilation passed.
+- Unit suite: **87 passed** across 10 test files.
+- Workers integration suite: **32 passed** across 7 test files.
+- Total: **119 tests passed**.
+- The new `test/staging-config.test.ts` adds three checks:
+  1. Five separate manager Wrangler configs use distinct staging names, have `workers_dev: false`, have no public routes, and contain no bot-token or manager-write-secret values.
+  2. The gateway binds the dedicated auth Worker and all five correctly named manager Services, declares all five guild-ID placeholders, and binds its proposal Durable Object.
+  3. The auth Worker declares its private gateway Service Binding, dedicated blank `OAUTH_KV` placeholder, five guild-ID placeholders, and OAuth one-time Durable Object, with no secret material embedded in config.
+- `@types/node` is explicitly pinned to the already-locked `26.6.6` package for the Node-based config test; it is development-only.
+- Gateway Wrangler config now declares the same five guild-ID variable names as the auth Worker. Both remain blank placeholders until configured securely in staging.
+- README now documents the exact per-manager secret pairing: each manager's unique `MANAGER_WRITE_SECRET` matches only its gateway `MANAGER_WRITE_SECRET_<SERVER>`; each bot token remains only in its own manager Worker secret store. Owner-approval internal secret is shared only between auth and gateway.
+- Current application source has not changed since the prior 84-unit/32-integration green verification; this run adds and validates the configuration suite and its type setup.
+
+## Updated staging readiness
+
+- Source + tests + staging-template consistency: **CI green**.
+- All seven Worker configs: private staging templates; no deployment or live binding check performed.
+- Five guild IDs: declared in both auth and gateway staging config templates, currently blank.
+- OAuth KV: binding declared with a blank namespace ID; no live namespace created by this session.
+- Manager bot tokens, manager-specific write secrets, owner-approval internal secret, OAuth client secret, and session encryption key: intentionally not read, generated into repository, or exposed in chat.
+- Live Cloudflare staging deployment, OAuth/Claude client round trip, actual five-server manager connectivity, reconnect acceptance in Claude, and rollback: **pending secure environment configuration and acceptance**.
+- Production remains untouched. No live Discord write or bot-role mutation has been performed.
