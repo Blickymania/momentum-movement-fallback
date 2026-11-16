@@ -83,6 +83,7 @@ describe("approved proposal execution orchestration", () => {
     const update = { type: "channel.update" as const, channelId: action.channelId, patch: { topic: "New topic" } };
     const deps = dependencies({
       getProposal: vi.fn(async () => ({ ...proposal("approved"), action: update })),
+      consumeApprovedProposal: vi.fn(async () => ({ ...proposal("consumed"), action: update })),
       executeManagerWrite: vi.fn(async () => { throw new Error("service binding timeout"); })
     });
     const result = await executeApprovedProposal(input, deps);
