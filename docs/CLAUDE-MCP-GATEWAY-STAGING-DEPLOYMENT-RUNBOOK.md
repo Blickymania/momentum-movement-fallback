@@ -25,14 +25,27 @@ Bootstrap Auth without its Gateway binding, deploy Gateway after Auth and the Da
 
 ## Current config protections
 
-The Dawn manager, Dawn Gateway, and Dawn Auth configs set:
-- `workers_dev: false`
-- `preview_urls: false`
-- `keep_vars: true`
-- no public route/custom-domain declaration in the bootstrap configs
-- dashboard-managed variables omitted from committed `vars` blocks, so a blank same-name value cannot overwrite a dashboard value
+The active Dawn deployment profiles are deliberately split into private bootstrap/final configs and an opt-in public endpoint profile:
 
-The manager remains private and reachable only through the Dawn Gateway Service Binding. Configure public routing only for the final Dawn Gateway MCP endpoint and Dawn Auth OAuth issuer, after both reciprocal Service Bindings work.
+- Dawn manager: `workers_dev: false`, `preview_urls: false`, `keep_vars: true` in every profile. It has no public route.
+- Dawn Auth bootstrap and private-final configs: `workers_dev: false`, `preview_urls: false`, `keep_vars: true`.
+- Dawn Gateway private-final config: `workers_dev: false`, `preview_urls: false`, `keep_vars: true`.
+- Dawn Auth and Gateway `workers.dev` activation profiles: `workers_dev: true`, `preview_urls: false`, `keep_vars: true`. These are deployed only after both reciprocal Service Bindings have been verified.
+- Dashboard-managed variables are omitted from committed `vars` blocks, so a blank same-name value cannot overwrite a dashboard value.
+
+The Auth and Gateway `workers.dev` profiles expose only the OAuth issuer and MCP endpoint over HTTPS. Both remain protected by the application OAuth flow; the Discord manager Worker is never public. The `workers.dev` subdomain itself is public, so do not store secrets in URL paths or hostnames.
+
+## Free-tier hosting feasibility
+
+The Dawn stack is compatible with Cloudflare Workers Free at low volume because the design uses Workers, KV, and SQLite-backed Durable Objects; Workers Free supports SQLite-backed Durable Objects, while the older KV-backed Durable Object storage is not available on Free.
+
+Current published Free allowances to plan against:
+- Workers: 100,000 requests per day and 10 ms CPU time per invocation.
+- Workers KV: 100,000 reads/day, 1,000 writes/day, 1,000 deletes/day, 1,000 list requests/day, and 1 GB stored data.
+- SQLite-backed Durable Objects: 100,000 requests/day, 13,000 GB-seconds/day, 5 million rows read/day, 100,000 rows written/day, and 5 GB total SQLite storage.
+
+If a Workers Free limit is exceeded, further operations of that type fail until the daily allowance resets; this is not an unlimited free tier. Monitor usage, keep authentication/consent writes lean, and do not assume high-traffic availability without paid capacity. See [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [KV pricing](https://developers.cloudflare.com/workers/kv/platform/pricing/), and [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
+
 
 ## Required Cloudflare-owned staging inputs
 
@@ -82,12 +95,17 @@ Generate a fresh owner-approval secret for this isolated Dawn staging pair and a
 
 ### Public endpoints
 
-- Choose two HTTPS hostnames in a Cloudflare-managed staging zone:
-  - OAuth issuer: `https://<auth-host>`
-  - MCP resource: `https://<mcp-host>/mcp`
-- Configure the Discord Developer Portal redirect URI exactly as `https://<auth-host>/discord/callback`.
-- The configs currently have no public routes/custom domains. Do not expose the manager Worker.
-- Keep public routes disabled during bootstrap; add routes/custom domains only after both reciprocal Service Bindings are complete.
+**Default zero-domain staging option: Cloudflare's account-provided `workers.dev` subdomain.**
+
+Cloudflare accounts include a configurable `workers.dev` subdomain, so this option does not require buying a domain or onboarding a custom zone. The stable endpoint names are:
+
+- OAuth issuer: `https://discord-claude-auth-dawn-staging.<account-subdomain>.workers.dev`
+- MCP resource: `https://discord-claude-gateway-dawn-staging.<account-subdomain>.workers.dev/mcp`
+- Discord redirect URI: `https://discord-claude-auth-dawn-staging.<account-subdomain>.workers.dev/discord/callback`
+
+The account owner must first choose/enable the account subdomain in Cloudflare. The two public URLs are created only when the corresponding `workers.dev` activation configs are deployed after private binding verification. Do not enable Version/Preview URLs. Do not expose the Dawn manager Worker.
+
+Cloudflare describes `workers.dev` as public and intended for personal/hobby projects rather than business-critical production workloads. For a production-critical service, replace this public-host option with a custom domain on a Cloudflare-managed zone after a separate review. See [Cloudflare workers.dev](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/).
 
 ## Deployment order
 
@@ -110,17 +128,13 @@ Do not deploy or inspect the four locked manager projects.
 
 ### 2. Bootstrap Dawn Auth without the reciprocal Gateway binding
 
-- Make a temporary local copy of `auth-worker/wrangler.dawn-dotta.jsonc` named `auth-worker/wrangler.dawn-dotta.bootstrap.jsonc`.
-- In the temporary copy only, remove the `GATEWAY_SERVER` entry from `services`.
-- Keep the same Dawn Auth Worker name, dedicated Dawn `OAUTH_KV` binding, Durable Object binding/migration, `keep_vars: true`, and `preview_urls: false`.
-- Do not add public routes/custom domains to the bootstrap config.
-- Deploy:
+Use the committed bootstrap-only config. It has the final Dawn Auth Worker name, a blank dedicated staging `OAUTH_KV` placeholder, the SQLite Durable Object binding/migration, no Service Binding, and no public `workers.dev` route.
 
 ```bash
-npx wrangler deploy --config auth-worker/wrangler.dawn-dotta.bootstrap.jsonc
+npx wrangler deploy --config auth-worker/wrangler.dawn-dotta-bootstrap.jsonc
 ```
 
-- Do not commit the temporary bootstrap config. This creates the Auth target needed by the Gateway. OAuth and owner-approval callbacks remain unavailable until final bindings and routes are configured.
+This creates the Auth target needed by the Gateway while keeping the OAuth endpoint private during bootstrap.
 
 ### 3. Deploy the Dawn-only Gateway
 
@@ -138,30 +152,43 @@ No other manager binding should be present in this Dawn-only config.
 
 ### 4. Redeploy Dawn Auth with its final Gateway binding
 
-Deploy the canonical Dawn Auth config, which restores `GATEWAY_SERVER`:
+Deploy the canonical private-final Dawn Auth config, which restores `GATEWAY_SERVER` while keeping the endpoint private:
 
 ```bash
 npx wrangler deploy --config auth-worker/wrangler.dawn-dotta.jsonc
 ```
 
-Then remove the temporary local `auth-worker/wrangler.dawn-dotta.bootstrap.jsonc` file.
-
 Confirm both private directions:
 - Dawn Gateway → Dawn Auth
 - Dawn Auth → Dawn Gateway
 
-Do not enable public routes yet.
+Do not enable the public `workers.dev` endpoint yet.
 
-### 5. Configure the two public endpoints last
+### 5. Configure the account subdomain and dashboard variables
 
-Only after the private binding graph is verified:
-- Add the approved HTTPS route/custom domain for the Dawn Auth OAuth issuer.
-- Add the approved HTTPS route/custom domain for the Dawn Gateway MCP resource.
-- Set/verify the dashboard-managed `OAUTH_ISSUER_URL`, `MCP_RESOURCE_URL`, and exact Discord redirect URI.
-- Verify Version/Preview URLs remain disabled.
-- Confirm the manager Worker remains private with no public route.
+- In Cloudflare Workers & Pages, configure the account's `workers.dev` subdomain.
+- Set `OAUTH_ISSUER_URL`, `MCP_RESOURCE_URL`, and `DISCORD_REDIRECT_URI` using the exact hostnames above.
+- Keep `preview_urls: false`; do not enable Version/Preview URLs or Deployment URLs.
+- Confirm `workers.dev` is being enabled only for the Dawn Auth and Dawn Gateway Worker names. The Dawn manager remains private.
 
-If either binding or hostname fails, keep public routes disabled and repair the staging binding graph before retrying.
+### 6. Enable the two public HTTPS endpoints last
+
+Only after the private binding graph and dashboard variables are verified, deploy the public endpoint profiles:
+
+```bash
+npx wrangler deploy --config auth-worker/wrangler.dawn-dotta-workers-dev.jsonc
+npx wrangler deploy --config wrangler.dawn-dotta-workers-dev.jsonc
+```
+
+These profiles use the same Worker names, Service Bindings, Durable Objects, and KV binding as the already-deployed private configs; their only exposure change is `workers_dev: true`. They preserve `preview_urls: false` and `keep_vars: true`.
+
+Confirm:
+- Auth is reachable at the issuer URL and its Discord callback URL over HTTPS.
+- Gateway is reachable at the MCP resource URL over HTTPS.
+- The manager Worker has no `workers.dev`, route, custom domain, Version URL, or Preview URL.
+- OAuth metadata advertises the configured issuer and resource URLs.
+
+If either endpoint or binding fails, disable the two `workers.dev` routes in the Cloudflare dashboard, redeploy the private configs, and repair the staging graph before retrying.
 
 ## Staging acceptance tests
 
@@ -211,6 +238,6 @@ No Claude connector has been connected in this work. Real Claude UI connection a
 - Source and static config checks are green. Latest verified Actions run: `43951509049` (job `133595049630`) on commit `bf41950dcb8d0ad02fbad29b7e5aa4dcb416f23e`; strict TypeScript, 88 unit/configuration tests, and 36 Cloudflare Workers integration tests passed (124 total). The same run completed offline Wrangler dry-runs for the Dawn manager, Auth, and Gateway configs; each bundled successfully and exited before upload.
 - The Dawn-only Gateway/Auth config pair exists and references only Dawn Auth and Dawn manager services; the four Dawn-only config assertions pass. Offline Wrangler dry-run validation also passes for all three authorized Dawn staging Worker configs. The full five-server configs remain available but are not the current deployment target.
 - No Cloudflare staging Worker, KV namespace, route, custom domain, Service Binding, or secret has been created or deployed by this work.
-- Account-owned prerequisites remain: dedicated Dawn `OAUTH_KV` namespace ID, Dawn guild/application IDs, Discord client settings, two HTTPS hostnames, and the Dawn bot/write/owner-approval secrets.
+- Account-owned prerequisites remain: Cloudflare account `workers.dev` subdomain, dedicated Dawn `OAUTH_KV` namespace ID, Dawn guild/application IDs, Discord client settings, and the Dawn bot/write/owner-approval secrets.
 - No live Discord writes, bot-role changes, or production changes were performed.
 - No scheduler, cron, reminder, or recurring maintenance was created.
