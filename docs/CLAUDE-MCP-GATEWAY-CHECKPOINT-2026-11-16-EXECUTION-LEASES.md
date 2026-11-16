@@ -19,13 +19,13 @@
 
 ## Verification on the latest local staging source
 
-Environment: Node.js 26.12.1, npm 12.2.2, Vitest 4.1.8, Wrangler 4.115.0.
+Environment: Node.js 22.23.5, npm 10.9.9, Vitest 4.1.8, Wrangler 4.115.0. A fresh `npm ci` was completed using Node.js 22.23.5.
 
-- `npm run check`: PASS — strict TypeScript and 63 unit tests across 7 files.
-- `npm run test:workers`: PASS — 23 Workers runtime integration tests:
+- `npm run check`: PASS on Node.js 22.23.5 — strict TypeScript and 63 unit tests across 7 files.
+- `npm run test:workers`: PASS on Node.js 22.23.5 — 23 Workers runtime integration tests:
   - 8 auth Worker tests.
   - 15 gateway Durable Object and private-route tests.
-- Wrangler dry-run: PASS for all seven staging Worker configs and both test Worker configs.
+- Wrangler dry-run: PASS on Node.js 22.23.5 for all seven staging Worker configs and both test Worker configs.
 - OAuth scope remains `mcp:read`; no `mcp:write` scope or Discord write executor is exposed.
 
 The test environment emits a non-fatal CIMD-disabled warning. The dynamic client registration flow used by these tests does not require CIMD.
