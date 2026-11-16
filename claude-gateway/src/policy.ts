@@ -175,6 +175,7 @@ export interface ApprovalCheckInput {
   status: "pending" | "approved" | "consumed" | "expired";
   proposalUserId: string;
   approverUserId: string | null;
+  approverIsOwner: boolean;
   callerUserId: string;
   proposalGuildId: string;
   requestedGuildId: string;
@@ -188,9 +189,13 @@ export interface ApprovalCheckInput {
 export function assertApprovalReady(input: ApprovalCheckInput): void {
   assert(!input.consumed && input.status !== "consumed", "Approval has already been consumed.");
   assert(input.status === "approved", "Change proposal is not approved.");
-  assert(input.proposalUserId === input.callerUserId &&
-    input.approverUserId === input.callerUserId,
-  "Approval is bound to a different Discord user.");
+  assert(input.proposalUserId === input.callerUserId,
+    "Only the original requester may execute the approved proposal.");
+  assert(typeof input.approverUserId === "string" && input.approverUserId.length > 0 &&
+    input.approverUserId !== input.proposalUserId,
+  "A separate owner approval is required; the requester cannot approve their own proposal.");
+  assert(input.approverIsOwner,
+    "Only a verified Discord guild owner may approve this change.");
   assert(input.proposalGuildId === input.requestedGuildId,
     "Approval is bound to a different Discord server.");
   assert(input.actionHash === input.expectedActionHash,
