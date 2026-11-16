@@ -66,7 +66,9 @@ function createHarness(options: { token?: string; audience?: string; scope?: str
       props: {
         userId: requesterUserId,
         discordAccessToken: "discord-test-access-token",
-        discordTokenExpiresAt: Object.prototype.hasOwnProperty.call(options, "discordTokenExpiresAt")\n          ? options.discordTokenExpiresAt\n          : Date.now() + 3_600_000,
+        discordTokenExpiresAt: Object.prototype.hasOwnProperty.call(options, "discordTokenExpiresAt")
+          ? options.discordTokenExpiresAt
+          : Date.now() + 3_600_000,
         authorizedGuildIds: [guildId]
       },
       audience: options.audience ?? resource,
@@ -206,5 +208,32 @@ describe("OAuth-protected MCP resource Worker", () => {
     expect(response.status).toBe(401);
     expect(harness.validateToken).toHaveBeenCalledOnce();
     expect(harness.managerFetch).not.toHaveBeenCalled();
+  }); 
+  it("returns a 401 invalid-token reconnect challenge for expired or missing Discord identity credentials", async () => {
+    for (const discordTokenExpiresAt of [Date.now() - 1_000, null]) {
+      const harness = createHarness({ discordTokenExpiresAt });
+      const response = await Gateway.fetch(
+        bearerRequest("valid-test-token", {
+          jsonrpc: "2.0",
+          id: 9,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-03-26",
+            capabilities: {},
+            clientInfo: { name: "expiry-test", version: "1.0.0" }
+          }
+        }),
+        harness.env as never,
+        harness.executionContext
+      );
+      expect(response.status).toBe(401);
+      expect(response.headers.get("www-authenticate")).toContain('error="invalid_token"');
+      expect(response.headers.get("www-authenticate")).toContain("reconnect");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(harness.validateToken).toHaveBeenCalledOnce();
+      expect(harness.checkGuildAccess).not.toHaveBeenCalled();
+      expect(harness.managerFetch).not.toHaveBeenCalled();
+    }
   });
+
 });
