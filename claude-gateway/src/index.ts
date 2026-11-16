@@ -150,7 +150,7 @@ async function handleInternalOwnerApproval(request: Request, env: ResourceEnv): 
   return new Response("Not found.", { status: 404 });
 }
 
-function createReadAndProposeMcpHandler(
+export function createDiscordManagerMcpHandler(
   env: ResourceEnv,
   userId: string,
   authorizedGuildIds: string[],
@@ -346,7 +346,7 @@ export default {
             return Response.json({ error: "OAuth grant is missing its approved Discord server list." }, { status: 403 });
           }
           const scopes = scopesFrom(authContext.auth.scope);
-          const mcp = createReadAndProposeMcpHandler(bindings, userId, authorizedGuildIds, scopes, discordAccessToken);
+          const mcp = createDiscordManagerMcpHandler(bindings, userId, authorizedGuildIds, scopes, discordAccessToken);
           return mcp.fetch(mcpRequest);
         }
       }
