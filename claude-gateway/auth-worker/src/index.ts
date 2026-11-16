@@ -5,11 +5,14 @@ import {
   type AuthRequest
 } from "@cloudflare/workers-oauth-provider";
 import { WorkerEntrypoint } from "cloudflare:workers";
+import type { OAuthOneTimeStore } from "./one-time-store";
 import { checkGuildAccessForToken, discordStateCookieName, hasMatchingDiscordOAuthStateCookie } from "./discord-auth";
+export { OAuthOneTimeStore } from "./one-time-store";
 export { checkGuildAccessForToken, discordStateCookieName, hasMatchingDiscordOAuthStateCookie } from "./discord-auth";
 
 export interface AuthWorkerEnv {
   OAUTH_KV: KVNamespace;
+  OAUTH_ONE_TIME_STORE: DurableObjectNamespace<OAuthOneTimeStore>;
   OAUTH_ISSUER_URL: string;
   MCP_RESOURCE_URL: string;
   DISCORD_CLIENT_ID: string;
@@ -64,6 +67,11 @@ const DISCORD_API = "https://discord.com/api/v10";
 const LOGIN_TTL_SECONDS = 600;
 const CONSENT_TTL_SECONDS = 300;
 const SNOWFLAKE = /^\d{15,22}$/;
+
+function oneTimeStoreFor(env: AuthWorkerEnv, name: string) {
+  const id = env.OAUTH_ONE_TIME_STORE.idFromName(name);
+  return env.OAUTH_ONE_TIME_STORE.get(id);
+}
 
 function getAuthorizationServer(env: AuthWorkerEnv) {
   if (!env.OAUTH_ISSUER_URL || !env.MCP_RESOURCE_URL) {
@@ -166,9 +174,10 @@ async function beginDiscordLogin(request: Request, env: AuthWorkerEnv): Promise<
 
   const state = crypto.randomUUID();
   const stateRecord: LoginState = { authorizationUrl: request.url, createdAt: Date.now() };
-  await env.OAUTH_KV.put(`discord-login:${state}`, JSON.stringify(stateRecord), {
-    expirationTtl: LOGIN_TTL_SECONDS
-  });
+  await oneTimeStoreFor(env, `discord-login:${state}`).put(
+    JSON.stringify(stateRecord),
+    LOGIN_TTL_SECONDS
+  );
 
   const discordUrl = new URL("https://discord.com/oauth2/authorize");
   discordUrl.searchParams.set("client_id", env.DISCORD_CLIENT_ID);
@@ -200,9 +209,7 @@ async function finishDiscordLogin(request: Request, env: AuthWorkerEnv): Promise
     return new Response("Discord OAuth state does not match this browser session.", { status: 400 });
   }
 
-  const stateKey = `discord-login:${state}`;
-  const stateText = await env.OAUTH_KV.get(stateKey);
-  await env.OAUTH_KV.delete(stateKey);
+  const stateText = await oneTimeStoreFor(env, `discord-login:${state}`).consume();
   if (!stateText) return new Response("Discord login state expired or was already used.", { status: 400 });
 
   const loginState = JSON.parse(stateText) as LoginState;
@@ -259,9 +266,10 @@ async function finishDiscordLogin(request: Request, env: AuthWorkerEnv): Promise
     clientName
   };
 
-  await env.OAUTH_KV.put(`discord-consent:${handle}`, await seal(env, consent), {
-    expirationTtl: CONSENT_TTL_SECONDS
-  });
+  await oneTimeStoreFor(env, `discord-consent:${handle}`).put(
+    await seal(env, consent),
+    CONSENT_TTL_SECONDS
+  );
 
   const displayName = escapeHtml(user.global_name || user.username);
   const safeClientName = escapeHtml(clientName);
@@ -281,9 +289,7 @@ async function completeConsent(request: Request, env: AuthWorkerEnv): Promise<Re
   const handle = String(form.get("handle") ?? "");
   if (!/^[0-9a-f-]{36}$/i.test(handle)) return new Response("Invalid consent handle.", { status: 400 });
 
-  const key = `discord-consent:${handle}`;
-  const encrypted = await env.OAUTH_KV.get(key);
-  await env.OAUTH_KV.delete(key);
+  const encrypted = await oneTimeStoreFor(env, `discord-consent:${handle}`).consume();
   if (!encrypted) return new Response("Consent expired or was already used.", { status: 400 });
 
   const consent = await unseal(env, encrypted);
@@ -323,6 +329,7 @@ export default class AuthServer extends WorkerEntrypoint<AuthWorkerEnv> {
   async fetch(request: Request): Promise<Response> {
     if (
       !this.env.OAUTH_KV ||
+      !this.env.OAUTH_ONE_TIME_STORE ||
       !this.env.OAUTH_ISSUER_URL ||
       !this.env.MCP_RESOURCE_URL ||
       !this.env.DISCORD_CLIENT_ID ||
