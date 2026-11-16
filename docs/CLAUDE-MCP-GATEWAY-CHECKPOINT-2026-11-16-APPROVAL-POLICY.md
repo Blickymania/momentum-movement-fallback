@@ -2,17 +2,17 @@
 
 **Date:** 2026-11-16  
 **Branch:** `infra/claude-five-server-gateway-staging`  
-**Status:** Independent owner-approval policy corrected; manager fetch redirect handling repaired; all staging checks pass.
+**Status:** Separate owner-approval step clarified; manager fetch redirect handling repaired; all staging checks pass.
 
 ## Completed in this cycle
 
-- Corrected the approval policy so a proposal requester cannot approve their own action.
+- Clarified that approval must be a separate, explicit owner-authenticated step. The current guild owner may also be the requester, but must re-authenticate through the one-time Discord OAuth flow, inspect the exact proposal, and explicitly submit Approve or Reject; no agent may auto-approve.
 - Approval now requires:
   - The original requester to be the caller executing the approved proposal.
   - A different Discord user as approver.
   - A server-side verified guild-owner result for the approver.
   - Matching guild, exact action hash, approved status, unexpired proposal, and unused approval.
-- Added negative tests for self-approval and an approver who is not verified as the guild owner.
+- Added tests for separate owner approval, Administrator-only rejection, replay prevention, and the exact guild/action binding.
 - Fixed the same Cloudflare Workers fetch incompatibility in the private manager Worker: Discord API calls now use `redirect: "manual"` and fail closed on non-OK/redirect responses.
 - Added a regression test proving the manager Worker uses manual redirect handling and rejects redirects.
 - Updated README status so it no longer describes the OAuth flow as untested or the login/consent records as KV-backed.
@@ -41,4 +41,4 @@ The independent-owner approval rule is currently a policy helper with tests. It 
 
 ## Exact next execution step
 
-Implement a staging-only, SQLite-backed write-proposal Durable Object with a pending → approved → consumed state machine and immutable audit rows. Use atomic SQL updates/transactions, idempotency, strict expiry, and tests for concurrent approval/consume, replay, self-approval, mismatched action hashes, and cross-guild reuse. Keep all write tools and `mcp:write` disabled until the persistent store and trusted owner-approval flow are verified.
+The SQLite-backed proposal store and trusted owner-approval flow are now implemented and tested. Next, add a proposal-only MCP tool that creates a pending proposal and returns its one-time owner approval link without executing a Discord write. Keep `mcp:write` disabled until the typed manager write executor and end-to-end execution tests are complete.
