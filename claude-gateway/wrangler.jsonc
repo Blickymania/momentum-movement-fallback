@@ -3,18 +3,54 @@
   "name": "discord-claude-gateway-staging",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-15",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": false,
   "vars": {
     "MCP_RESOURCE_URL": "",
     "OAUTH_ISSUER_URL": ""
   },
   "services": [
-    { "binding": "AUTH_SERVER", "service": "discord-claude-auth-staging" },
-    { "binding": "MANAGER_EMPRESS", "service": "manager-empress-staging" },
-    { "binding": "MANAGER_BLICKYMANIA", "service": "manager-blickymania-staging" },
-    { "binding": "MANAGER_BESTYOUEVAHAD", "service": "manager-bestyouevahad-staging" },
-    { "binding": "MANAGER_RED_KOCAINE", "service": "manager-red-kocaine-staging" },
-    { "binding": "MANAGER_DAWN_DOTTA", "service": "manager-dawn-dotta-staging" }
+    {
+      "binding": "AUTH_SERVER",
+      "service": "discord-claude-auth-staging"
+    },
+    {
+      "binding": "MANAGER_EMPRESS",
+      "service": "manager-empress-staging"
+    },
+    {
+      "binding": "MANAGER_BLICKYMANIA",
+      "service": "manager-blickymania-staging"
+    },
+    {
+      "binding": "MANAGER_BESTYOUEVAHAD",
+      "service": "manager-bestyouevahad-staging"
+    },
+    {
+      "binding": "MANAGER_RED_KOCAINE",
+      "service": "manager-red-kocaine-staging"
+    },
+    {
+      "binding": "MANAGER_DAWN_DOTTA",
+      "service": "manager-dawn-dotta-staging"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WRITE_PROPOSAL_STORE",
+        "class_name": "WriteProposalStore"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "WriteProposalStore"
+      ]
+    }
   ]
 }
