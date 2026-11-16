@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --exclude **/one-time-store.integration.test.ts",
+    "test": "vitest run --exclude **/*.integration.test.ts",
     "check": "npm run typecheck && npm test",
     "test:workers": "vitest run --config vitest.workers.config.ts"
   },
@@ -20,7 +20,9 @@
     "typescript": "6.0.3",
     "vitest": "4.1.8",
     "wrangler": "4.115.0",
-    "@cloudflare/vitest-plugin": "1.8.3"
+    "@cloudflare/vitest-plugin": "1.8.3",
+    "@msw/cloudflare": "0.2.0",
+    "msw": "3.0.6"
   },
   "allowScripts": {
     "workerd@1.20261116.1": true,
