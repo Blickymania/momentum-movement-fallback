@@ -9,7 +9,7 @@ Guild/application baseline for the main Bot 005 workload:
 
 ## Why this inventory exists
 
-A read-only audit of the production Railway environment found that Bot 005 is not the only service opening a Discord Gateway connection. Six live services have application code that opens a discord.js Gateway session or a raw Discord Gateway WebSocket.
+A read-only audit of the production Railway environment initially found six services opening a Discord Gateway connection. A follow-up read-only check of the separate Dawn Dotta LIVE & Events Listener found an active Gateway startup in its latest observed successful deployment, bringing the confirmed deployment count to seven. The seventh service's exact functional overlap with LIVE NOW V2 remains under review.
 
 These services have separate responsibilities and are not interchangeable Bot 005 replicas. They must not share a global lease. Each workload needs its own ownership scope, failover policy, and stop proof if it is later brought under independent failover.
 
@@ -25,16 +25,17 @@ The current Cloudflare lease scope is momentum-movement:bot-005-gateway and appl
 | Momentum Movement Discord Engagement Engine | 15d5ceb0-0a23-4481-a186-ad00d3fb7075 | discord.js Client.login() | Separate engagement/message and interaction processing | 2026-11-12 05:37:42 — SUCCESS |
 | Dawn Dotta TikTok Fan Club Level-Up Management | db604954-5b7c-4f66-adbc-37a4c3387e97 | discord.js Client.login() | Separate Fan Club level-up interaction workload | 2026-11-09 12:49:57 — SUCCESS |
 | 1-on-1 Coaching Interaction Relay | aa366b1c-60fc-468e-b694-dceaf7d90580 | Raw WebSocket to gateway.discord.gg | Receives READY and INTERACTION_CREATE and forwards coaching interactions | 2026-11-10 05:21:43 — SUCCESS |
+| Dawn Dotta LIVE & Events Listener | 75ec092b-7f53-465d-b46a-9f01a2b155a2 | discord.js `Client.login()` when `LISTENER_RUNTIME_ACTIVE=true`; startup log confirms Gateway READY | Separate LIVE NOW / Upcoming Events panel publisher and interaction listener; functional overlap with LIVE NOW V2 is unresolved | 2026-11-10 22:39:58 — SUCCESS |
 
-All six services were reported live during read-only service metadata checks. Their latest deployment records reported SUCCESS. No service was stopped, restarted, suspended, edited or redeployed.
+All seven services were reported `live` during read-only service metadata checks, and their latest observed deployment records reported `SUCCESS`. For the seventh service, startup logs at `2026-11-10T22:40:06Z` recorded preflight `active=true` and `botMatches=true`; at `22:40:07Z` the process recorded `creator-widget-gateway-ready`. The metadata check on 2026-11-14 found no staged changes. No Railway service was stopped, restarted, suspended, edited or redeployed.
 
 ## Token and identity certainty
 
-- The six service environments expose a variable named DISCORD_BOT_TOKEN. This proves that each process is configured to receive a Discord bot token, not that the six redacted values are identical.
+- The seven service environments expose a variable named DISCORD_BOT_TOKEN. This proves that each process is configured to receive a Discord bot token, not that the seven redacted values are identical.
 - The Railway connector redacts all variable values. No token value was read, copied, compared or logged.
 - Bot 005, Social Owner Console, Discord Engagement Engine and Coaching Interaction Relay source explicitly contain the same Momentum Movement guild/application identifiers.
 - LIVE NOW V2 uses environment-supplied bot/guild/channel identity values. Fan Club Level-Up uses AUTHORIZED_GUILD_ID. Their configured values and whether tokens are identical could not be confirmed because environment values are redacted.
-- The inventory confirms six Gateway clients within this Railway project; it does not prove every one authenticates as the exact same bot identity.
+- The inventory confirms seven Gateway-connected deployments within this Railway project. The seventh listener's startup preflight reported `botMatches=true` against the expected application ID; this does not prove every one of the seven redacted token values is identical.
 
 ## Coaching workflow dependency: two ingress paths
 
@@ -48,7 +49,7 @@ When the coaching service is migrated to public HTTPS, both Bot 005 and the Inte
 
 ## REST-only services are not automatically Gateway owners
 
-The same Railway project has additional workers that receive or use DISCORD_BOT_TOKEN for Discord REST operations. A token variable alone does not imply a Gateway connection. The source review distinguished the six services above by explicit discord.js login or raw WebSocket Gateway code; other token-bearing functions inspected so far showed REST-only request paths or were disabled.
+The same Railway project has additional workers that receive or use DISCORD_BOT_TOKEN for Discord REST operations. A token variable alone does not imply a Gateway connection. The source review distinguished the seven services above by explicit discord.js login or raw WebSocket Gateway code; other token-bearing functions inspected so far showed REST-only request paths or were disabled.
 
 Do not create a lease owner or standby for a REST-only worker unless its source actually opens a Gateway. Conversely, do not treat a Shadow, Sync, Monitor, Console or Worker service as Gateway-free based only on its name.
 
@@ -78,4 +79,14 @@ Do not point multiple unrelated service pairs at the Bot 005 scope. The lease is
 - Configured start-command payloads were decoded locally; source snapshots are stored under recovered/railway/.
 - No secret variable values were returned or emitted.
 - No Railway, Render, Cloudflare, Discord, DNS, deployment or billing changes were made.
-- This audit describes code paths and deployment metadata; it does not prove the Gateway connections are currently established at this exact instant or that all six token values are identical.
+- This audit describes code paths, deployment metadata and startup logs; it does not independently probe whether each Gateway socket remains established at this exact instant or prove that all seven token values are identical.
+
+## Seventh confirmed Gateway-connected deployment — functional overlap unresolved (2026-11-14)
+
+The Hostless migration branch contains the recovered LIVE NOW / Upcoming Events Function source associated with Railway service ID `75ec092b-7f53-465d-b46a-9f01a2b155a2`. Its `index.tsx` creates a Discord.js client and executes Gateway login only when `LISTENER_RUNTIME_ACTIVE=true`. Its `/preflight` route uses read-only Discord REST calls and reports `writesOnPreflight=false` for the preflight request.
+
+Read-only Railway deployment metadata identifies successful deployment `d7601fae-1cae-4da1-a7d7-688e8fb8340e`, created at `2026-11-10T22:39:58.256Z`. Startup logs at `2026-11-10T22:40:06.278Z` recorded `TEAM_MOMENTUM_LISTENER_PREFLIGHT`, `ready=true`, `botMatches=true`, `active=true`, and `writes=false`. At `2026-11-10T22:40:07.174Z`, the process recorded both `creator-widget-panel-verified` and `creator-widget-gateway-ready`. On 2026-11-14, the service metadata still reported `state=live`, `latestDeployment.status=SUCCESS`, and `staged=null`. The current Gateway socket was not directly probed; these observations establish active startup on the last successful deployment, not a real-time socket health guarantee.
+
+The service is a separately deployed Gateway client and is counted as the seventh confirmed Gateway-connected deployment. Its LIVE NOW / Upcoming Events responsibilities may overlap with the LIVE NOW V2 Shadow Engine; the exact division of ownership, channels, events and interactions remains unresolved. Do not merge the services or share one lease. Map their handlers and state ownership separately before implementation.
+
+For migration planning, use **seven confirmed Gateway-connected deployments**. The Hostless branch's new listener remains a disconnected standby candidate: no `DISCORD_BOT_TOKEN` and no `LISTENER_RUNTIME_ACTIVE=true`.

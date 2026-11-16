@@ -1,0 +1,19 @@
+build:
+  system: docker
+
+dockerfile_path: "./Dockerfile"
+working_directory: "/"
+build_context_directory: "/"
+start_command: "bun run start:listener"
+
+scaling:
+  min_replicas: 1
+  max_replicas: 1
+  min_cpu: 0.2
+  max_cpu: 0.2
+  min_memory: 512
+  max_memory: 512
+
+health_check:
+  type: tcp
+  interval_in_seconds: 10

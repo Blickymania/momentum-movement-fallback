@@ -1,0 +1,14 @@
+{
+  "name": "momentum-movement-live-now-v2-candidate",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run index.ts",
+    "test": "node --test ../../implementation/live-now-panel-recovery.test.mjs ../../implementation/live-now-panel-repair-adapter.test.mjs ../../implementation/live-now-v2-candidate.test.mjs"
+  },
+  "dependencies": {
+    "discord.js": "14.27.0",
+    "sharp": "0.34.5",
+    "tiktok-live-connector": "2.5.0"
+  }
+}

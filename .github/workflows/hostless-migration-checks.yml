@@ -1,0 +1,27 @@
+name: Hostless migration checks
+
+on:
+  push:
+    branches:
+      - hostless/dawn-dotta-bun-runtime
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Bun dependencies
+        run: bun install
+      - name: Check Bun listener syntax
+        run: bun --check index.tsx
+      - name: Run existing preflight tests
+        run: npm test
