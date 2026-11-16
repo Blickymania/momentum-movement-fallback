@@ -48,6 +48,64 @@ async function registerClient(auth: AuthServer): Promise<string> {
   return client.client_id;
 }
 
+async function authorizeDiscordAndExchange(auth: AuthServer, clientId: string, clientState: string): Promise<string> {
+  const { verifier, challenge } = await pkce();
+  const authorizeUrl = new URL("https://auth.test/authorize");
+  authorizeUrl.searchParams.set("client_id", clientId);
+  authorizeUrl.searchParams.set("redirect_uri", REDIRECT_URI);
+  authorizeUrl.searchParams.set("response_type", "code");
+  authorizeUrl.searchParams.set("scope", "mcp:read");
+  authorizeUrl.searchParams.set("resource", RESOURCE);
+  authorizeUrl.searchParams.set("code_challenge", challenge);
+  authorizeUrl.searchParams.set("code_challenge_method", "S256");
+  authorizeUrl.searchParams.set("state", clientState);
+
+  const start = await auth.fetch(new Request(authorizeUrl));
+  expect(start.status).toBe(302);
+  const discordUrl = new URL(start.headers.get("location") ?? "");
+  const discordState = discordUrl.searchParams.get("state");
+  expect(discordState).toBeTruthy();
+  const cookie = (start.headers.get("set-cookie") ?? "").split(";")[0];
+
+  const callbackUrl = new URL("https://auth.test/discord/callback");
+  callbackUrl.searchParams.set("code", `discord-code-${clientState}`);
+  callbackUrl.searchParams.set("state", discordState!);
+  const callback = await auth.fetch(new Request(callbackUrl, { headers: { cookie } }));
+  expect(callback.status).toBe(200);
+  const html = await callback.text();
+  const handle = html.match(/name="handle" value="([0-9a-f-]{36})"/)?.[1];
+  expect(handle).toBeTruthy();
+
+  const consent = await auth.fetch(new Request("https://auth.test/consent", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ handle: handle!, decision: "approve" })
+  }));
+  expect(consent.status).toBe(302);
+  const redirect = new URL(consent.headers.get("location") ?? "");
+  expect(redirect.searchParams.get("state")).toBe(clientState);
+  const code = redirect.searchParams.get("code");
+  expect(code).toBeTruthy();
+
+  const tokenResponse = await auth.fetch(new Request("https://auth.test/oauth/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code: code!,
+      redirect_uri: REDIRECT_URI,
+      client_id: clientId,
+      code_verifier: verifier
+    })
+  }));
+  expect(tokenResponse.status, await tokenResponse.clone().text()).toBe(200);
+  const issued = await tokenResponse.json() as { access_token: string; scope: string };
+  expect(issued.access_token).toBeTruthy();
+  expect(issued.scope).toContain("mcp:read");
+  expect(issued.scope).not.toContain("mcp:write");
+  return issued.access_token;
+}
+
 describe("OAuth authorization Worker end-to-end", () => {
   it("binds browser state, filters guilds, consumes consent once, and issues a read-only grant", async () => {
     const auth = createAuth();
@@ -162,6 +220,61 @@ describe("OAuth authorization Worker end-to-end", () => {
     const expiredDiscordToken = await auth.checkGuildAccess(USER_ID, EMPRESS_GUILD, "expired-discord-token");
     expect(expiredDiscordToken.isMember).toBe(false);
     expect(expiredDiscordToken.isOwner).toBe(false);
+  });
+
+  it("reconnects through a fresh Discord authorization after the previous Discord credential expires", async () => {
+    const auth = createAuth();
+    const clientId = await registerClient(auth);
+    let discordExchangeCount = 0;
+    let oldCredentialExpired = false;
+    const guilds = [
+      { id: EMPRESS_GUILD, name: "Empress Reigns", owner: true, permissions: "0" },
+      { id: BLICKY_GUILD, name: "Blickymania", owner: false, permissions: "8" }
+    ];
+
+    network.use(
+      http.post("https://discord.com/api/v10/oauth2/token", () => {
+        discordExchangeCount += 1;
+        return HttpResponse.json({
+          access_token: discordExchangeCount === 1 ? "discord-access-old" : "discord-access-fresh",
+          token_type: "Bearer",
+          expires_in: 3600,
+          refresh_token: `discord-refresh-unused-${discordExchangeCount}`,
+          scope: "identify guilds"
+        });
+      }),
+      http.get("https://discord.com/api/v10/users/@me", ({ request }) => {
+        if (oldCredentialExpired && request.headers.get("authorization") === "Bearer discord-access-old") {
+          return new HttpResponse(null, { status: 401 });
+        }
+        return HttpResponse.json({ id: USER_ID, username: "reconnect-user" });
+      }),
+      http.get("https://discord.com/api/v10/users/@me/guilds", ({ request }) => {
+        if (oldCredentialExpired && request.headers.get("authorization") === "Bearer discord-access-old") {
+          return new HttpResponse(null, { status: 401 });
+        }
+        return HttpResponse.json(guilds);
+      })
+    );
+
+    const firstMcpToken = await authorizeDiscordAndExchange(auth, clientId, "reconnect-state-one");
+    const firstGrant = await auth.validateToken(RESOURCE, firstMcpToken);
+    expect(firstGrant?.props.discordAccessToken).toBe("discord-access-old");
+    const initialAccess = await auth.checkGuildAccess(USER_ID, EMPRESS_GUILD, firstGrant!.props.discordAccessToken);
+    expect(initialAccess.isMember).toBe(true);
+
+    oldCredentialExpired = true;
+    const expiredCheck = await auth.checkGuildAccess(USER_ID, EMPRESS_GUILD, firstGrant!.props.discordAccessToken);
+    expect(expiredCheck.isMember).toBe(false);
+    expect(expiredCheck.isOwner).toBe(false);
+
+    const secondMcpToken = await authorizeDiscordAndExchange(auth, clientId, "reconnect-state-two");
+    const secondGrant = await auth.validateToken(RESOURCE, secondMcpToken);
+    expect(secondGrant?.props.discordAccessToken).toBe("discord-access-fresh");
+    const restoredAccess = await auth.checkGuildAccess(USER_ID, EMPRESS_GUILD, secondGrant!.props.discordAccessToken);
+    expect(restoredAccess.isMember).toBe(true);
+    expect(restoredAccess.isOwner).toBe(true);
+    expect(discordExchangeCount).toBe(2);
   });
 
   it("fails closed when the authorization environment is incomplete", async () => {
