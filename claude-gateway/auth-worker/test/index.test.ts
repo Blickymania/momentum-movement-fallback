@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { checkGuildAccessForToken, hasMatchingDiscordOAuthStateCookie } from "../src/index";
+import { checkGuildAccessForToken, hasMatchingDiscordOAuthStateCookie } from "../src/discord-auth";
 
 const userId = "222222222222222222";
 const guildId = "1565048205970767992";
