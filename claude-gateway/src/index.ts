@@ -117,9 +117,6 @@ async function handleInternalOwnerApproval(request: Request, env: ResourceEnv): 
       !ACTION_HASH.test(body.actionHash) || !["approve", "reject"].includes(body.decision)) {
       return Response.json({ error: "Invalid decision request." }, { status: 400 });
     }
-    if (body.approverUserId === body.requesterUserId) {
-      return Response.json({ error: "The requester cannot approve or reject their own proposal." }, { status: 403 });
-    }
     const store = env.WRITE_PROPOSAL_STORE.get(env.WRITE_PROPOSAL_STORE.idFromName(body.guildId)) as unknown as WriteProposalStoreRpc;
     const proposal = await store.getProposal(body.proposalId);
     if (!proposal || proposal.status !== "pending" || proposal.guildId !== body.guildId ||
