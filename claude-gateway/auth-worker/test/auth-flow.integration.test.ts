@@ -48,13 +48,13 @@ async function registerClient(auth: AuthServer): Promise<string> {
   return client.client_id;
 }
 
-async function authorizeDiscordAndExchange(auth: AuthServer, clientId: string, clientState: string): Promise<string> {
+async function authorizeDiscordAndExchange(auth: AuthServer, clientId: string, clientState: string): Promise<{ accessToken: string; refreshToken: string; scope: string }> {
   const { verifier, challenge } = await pkce();
   const authorizeUrl = new URL("https://auth.test/authorize");
   authorizeUrl.searchParams.set("client_id", clientId);
   authorizeUrl.searchParams.set("redirect_uri", REDIRECT_URI);
   authorizeUrl.searchParams.set("response_type", "code");
-  authorizeUrl.searchParams.set("scope", "mcp:read");
+  authorizeUrl.searchParams.set("scope", "mcp:read offline_access");
   authorizeUrl.searchParams.set("resource", RESOURCE);
   authorizeUrl.searchParams.set("code_challenge", challenge);
   authorizeUrl.searchParams.set("code_challenge_method", "S256");
@@ -99,11 +99,13 @@ async function authorizeDiscordAndExchange(auth: AuthServer, clientId: string, c
     })
   }));
   expect(tokenResponse.status, await tokenResponse.clone().text()).toBe(200);
-  const issued = await tokenResponse.json() as { access_token: string; scope: string };
+  const issued = await tokenResponse.json() as { access_token: string; refresh_token?: string; scope: string };
   expect(issued.access_token).toBeTruthy();
+  expect(issued.refresh_token).toBeTruthy();
   expect(issued.scope).toContain("mcp:read");
+  expect(issued.scope).toContain("offline_access");
   expect(issued.scope).not.toContain("mcp:write");
-  return issued.access_token;
+  return { accessToken: issued.access_token, refreshToken: issued.refresh_token!, scope: issued.scope };
 }
 
 describe("OAuth authorization Worker end-to-end", () => {
@@ -258,7 +260,7 @@ describe("OAuth authorization Worker end-to-end", () => {
     );
 
     const firstMcpToken = await authorizeDiscordAndExchange(auth, clientId, "reconnect-state-one");
-    const firstGrant = await auth.validateToken(RESOURCE, firstMcpToken);
+    const firstGrant = await auth.validateToken(RESOURCE, firstMcpToken.accessToken);
     expect(firstGrant?.props.discordAccessToken).toBe("discord-access-old");
     const initialAccess = await auth.checkGuildAccess(USER_ID, EMPRESS_GUILD, firstGrant!.props.discordAccessToken);
     expect(initialAccess.isMember).toBe(true);
@@ -269,12 +271,57 @@ describe("OAuth authorization Worker end-to-end", () => {
     expect(expiredCheck.isOwner).toBe(false);
 
     const secondMcpToken = await authorizeDiscordAndExchange(auth, clientId, "reconnect-state-two");
-    const secondGrant = await auth.validateToken(RESOURCE, secondMcpToken);
+    const secondGrant = await auth.validateToken(RESOURCE, secondMcpToken.accessToken);
     expect(secondGrant?.props.discordAccessToken).toBe("discord-access-fresh");
     const restoredAccess = await auth.checkGuildAccess(USER_ID, EMPRESS_GUILD, secondGrant!.props.discordAccessToken);
     expect(restoredAccess.isMember).toBe(true);
     expect(restoredAccess.isOwner).toBe(true);
     expect(discordExchangeCount).toBe(2);
+  });
+
+  it("refreshes the MCP OAuth grant while preserving the linked Discord credential and scope", async () => {
+    const auth = createAuth();
+    const clientId = await registerClient(auth);
+    network.use(
+      http.post("https://discord.com/api/v10/oauth2/token", () => HttpResponse.json({
+        access_token: "discord-access-refresh-test",
+        token_type: "Bearer",
+        expires_in: 3600,
+        refresh_token: "discord-refresh-not-persisted",
+        scope: "identify guilds"
+      })),
+      http.get("https://discord.com/api/v10/users/@me", () => HttpResponse.json({
+        id: USER_ID,
+        username: "refresh-test-user"
+      })),
+      http.get("https://discord.com/api/v10/users/@me/guilds", () => HttpResponse.json([
+        { id: EMPRESS_GUILD, name: "Empress Reigns", owner: true, permissions: "0" }
+      ]))
+    );
+
+    const issued = await authorizeDiscordAndExchange(auth, clientId, "mcp-refresh-state");
+    expect(issued.scope).toContain("offline_access");
+    const originalGrant = await auth.validateToken(RESOURCE, issued.accessToken);
+    expect(originalGrant?.props.discordAccessToken).toBe("discord-access-refresh-test");
+
+    const refreshResponse = await auth.fetch(new Request("https://auth.test/oauth/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: issued.refreshToken,
+        client_id: clientId
+      })
+    }));
+    expect(refreshResponse.status, await refreshResponse.clone().text()).toBe(200);
+    const refreshed = await refreshResponse.json() as { access_token: string; scope: string };
+    expect(refreshed.access_token).toBeTruthy();
+    expect(refreshed.scope).toContain("mcp:read");
+    expect(refreshed.scope).toContain("offline_access");
+
+    const refreshedGrant = await auth.validateToken(RESOURCE, refreshed.access_token);
+    expect(refreshedGrant?.props.discordAccessToken).toBe("discord-access-refresh-test");
+    expect(refreshedGrant?.props.discordTokenExpiresAt).toBe(originalGrant?.props.discordTokenExpiresAt);
   });
 
   it("fails closed when the authorization environment is incomplete", async () => {
