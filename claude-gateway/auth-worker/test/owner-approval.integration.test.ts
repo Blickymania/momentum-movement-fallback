@@ -148,13 +148,22 @@ describe("separate Discord guild-owner approval flow", () => {
     expect(gatewayBinding.fetch).not.toHaveBeenCalled();
   });
 
-  it("does not allow the requester to approve their own proposal", async () => {
+  it("allows the requester to approve in a separate step when they are the current guild owner", async () => {
     configureDiscord(REQUESTER_ID, true);
-    const { auth, gatewayBinding } = createAuth(REQUESTER_ID);
+    const { auth, gatewayCalls, gatewayBinding } = createAuth(REQUESTER_ID);
     const { start } = await startApproval(auth);
-    const response = await auth.fetch(callbackRequest(start).request);
-    expect(response.status).toBe(403);
-    expect(await response.text()).toContain("cannot approve it");
-    expect(gatewayBinding.fetch).not.toHaveBeenCalled();
+    const page = await auth.fetch(callbackRequest(start).request);
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    const handle = html.match(/name="handle" value="([0-9a-f-]{36})"/)?.[1];
+    expect(handle).toBeTruthy();
+    const decision = await auth.fetch(new Request("https://auth.test/owner-approval/decision", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ handle: handle!, decision: "approve" })
+    }));
+    expect(decision.status).toBe(200);
+    expect(gatewayBinding.fetch).toHaveBeenCalledTimes(2);
+    expect(gatewayCalls[0].body?.approverUserId).toBe(REQUESTER_ID);
   });
 });
