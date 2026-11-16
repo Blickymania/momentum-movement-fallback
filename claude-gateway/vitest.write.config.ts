@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.test.jsonc" } })],
   test: {
     include: [
+      // MCP handler and OAuth resource Worker integration coverage.
       "test/write-proposals.integration.test.ts",
       "test/owner-approval-routes.integration.test.ts",
       "test/mcp-handler.integration.test.ts",
