@@ -2,7 +2,7 @@
 import { env as cloudflareEnv } from "cloudflare:workers";
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import type { WriteProposalStore, CreateWriteProposalInput, ApproveWriteProposalInput, ConsumeWriteProposalInput, WriteProposalRecord, WriteProposalAuditRecord } from "../src/write-proposals";
+import type { WriteProposalStore, CreateWriteProposalInput, ApproveWriteProposalInput, ConsumeWriteProposalInput, WriteProposalRecord, WriteProposalAuditRecord, ExecutionClaim, ExecutionState } from "../src/write-proposals";
 import type { ActionPolicyContext, ServerKey } from "../src/policy";
 
 type TestEnv = { WRITE_PROPOSAL_STORE: DurableObjectNamespace<WriteProposalStore> };
@@ -11,7 +11,10 @@ type WriteProposalStoreStub = {
   approveProposal(input: ApproveWriteProposalInput): Promise<WriteProposalRecord>;
   rejectProposal(input: ApproveWriteProposalInput): Promise<WriteProposalRecord>;
   consumeApprovedProposal(input: ConsumeWriteProposalInput): Promise<WriteProposalRecord>;
-  recordExecutionResult(input: { proposalId: string; requesterUserId: string; succeeded: boolean; details?: { httpStatus?: number; discordCode?: string; messageId?: string } }): Promise<void>;
+  claimExecution(input: { proposalId: string; guildId: string; requesterUserId: string; expectedActionHash: string; leaseMs?: number }): Promise<ExecutionClaim>;
+  renewExecutionLease(input: { proposalId: string; requesterUserId: string; attempt: number; leaseToken: string; leaseMs?: number }): Promise<number>;
+  recordExecutionResult(input: { proposalId: string; requesterUserId: string; attempt: number; leaseToken: string; succeeded: boolean; retryable: boolean; details?: { httpStatus?: number; discordCode?: string; messageId?: string } }): Promise<void>;
+  getExecutionState(proposalId: string): Promise<ExecutionState | null>;
   getProposal(proposalId: string): Promise<WriteProposalRecord | null>;
   getAudit(proposalId: string): Promise<WriteProposalAuditRecord[]>;
 };
@@ -48,7 +51,7 @@ async function approve(store: WriteProposalStoreStub, proposalId: string) {
   return store.approveProposal({ proposalId, guildId, approverUserId: ownerUserId, verifiedGuildOwner: true });
 }
 
-async function captureInObject(store: WriteProposalStoreStub, operation: (instance: WriteProposalStore) => Promise<unknown>): Promise<string | null> {
+async function captureInObject(store: WriteProposalStoreStub, operation: (instance: WriteProposalStore) => Promise<unknown> | unknown): Promise<string | null> {
   return runInDurableObject(store as never, async (instance) => {
     try {
       await operation(instance as WriteProposalStore);
@@ -138,10 +141,15 @@ describe("persistent owner-approved write proposals", () => {
     });
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
-    await store.recordExecutionResult({ proposalId: proposal.id, requesterUserId, succeeded: true, details: { httpStatus: 200 } });
+    const claim = await store.claimExecution({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash });
+    await store.recordExecutionResult({
+      proposalId: proposal.id, requesterUserId, attempt: claim.attempt, leaseToken: claim.leaseToken,
+      succeeded: true, retryable: false, details: { httpStatus: 200 }
+    });
     expect((await store.getProposal(proposal.id))?.status).toBe("consumed");
+    expect(await store.getExecutionState(proposal.id)).toMatchObject({ status: "succeeded", attempts: 1, retryable: false });
     expect((await store.getAudit(proposal.id)).map((entry) => entry.eventType)).toEqual([
-      "created", "approved", "consumed", "execution_succeeded"
+      "created", "approved", "consumed", "execution_started", "execution_succeeded"
     ]);
   });
 
@@ -152,6 +160,105 @@ describe("persistent owner-approved write proposals", () => {
     await runDurableObjectAlarm(store as never);
     expect((await store.getProposal(proposal.id))?.status).toBe("expired");
     expect((await store.getAudit(proposal.id)).map((entry) => entry.eventType)).toEqual(["created", "expired"]);
+  });
+
+  it("atomically grants only one active execution lease under concurrent claims", async () => {
+    const store = newStore();
+    const proposal = await create(store);
+    await approve(store, proposal.id);
+    await store.consumeApprovedProposal({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash });
+    const results = await runInDurableObject(store as never, async (instance) => {
+      const target = instance as WriteProposalStore;
+      const input = { proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash };
+      return Promise.allSettled([target.claimExecution(input), target.claimExecution(input)]);
+    });
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(await store.getExecutionState(proposal.id)).toMatchObject({ status: "running", attempts: 1 });
+  });
+
+  it("renews an active execution lease and prevents a concurrent claim", async () => {
+    const store = newStore();
+    const proposal = await create(store);
+    await approve(store, proposal.id);
+    await store.consumeApprovedProposal({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash });
+    const claim = await store.claimExecution({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash, leaseMs: 5_000 });
+    const renewedUntil = await store.renewExecutionLease({
+      proposalId: proposal.id, requesterUserId, attempt: claim.attempt, leaseToken: claim.leaseToken, leaseMs: 10_000
+    });
+    expect(renewedUntil).toBeGreaterThan(claim.leaseUntil);
+    const duplicate = await captureInObject(store, (instance) => instance.claimExecution({
+      proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash
+    }));
+    expect(duplicate).toMatch(/lease is still active/);
+    await store.recordExecutionResult({
+      proposalId: proposal.id, requesterUserId, attempt: claim.attempt, leaseToken: claim.leaseToken,
+      succeeded: true, retryable: false
+    });
+  });
+
+  it("reclaims an expired lease with a new fencing token and rejects stale results", async () => {
+    const store = newStore();
+    const proposal = await create(store);
+    await approve(store, proposal.id);
+    await store.consumeApprovedProposal({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash });
+    const first = await store.claimExecution({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash, leaseMs: 1_000 });
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    const second = await store.claimExecution({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash, leaseMs: 5_000 });
+    expect(second.attempt).toBe(2);
+    expect(second.leaseToken).not.toBe(first.leaseToken);
+    const staleRenew = await captureInObject(store, (instance) => instance.renewExecutionLease({
+      proposalId: proposal.id, requesterUserId, attempt: first.attempt, leaseToken: first.leaseToken
+    }));
+    expect(staleRenew).toMatch(/expired or has been superseded/);
+    const stale = await captureInObject(store, (instance) => instance.recordExecutionResult({
+      proposalId: proposal.id, requesterUserId, attempt: first.attempt, leaseToken: first.leaseToken,
+      succeeded: true, retryable: false
+    }));
+    expect(stale).toMatch(/stale or expired fencing token/);
+    await store.recordExecutionResult({
+      proposalId: proposal.id, requesterUserId, attempt: second.attempt, leaseToken: second.leaseToken,
+      succeeded: true, retryable: false
+    });
+    expect((await store.getExecutionState(proposal.id))?.attempts).toBe(2);
+    expect((await store.getAudit(proposal.id)).map((entry) => entry.eventType)).toContain("execution_reclaimed");
+  });
+
+  it("enforces a three-attempt retry limit", async () => {
+    const store = newStore();
+    const proposal = await create(store);
+    await approve(store, proposal.id);
+    await store.consumeApprovedProposal({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash });
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const claim = await store.claimExecution({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash });
+      expect(claim.attempt).toBe(attempt);
+      await store.recordExecutionResult({
+        proposalId: proposal.id, requesterUserId, attempt: claim.attempt, leaseToken: claim.leaseToken,
+        succeeded: false, retryable: true, details: { discordCode: "TEMPORARY" }
+      });
+    }
+    const exhausted = await captureInObject(store, (instance) => instance.claimExecution({
+      proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash
+    }));
+    expect(exhausted).toMatch(/Maximum execution retry count/);
+    expect(await store.getExecutionState(proposal.id)).toMatchObject({ status: "failed", attempts: 3, retryable: true });
+    expect((await store.getAudit(proposal.id)).map((entry) => entry.eventType).filter((event) => event === "execution_retry_started")).toHaveLength(2);
+  });
+
+  it("does not retry a terminal execution failure", async () => {
+    const store = newStore();
+    const proposal = await create(store);
+    await approve(store, proposal.id);
+    await store.consumeApprovedProposal({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash });
+    const claim = await store.claimExecution({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash });
+    await store.recordExecutionResult({
+      proposalId: proposal.id, requesterUserId, attempt: claim.attempt, leaseToken: claim.leaseToken,
+      succeeded: false, retryable: false
+    });
+    const terminal = await captureInObject(store, (instance) => instance.claimExecution({
+      proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash
+    }));
+    expect(terminal).toMatch(/terminal and not retryable/);
   });
 
   it("prevents mutation or deletion of audit rows", async () => {
