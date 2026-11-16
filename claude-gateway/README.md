@@ -97,6 +97,10 @@ The gateway Service Bindings target:
 
 No staging deployments or live Service Binding connectivity have been verified. The gateway's `MCP_RESOURCE_URL` and `OAUTH_ISSUER_URL` remain intentionally blank, so requests fail closed with HTTP 503 until staging hostnames are selected and configured.
 
+## Staging configuration safeguards
+
+The staging config consistency test also verifies that the currently authorized Gateway, Auth Worker, and Dawn Dotta manager omit dashboard-managed values from Wrangler `vars` and explicitly disable Version/Preview URLs. The four other manager configs are left untouched and remain outside the current execution scope; do not deploy them until their placeholders and preview settings are safely corrected after authorization.
+
 ## Do not deploy yet
 
 The OAuth authorization Worker, MCP gateway Worker, and five private manager Worker templates are implemented. The current staging source passed CI run `43948764504`: strict TypeScript, 87 unit/configuration tests, and 35 Cloudflare Workers integration tests (122 tests total). This is source-level verification only; no live staging deployment, Cloudflare binding connectivity, or real Discord write was performed. The shared owner-approval internal secret, reciprocal Service Bindings, OAuth URLs/client settings, staging KV namespace ID, five guild/application IDs, five bot tokens, and five manager write secrets remain unconfigured or unverified. Real Claude client reconnect acceptance, live staging OAuth, manager connectivity, and rollback testing remain outstanding. Production release requires a separate explicit decision. See [the staging deployment runbook](../docs/CLAUDE-MCP-GATEWAY-STAGING-DEPLOYMENT-RUNBOOK.md) for the reciprocal Service Binding bootstrap sequence, Claude OAuth acceptance, and rollback procedure.
