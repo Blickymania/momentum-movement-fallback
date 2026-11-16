@@ -7,7 +7,8 @@ export default defineConfig({
     include: [
       "test/write-proposals.integration.test.ts",
       "test/owner-approval-routes.integration.test.ts",
-      "test/mcp-handler.integration.test.ts"
+      "test/mcp-handler.integration.test.ts",
+      "test/resource-worker.integration.test.ts"
     ]
   }
 });
