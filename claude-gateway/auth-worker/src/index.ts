@@ -2,9 +2,11 @@ import {
   AuthorizationError,
   authorizationErrorRedirect,
   OAuthAuthorizationServer,
+  OAuthError,
   type AuthRequest
 } from "@cloudflare/workers-oauth-provider";
 import { WorkerEntrypoint } from "cloudflare:workers";
+import { isDiscordCredentialCurrent } from "../../src/discord-token-expiry";
 import type { OAuthOneTimeStore } from "./one-time-store";
 import type { OwnerApprovalSessionRequest, OwnerApprovalSessionResponse, OwnerApprovalProposalSnapshot, OwnerApprovalDecisionRequest } from "../../src/owner-approval-types";
 import { checkGuildAccessForToken, discordStateCookieName, hasMatchingDiscordOAuthStateCookie } from "./discord-auth";
@@ -99,7 +101,19 @@ function getAuthorizationServer(env: AuthWorkerEnv) {
     issuer: env.OAUTH_ISSUER_URL,
     resources: [env.MCP_RESOURCE_URL],
     scopesSupported: SCOPES,
-    clientRegistrationEndpoint: "/oauth/register"
+    clientRegistrationEndpoint: "/oauth/register",
+    tokenExchangeCallback: ({ grantType, props }) => {
+      if (grantType !== "refresh_token") return;
+
+      const hasDiscordAccessToken =
+        typeof props?.discordAccessToken === "string" &&
+        props.discordAccessToken.length > 0;
+      if (!hasDiscordAccessToken || !isDiscordCredentialCurrent(props?.discordTokenExpiresAt)) {
+        throw new OAuthError("invalid_grant", {
+          description: "The linked Discord authorization is missing or expired. Reconnect this connector and authorize Discord again."
+        });
+      }
+    }
   });
 }
 
