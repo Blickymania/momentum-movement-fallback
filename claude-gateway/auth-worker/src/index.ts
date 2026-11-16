@@ -154,7 +154,7 @@ async function unseal(env: AuthWorkerEnv, value: string): Promise<ConsentPayload
 }
 
 async function discordJson<T>(url: string, init: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...init, redirect: "error" });
+  const response = await fetch(url, { ...init, redirect: "manual" });
   if (!response.ok) throw new Error(`Discord OAuth request failed with HTTP ${response.status}.`);
   return response.json() as Promise<T>;
 }
