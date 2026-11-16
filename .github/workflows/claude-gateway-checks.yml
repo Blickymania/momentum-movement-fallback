@@ -1,0 +1,46 @@
+name: Claude Gateway Checks
+
+on:
+  push:
+    branches:
+      - infra/claude-five-server-gateway-staging
+    paths:
+      - "claude-gateway/**"
+      - ".github/workflows/claude-gateway-checks.yml"
+  pull_request:
+    branches:
+      - infra/claude-five-server-gateway-staging
+    paths:
+      - "claude-gateway/**"
+      - ".github/workflows/claude-gateway-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: claude-gateway-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-and-test:
+    name: TypeScript and unit tests (no deployment)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: claude-gateway
+    steps:
+      - name: Check out staging source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run strict TypeScript and Vitest checks
+        run: npm run check
