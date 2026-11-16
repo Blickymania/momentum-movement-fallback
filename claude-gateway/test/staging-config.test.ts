@@ -6,6 +6,7 @@ type WranglerConfig = {
   name: string;
   workers_dev?: boolean;
   keep_vars?: boolean;
+  keep_vars?: boolean;
   vars?: Record<string, string>;
   services?: Array<{ binding: string; service: string }>;
   kv_namespaces?: Array<{ binding: string; id: string }>;
@@ -39,6 +40,7 @@ describe("staging Wrangler configuration", () => {
       const config = readConfig(`../manager-worker/wrangler.${manager.key}.jsonc`);
       expect(config.name).toBe(`manager-${manager.key}-staging`);
       expect(config.workers_dev).toBe(false);
+      expect(config.keep_vars).toBe(true);
       expect(config.keep_vars).toBe(true);
       expect(config.vars).toMatchObject({
         DISCORD_GUILD_ID: "",
