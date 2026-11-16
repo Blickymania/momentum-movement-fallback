@@ -208,8 +208,8 @@ No Claude connector has been connected in this work. Real Claude UI connection a
 
 ## Current readiness
 
-- Source and static config checks are green. Latest verified Actions run: `43949705016` on staging head `51a1952bfae36727b3fa3699a028fc3af4cc8495`; strict TypeScript, 87 unit/configuration tests, and 35 Cloudflare Workers integration tests passed (122 total).
-- The Dawn-only Gateway/Auth config pair exists and references only Dawn Auth and Dawn manager services. The full five-server configs remain available but are not the current deployment target.
+- Source and static config checks are green. Latest verified Actions run: `43950059288` on staging head `ff1684923ac9b7924cac684173c2f2dea4699984`; strict TypeScript, 88 unit/configuration tests, and 35 Cloudflare Workers integration tests passed (123 total).
+- The Dawn-only Gateway/Auth config pair exists and references only Dawn Auth and Dawn manager services; its four static config checks pass. The full five-server configs remain available but are not the current deployment target.
 - No Cloudflare staging Worker, KV namespace, route, custom domain, Service Binding, or secret has been created or deployed by this work.
 - Account-owned prerequisites remain: dedicated Dawn `OAUTH_KV` namespace ID, Dawn guild/application IDs, Discord client settings, two HTTPS hostnames, and the Dawn bot/write/owner-approval secrets.
 - No live Discord writes, bot-role changes, or production changes were performed.
