@@ -67,7 +67,7 @@ describe("private read-only Discord manager Worker", () => {
   });
 
   it("uses the configured guild for role reads and returns array data", async () => {
-    const { fetcher, calls } = discordFetcher([{ id: "role-1", name: "Member" }]);
+    const { fetcher, calls } = discordFetcher([[{ id: "role-1", name: "Member" }]]);
     const response = await handleManagerRequest(request("/internal/v1/roles"), env, fetcher);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual([{ id: "role-1", name: "Member" }]);
