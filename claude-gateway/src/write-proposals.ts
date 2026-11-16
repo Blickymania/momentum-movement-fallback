@@ -245,7 +245,6 @@ export class WriteProposalStore extends DurableObject<unknown> {
       const row = this.proposalRow(input.proposalId);
       assert(row, "Write proposal was not found.");
       assert(row.guild_id === input.guildId, "Proposal is bound to another Discord server.");
-      assert(row.requester_user_id !== input.approverUserId, "The proposal requester cannot approve their own change.");
       assert(row.status === "pending", "Only pending proposals can be approved.");
       if (row.expires_at <= Date.now()) {
         this.ctx.storage.sql.exec("UPDATE write_proposals SET status = 'expired' WHERE id = ? AND status = 'pending'", row.id);
@@ -274,7 +273,6 @@ export class WriteProposalStore extends DurableObject<unknown> {
       const row = this.proposalRow(input.proposalId);
       assert(row, "Write proposal was not found.");
       assert(row.guild_id === input.guildId, "Proposal is bound to another Discord server.");
-      assert(row.requester_user_id !== input.approverUserId, "The proposal requester cannot reject their own change.");
       assert(row.status === "pending", "Only pending proposals can be rejected.");
       if (row.expires_at <= Date.now()) {
         this.ctx.storage.sql.exec("UPDATE write_proposals SET status = 'expired' WHERE id = ? AND status = 'pending'", row.id);
