@@ -38,7 +38,7 @@ async function discordGet(
       authorization: `Bot ${token}`,
       accept: "application/json"
     },
-    redirect: "error"
+    redirect: "manual"
   });
   if (!response.ok) {
     throw new Error(`Discord API returned HTTP ${response.status}.`);
