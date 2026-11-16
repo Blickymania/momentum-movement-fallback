@@ -13,16 +13,19 @@ const targets = [
   {
     label: "Dawn manager",
     config: "manager-worker/wrangler.dawn-dotta.jsonc",
+    expectedWorkersDev: false,
     requiresKvPlaceholder: false
   },
   {
     label: "Dawn Auth",
     config: "auth-worker/wrangler.dawn-dotta.jsonc",
+    expectedWorkersDev: true,
     requiresKvPlaceholder: true
   },
   {
     label: "Dawn Gateway",
     config: "wrangler.dawn-dotta.jsonc",
+    expectedWorkersDev: true,
     requiresKvPlaceholder: false
   }
 ];
@@ -31,9 +34,9 @@ function runDryRun(target) {
   const sourcePath = path.join(gatewayRoot, target.config);
   const config = JSON.parse(readFileSync(sourcePath, "utf8"));
 
-  if (config.workers_dev !== false || config.preview_urls !== false || config.keep_vars !== true) {
+  if (config.workers_dev !== target.expectedWorkersDev || config.preview_urls !== false || config.keep_vars !== true) {
     throw new Error(
-      `${target.label}: expected workers_dev=false, preview_urls=false, and keep_vars=true`
+      `${target.label}: expected workers_dev=${target.expectedWorkersDev}, preview_urls=false, and keep_vars=true`
     );
   }
 
