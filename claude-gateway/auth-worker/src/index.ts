@@ -63,6 +63,20 @@ const LOGIN_TTL_SECONDS = 600;
 const CONSENT_TTL_SECONDS = 300;
 const SNOWFLAKE = /^\d{15,22}$/;
 
+function discordStateCookieName(state: string): string {
+  return `__Host-discord-oauth-${state}`;
+}
+
+export function hasMatchingDiscordOAuthStateCookie(request: Request, state: string): boolean {
+  const name = discordStateCookieName(state);
+  const cookieHeader = request.headers.get("cookie") ?? "";
+  return cookieHeader.split(";").some((part) => {
+    const separator = part.indexOf("=");
+    return separator >= 0 && part.slice(0, separator).trim() === name &&
+      part.slice(separator + 1).trim() === state;
+  });
+}
+
 function getAuthorizationServer(env: AuthWorkerEnv) {
   if (!env.OAUTH_ISSUER_URL || !env.MCP_RESOURCE_URL) {
     throw new Error("OAuth issuer and MCP resource URLs must be configured.");
@@ -176,7 +190,15 @@ async function beginDiscordLogin(request: Request, env: AuthWorkerEnv): Promise<
 
   // The original MCP authorization request is persisted server-side; only a random state leaves this Worker.
   void authRequest;
-  return Response.redirect(discordUrl.toString(), 302);
+  const cookieName = discordStateCookieName(state);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: discordUrl.toString(),
+      "set-cookie": `${cookieName}=${state}; Path=/; Max-Age=${LOGIN_TTL_SECONDS}; Secure; HttpOnly; SameSite=Lax`,
+      "cache-control": "no-store"
+    }
+  });
 }
 
 async function finishDiscordLogin(request: Request, env: AuthWorkerEnv): Promise<Response> {
@@ -184,6 +206,9 @@ async function finishDiscordLogin(request: Request, env: AuthWorkerEnv): Promise
   const state = url.searchParams.get("state") ?? "";
   const code = url.searchParams.get("code") ?? "";
   if (!state || !code) return new Response("Missing Discord OAuth state or code.", { status: 400 });
+  if (!hasMatchingDiscordOAuthStateCookie(request, state)) {
+    return new Response("Discord OAuth state does not match this browser session.", { status: 400 });
+  }
 
   const stateKey = `discord-login:${state}`;
   const stateText = await env.OAUTH_KV.get(stateKey);
@@ -251,7 +276,14 @@ async function finishDiscordLogin(request: Request, env: AuthWorkerEnv): Promise
   const displayName = escapeHtml(user.global_name || user.username);
   const safeClientName = escapeHtml(clientName);
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Discord Manager</title></head><body style="font-family:system-ui;max-width:38rem;margin:3rem auto;padding:0 1rem"><h1>Connect your Discord servers</h1><p>Signed in as <strong>${displayName}</strong>.</p><p><strong>${safeClientName}</strong> is requesting read-only access to the Discord communities where your account is an owner or Administrator.</p><p>Eligible communities: ${authorizedGuildNames.map(escapeHtml).join(", ")}.</p><p>This connection cannot change roles, channel permissions, or delete resources.</p><form method="post" action="/consent"><input type="hidden" name="handle" value="${handle}"><button name="decision" value="approve" type="submit">Allow read-only access</button> <button name="decision" value="deny" type="submit">Deny</button></form><p>This approval expires in five minutes.</p></body></html>`;
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  return new Response(html, { headers: {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+    "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "set-cookie": `${discordStateCookieName(state)}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`
+  } });
 }
 
 async function completeConsent(request: Request, env: AuthWorkerEnv): Promise<Response> {
