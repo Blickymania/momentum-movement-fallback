@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-15  
 **Branch:** `infra/claude-five-server-gateway-staging`  
-**Latest audit commit:** `7c3131aa3eb8dff5638b2e56edc9e4a105cca98b`  
+**Latest audit commit:** `1c89739f796488af47db524e54dbad40189c197e`  
 **Verification status:** Source reviewed and targeted fixes committed; TypeScript and Vitest have NOT been executed.
 
 ## Scope inspected
