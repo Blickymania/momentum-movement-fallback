@@ -92,3 +92,15 @@
 4. Follow the Dawn-only private bootstrap order in the runbook, verifying private Service Bindings before enabling the Auth and Gateway public endpoints.
 5. Complete real Claude OAuth/reconnect and read-only acceptance. Do not perform live message/channel writes absent separate explicit approval. Preserve all Dawn bot roles unchanged.
 6. Keep the four locked manager projects and production completely untouched.
+
+
+## Follow-up cycle — readiness documentation reconciliation
+- Re-inspected the current deployment runbook and verified the generated local-config procedure, three ignored Auth profiles, Dawn-only deployment sequence, private-before-public binding order, and staging-only acceptance constraints.
+- Replaced the stale readiness evidence (125 tests on the older run) with the exact successful CI evidence from run `43962359403` on code commit `01a927e79bf93decfa4f8e4fc915636f30b4c4e3`: 94 unit/configuration + 12 Auth Worker integration + 24 Gateway/Write integration = 130 passing tests; all six offline Wrangler dry-runs passed.
+- Verified the CI workflow is push/PR/manual only, restricted to the Dawn staging branch and gateway source/workflow paths; it has no scheduled trigger and no deployment step. Concurrency is limited to one run per ref with cancellation of superseded runs.
+- Verified the current workflow's Node 22, locked dependency install, strict check, Workers integration suites, and offline Wrangler validation steps.
+- Rechecked Dawn manager worker routing and the typed write executor: private manager endpoints are path-allowlisted; writes require the dedicated secret, fixed guild match, action digest match, a verified target channel in the fixed guild, and an allowlisted message/channel operation. No code changes were required by this read-only review.
+- Updated `docs/CLAUDE-MCP-GATEWAY-STAGING-DEPLOYMENT-RUNBOOK.md` current-readiness section in commit `dbf134d7185e83365ff0bf6cfc5ebbeb5450c6b3`.
+- Current branch head before this checkpoint update: `dbf134d7185e83365ff0bf6cfc5ebbeb5450c6b3`.
+- This documentation-only reconciliation did not change application code, secrets, Cloudflare resources, Discord resources, roles, or deployments. No other manager projects were inspected or changed.
+- Next step remains externally dependent: obtain authorized Cloudflare staging account access, create/verify the dedicated Dawn KV namespace, configure account-owned variables/secrets and hostnames, then follow the Dawn-only private deployment order. Keep live Discord operations read-only until separately authorized.
