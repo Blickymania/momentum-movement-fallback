@@ -6,8 +6,20 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["@cloudflare/workers-types"],
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "types": [
+      "@cloudflare/workers-types",
+      "node"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "manager-worker/**/*.ts", "auth-worker/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "manager-worker/**/*.ts",
+    "auth-worker/**/*.ts"
+  ]
 }
