@@ -8,7 +8,8 @@
     "test": "vitest run --exclude '**/*.integration.test.ts'",
     "check": "npm run typecheck && npm test",
     "test:workers": "vitest run --config vitest.workers.config.ts && vitest run --config vitest.write.config.ts",
-    "validate:wrangler:dawn": "node scripts/validate-dawn-wrangler-dry-run.mjs"
+    "validate:wrangler:dawn": "node scripts/validate-dawn-wrangler-dry-run.mjs",
+    "prepare:dawn:deploy-configs": "node scripts/prepare-dawn-deploy-configs.mjs"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "1.2.4",
