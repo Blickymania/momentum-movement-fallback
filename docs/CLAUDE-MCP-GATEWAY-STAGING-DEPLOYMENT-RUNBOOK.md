@@ -1,7 +1,9 @@
 # Claude MCP Gateway — Staging Deployment Runbook
 
 ## Scope and safety
-- Deploy only to the staging Worker names in the staging Wrangler configs.
+- Current execution scope is Dawn Dotta / Momentum Movement only. Four other manager projects remain locked; do not inspect, modify, deploy, audit, or otherwise touch them unless the user explicitly unlocks them.
+- This runbook describes the full five-server architecture. The shared Resource/Gateway config references all five manager services, so a full Gateway deployment is blocked while the four other managers remain locked. Do not run their deployment commands. Before live deployment, obtain an explicit scope decision: unlock all five manager projects, or authorize a separate Dawn-only Gateway/Auth config variant.
+- Deploy only to the authorized Dawn Dotta staging Worker names/configs in the current scope.
 - Do not deploy to production, merge to the production branch, change Discord resources, or modify any Discord bot role.
 - Manager Workers remain private: `workers_dev: false`, no public routes/custom domains, and Version/Preview URLs explicitly disabled; they are reachable only through the resource Worker's Service Bindings.
 - The current authorized deployment scope is Dawn Dotta / Momentum Movement only. Do not create, inspect, configure, or deploy the other four manager Workers. Because the shared gateway config declares all five manager Service Bindings, a live gateway deployment is blocked until the other four target services are already present and verified as staging-only, or their scope is explicitly unlocked. Do not work around this dependency by exposing temporary public endpoints.
