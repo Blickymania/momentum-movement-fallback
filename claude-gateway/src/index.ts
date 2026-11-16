@@ -44,6 +44,7 @@ function textResult(value: unknown) {
 function createReadOnlyMcpHandler(
   env: ResourceEnv,
   userId: string,
+  authorizedGuildIds: string[],
   scopes: string[],
   discordAccessToken: string
 ) {
@@ -71,10 +72,6 @@ function createReadOnlyMcpHandler(
         },
         async ({ serverKey }) => {
           const key = serverKey as ServerKey;
-          const authorizedGuildIds = authContext.props?.authorizedGuildIds;
-          if (!Array.isArray(authorizedGuildIds) || !authorizedGuildIds.every((id) => typeof id === "string")) {
-            throw new Error("OAuth grant is missing its approved Discord server list.");
-          }
           await assertCurrentGuildReadAccess(
             env, env.AUTH_SERVER, key, userId, authorizedGuildIds, scopes, discordAccessToken
           );
@@ -132,8 +129,12 @@ export default {
           if (!userId || !discordAccessToken) {
             return Response.json({ error: "Authenticated Discord identity is incomplete." }, { status: 403 });
           }
+          const authorizedGuildIds = authContext.props?.authorizedGuildIds;
+          if (!Array.isArray(authorizedGuildIds) || !authorizedGuildIds.every((id) => typeof id === "string")) {
+            return Response.json({ error: "OAuth grant is missing its approved Discord server list." }, { status: 403 });
+          }
           const scopes = scopesFrom(authContext.auth.scope);
-          const mcp = createReadOnlyMcpHandler(bindings, userId, scopes, discordAccessToken);
+          const mcp = createReadOnlyMcpHandler(bindings, userId, authorizedGuildIds, scopes, discordAccessToken);
           return mcp.fetch(mcpRequest);
         }
       }
