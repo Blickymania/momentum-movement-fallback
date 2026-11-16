@@ -194,3 +194,38 @@ Inspect and close the Discord access-token expiry/reconnect lifecycle with mocke
 - Manager bot tokens, manager-specific write secrets, owner-approval internal secret, OAuth client secret, and session encryption key: intentionally not read, generated into repository, or exposed in chat.
 - Live Cloudflare staging deployment, OAuth/Claude client round trip, actual five-server manager connectivity, reconnect acceptance in Claude, and rollback: **pending secure environment configuration and acceptance**.
 - Production remains untouched. No live Discord write or bot-role mutation has been performed.
+
+
+## Verification update — 2026-11-16 — Dawn-only staging boundary and 122 checks green
+
+- Latest verified workflow: `43949705016` — **success**.
+- Job: `133588615163`.
+- Tested staging branch head: `51a1952bfae36727b3fa3699a028fc3af4cc8495`.
+- Dependency install: `npm ci --no-audit --no-fund` passed.
+- Strict TypeScript: `tsc --noEmit` passed.
+- Unit/configuration suite: **87 passed** across 10 test files.
+- Cloudflare Workers integration suites: **35 passed** across 7 test files:
+  - Auth OAuth / owner approval / one-time store: 11 tests, including the MCP OAuth refresh-token grant test and fresh Discord reauthorization test.
+  - OAuth-protected Resource Worker: 5 tests, including the 401 `invalid_token` reconnect challenge.
+  - MCP handler: 4 tests.
+  - Owner approval routes: 3 tests.
+  - SQLite-backed write proposal/execution Durable Object: 12 tests.
+- Total: **122 tests passed**; all CI steps succeeded.
+- MCP OAuth refresh-token behavior is verified: Claude can refresh its MCP grant and the provider preserves the existing linked Discord credential and scope. This does **not** renew the Discord access token. The Discord refresh token is not stored in the grant; when that credential expires, the gateway deliberately returns a 401 reconnect challenge and the user must complete a fresh Discord authorization. No automatic Discord token rotation is claimed.
+- The test also verifies the current Claude DCR callback URIs for `claude.ai` and `claude.com`. Live Claude account registration/callback/reconnect remains a staging acceptance test.
+- The staging config suite was narrowed to the authorized scope: it checks the Dawn Dotta manager config plus the shared Gateway and Auth configs. The four other manager config files are intentionally excluded from live inspection/configuration and must remain locked.
+- The Gateway and Auth configs and Dawn Dotta manager config now use `workers_dev: false`, `preview_urls: false`, and `keep_vars: true`. Dashboard-managed non-secret variables are omitted from those configs' `vars` blocks so Wrangler does not replace them with blank same-name values. Auth's `OAUTH_KV` binding still has a blank namespace ID placeholder.
+- The four locked manager configs still contain blank `DISCORD_GUILD_ID` / `DISCORD_APPLICATION_ID` entries and do not yet declare `preview_urls: false`; the runbook explicitly blocks their deployment until a separate authorization and config repair. Do not inspect, edit, configure, or deploy those services under the current Dawn-only scope.
+- Current staging execution scope: **Dawn Dotta / Momentum Movement only**. The shared Gateway config still contains Service Bindings to all five manager Worker targets. Therefore a Gateway deployment is blocked unless all four locked manager targets are already present and can be verified as authorized staging-only services, or the user separately authorizes a Dawn-only Gateway/Auth configuration variant. Do not deploy public placeholders or temporary proxies to bypass this dependency.
+- The current runbook requires Version/Preview URLs explicitly disabled, stages public OAuth/MCP routing last, treats the first SQLite Durable Object migration as a persistent resource operation, and limits live acceptance to read-only checks. Live Discord message/channel writes are not part of the runbook.
+- README and runbook were updated after the tested source head to reference this CI result and clarify the Dawn-only boundary; those later changes are documentation-only.
+
+## Exact deployment and release status
+
+- Source/unit/Workers tests and authorized-scope static config checks: **CI green**.
+- Cloudflare staging KV namespace, Workers, Service Bindings, routes, custom domains, and secrets: **not created or deployed by this work**.
+- Live Claude OAuth and actual Dawn manager read/connectivity acceptance: **not performed**.
+- Other four communities: **locked and untouched**.
+- Production branch/resources: **untouched**.
+- Live Discord message/channel writes and all bot-role mutations: **not performed**.
+- Schedulers/cron jobs: **none created**.
