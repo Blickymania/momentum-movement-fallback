@@ -28,7 +28,7 @@ Do not mark the project verified until both commands complete successfully and t
 The OAuth Worker source is at `auth-worker/src/index.ts`. It uses the Cloudflare OAuth Provider split-worker API and Discord OAuth sign-in with the minimum Discord scopes `identify guilds`.
 
 - Claude authorization requests are validated with PKCE by the OAuth provider.
-- Discord sign-in uses a one-time random state value with a 10-minute KV lifetime.
+- Discord sign-in uses a random state value with a 10-minute KV lifetime, bound to a per-flow `__Host-` Secure, HttpOnly, SameSite=Lax browser cookie; the callback rejects state values not present in the initiating browser session.
 - The user sees a separate consent page before the MCP grant is issued.
 - The consent record, including the temporary Discord user access token, is encrypted with AES-GCM before its five-minute KV storage lifetime.
 - The OAuth grant props are stored by the OAuth provider's encrypted storage and carry the Discord identity credential for per-call revalidation.
@@ -36,7 +36,7 @@ The OAuth Worker source is at `auth-worker/src/index.ts`. It uses the Cloudflare
 - Every manager read enforces the exact guild list captured in the user's OAuth consent, then rechecks the Discord identity, current guild membership, and owner/Administrator permission. Expired Discord user credentials fail closed and require reauthorization.
 - The current consent catalog grants `mcp:read` only. Write scope is deliberately withheld until the independent proposal/approval executor is implemented.
 
-The auth Worker requires a dedicated KV namespace bound as `OAUTH_KV`. Create it in the Cloudflare account, then add the returned namespace ID to `auth-worker/wrangler.jsonc` before any deployment. The config intentionally does not contain a namespace ID.
+The auth Worker requires a dedicated KV namespace bound as `OAUTH_KV`. Create it in the Cloudflare account, then add the returned namespace ID to `auth-worker/wrangler.jsonc` before any deployment. The config intentionally does not contain a namespace ID. **Security blocker before staging:** KV reads/deletes are not an atomic one-time-consumption primitive. Replace the custom login-state and consent-handle consume paths with an atomic Durable Object transaction or D1 `DELETE … RETURNING` flow, and add concurrent replay tests. OAuth provider storage may continue using its supported KV binding.
 
 The following values are configured later in the Cloudflare staging environment, never committed as secrets:
 
