@@ -182,7 +182,7 @@ Do not send a real Discord message or perform a live channel update as part of t
 
 ## Connect Claude after staging is deployed
 
-Anthropic documents remote MCP support for Claude and Claude Desktop on Pro, Max, Team, and Enterprise plans, including Streamable HTTP, OAuth, Dynamic Client Registration, and token refresh. See [Anthropic's remote MCP connector guide](https://support.anthropic.com/en/articles/11503834-building-custom-connectors-via-remote-mcp-servers).
+Anthropic's current documentation lists remote MCP custom connectors for Claude, Cowork, and Claude Desktop on Free, Pro, Max, Ultra, Team, and Enterprise plans; Free users are limited to one custom connector. Claude connects from Anthropic's cloud infrastructure, so the MCP endpoint must be publicly reachable over HTTPS on port 443. Team and Enterprise organization connectors must be added by an Owner or Primary Owner. See [Claude's current remote MCP connector guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
 
 After the Dawn Auth and MCP endpoints are live and staging acceptance passes:
 1. In Claude or Claude Desktop, open **Settings → Connectors**.
