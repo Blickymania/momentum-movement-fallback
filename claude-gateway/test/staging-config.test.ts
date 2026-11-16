@@ -72,7 +72,7 @@ describe("staging Wrangler configuration", () => {
     const gateway = readConfig("../wrangler.dawn-dotta.jsonc");
     const auth = readConfig("../auth-worker/wrangler.dawn-dotta.jsonc");
     expect(gateway.name).toBe("discord-claude-gateway-dawn-staging");
-    expect(gateway.workers_dev).toBe(true);
+    expect(gateway.workers_dev).toBe(false);
     expect(gateway.preview_urls).toBe(false);
     expect(gateway.keep_vars).toBe(true);
     expect(gateway.vars).toBeUndefined();
@@ -86,7 +86,7 @@ describe("staging Wrangler configuration", () => {
     });
 
     expect(auth.name).toBe("discord-claude-auth-dawn-staging");
-    expect(auth.workers_dev).toBe(true);
+    expect(auth.workers_dev).toBe(false);
     expect(auth.preview_urls).toBe(false);
     expect(auth.keep_vars).toBe(true);
     expect(auth.vars).toBeUndefined();
@@ -118,4 +118,35 @@ describe("staging Wrangler configuration", () => {
     });
     expect(JSON.stringify(auth)).not.toMatch(/DISCORD_CLIENT_SECRET|AUTH_SESSION_ENCRYPTION_KEY|OWNER_APPROVAL_INTERNAL_SECRET/);
   });
+  it("keeps the public workers.dev profile opt-in until the private Dawn binding graph is complete", () => {
+    const manager = readConfig("../manager-worker/wrangler.dawn-dotta.jsonc");
+    const authBootstrap = readConfig("../auth-worker/wrangler.dawn-dotta-bootstrap.jsonc");
+    const authPrivate = readConfig("../auth-worker/wrangler.dawn-dotta.jsonc");
+    const authPublic = readConfig("../auth-worker/wrangler.dawn-dotta-workers-dev.jsonc");
+    const gatewayPrivate = readConfig("../wrangler.dawn-dotta.jsonc");
+    const gatewayPublic = readConfig("../wrangler.dawn-dotta-workers-dev.jsonc");
+
+    expect(manager.workers_dev).toBe(false);
+    expect(authBootstrap.workers_dev).toBe(false);
+    expect(authBootstrap.services ?? []).toHaveLength(0);
+    expect(authPrivate.workers_dev).toBe(false);
+    expect(gatewayPrivate.workers_dev).toBe(false);
+
+    expect(authPublic.name).toBe(authPrivate.name);
+    expect(authPublic.workers_dev).toBe(true);
+    expect(authPublic.preview_urls).toBe(false);
+    expect(authPublic.keep_vars).toBe(true);
+    expect(authPublic.services).toEqual(authPrivate.services);
+    expect(authPublic.kv_namespaces).toEqual(authPrivate.kv_namespaces);
+    expect(authPublic.durable_objects).toEqual(authPrivate.durable_objects);
+
+    expect(gatewayPublic.name).toBe(gatewayPrivate.name);
+    expect(gatewayPublic.workers_dev).toBe(true);
+    expect(gatewayPublic.preview_urls).toBe(false);
+    expect(gatewayPublic.keep_vars).toBe(true);
+    expect(gatewayPublic.services).toEqual(gatewayPrivate.services);
+    expect(gatewayPublic.durable_objects).toEqual(gatewayPrivate.durable_objects);
+    expect(JSON.stringify([authPublic, gatewayPublic])).not.toMatch(/DISCORD_CLIENT_SECRET|AUTH_SESSION_ENCRYPTION_KEY|OWNER_APPROVAL_INTERNAL_SECRET|MANAGER_WRITE_SECRET/);
+  });
+
 });
