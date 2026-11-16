@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "blickymania-oauth-worker-tests",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "OAUTH_ISSUER_URL": "https://auth.test",
+    "MCP_RESOURCE_URL": "https://mcp.test/mcp",
+    "DISCORD_CLIENT_ID": "test-discord-client",
+    "DISCORD_CLIENT_SECRET": "test-discord-secret",
+    "DISCORD_REDIRECT_URI": "https://auth.test/discord/callback",
+    "AUTH_SESSION_ENCRYPTION_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "GUILD_ID_EMPRESS": "100000000000000011",
+    "GUILD_ID_BLICKYMANIA": "100000000000000012",
+    "GUILD_ID_DAWN_DOTTA": "100000000000000013"
+  },
+  "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "00000000000000000000000000000000" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "OAUTH_ONE_TIME_STORE", "class_name": "OAuthOneTimeStore" }
+    ]
+  },
+  "migrations": [
+    { "tag": "test-v1", "new_sqlite_classes": ["OAuthOneTimeStore"] }
+  ]
+}
