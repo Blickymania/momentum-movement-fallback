@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --exclude **/*.integration.test.ts",
+    "test": "vitest run --exclude '**/*.integration.test.ts'",
     "check": "npm run typecheck && npm test",
-    "test:workers": "vitest run --config vitest.workers.config.ts"
+    "test:workers": "vitest run --config vitest.workers.config.ts && vitest run --config vitest.write.config.ts"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "1.2.4",
