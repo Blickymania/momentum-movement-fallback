@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 type WranglerConfig = {
   name: string;
   workers_dev?: boolean;
+  keep_vars?: boolean;
   vars?: Record<string, string>;
   services?: Array<{ binding: string; service: string }>;
   kv_namespaces?: Array<{ binding: string; id: string }>;
@@ -38,6 +39,7 @@ describe("staging Wrangler configuration", () => {
       const config = readConfig(`../manager-worker/wrangler.${manager.key}.jsonc`);
       expect(config.name).toBe(`manager-${manager.key}-staging`);
       expect(config.workers_dev).toBe(false);
+      expect(config.keep_vars).toBe(true);
       expect(config.vars).toMatchObject({
         DISCORD_GUILD_ID: "",
         DISCORD_APPLICATION_ID: ""
@@ -52,6 +54,7 @@ describe("staging Wrangler configuration", () => {
     const resource = readConfig("../wrangler.jsonc");
     const services = resource.services ?? [];
     expect(resource.workers_dev).toBe(false);
+    expect(resource.keep_vars).toBe(true);
     expect(services).toHaveLength(6);
     expect(services).toContainEqual({
       binding: "AUTH_SERVER",
@@ -76,6 +79,7 @@ describe("staging Wrangler configuration", () => {
   it("declares the auth Worker gateway binding, dedicated blank KV placeholder, and all five guild IDs", () => {
     const auth = readConfig("../auth-worker/wrangler.jsonc");
     expect(auth.workers_dev).toBe(false);
+    expect(auth.keep_vars).toBe(true);
     expect(auth.services).toContainEqual({
       binding: "GATEWAY_SERVER",
       service: "discord-claude-gateway-staging"
