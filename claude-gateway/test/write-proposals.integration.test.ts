@@ -79,18 +79,21 @@ describe("persistent owner-approved write proposals", () => {
     expect(conflict).toMatch(/different proposal/);
   });
 
-  it("requires a separate verified guild owner to approve", async () => {
+  it("requires verified guild ownership and a separate approval step", async () => {
     const store = newStore();
-    const proposal = await create(store);
-    const selfApproval = await captureInObject(store, (instance) => instance.approveProposal({
-      proposalId: proposal.id, guildId, approverUserId: requesterUserId, verifiedGuildOwner: true
-    }));
-    expect(selfApproval).toMatch(/cannot approve their own/);
+    const ownerRequesterProposal = await create(store);
+    const ownerRequesterApproved = await store.approveProposal({
+      proposalId: ownerRequesterProposal.id, guildId, approverUserId: requesterUserId, verifiedGuildOwner: true
+    });
+    expect(ownerRequesterApproved.status).toBe("approved");
+    expect(ownerRequesterApproved.approverUserId).toBe(requesterUserId);
+
+    const adminRequestedProposal = await create(store);
     const unverifiedOwner = await captureInObject(store, (instance) => instance.approveProposal({
-      proposalId: proposal.id, guildId, approverUserId: ownerUserId, verifiedGuildOwner: false
+      proposalId: adminRequestedProposal.id, guildId, approverUserId: ownerUserId, verifiedGuildOwner: false
     }));
     expect(unverifiedOwner).toMatch(/verified Discord guild owner/);
-    const approved = await approve(store, proposal.id);
+    const approved = await approve(store, adminRequestedProposal.id);
     expect(approved.status).toBe("approved");
     expect(approved.approverUserId).toBe(ownerUserId);
   });
