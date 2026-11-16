@@ -116,3 +116,15 @@
 - Scheduler audit unchanged: existing CI remains push/PR/manual, no scheduled maintenance process was created.
 - Remaining risk: after a process crashes during an active message send, the proposal execution lease could expire and be reclaimed automatically. Next cycle: prevent ambiguous expired message leases from generating another send, while retaining idempotent channel-update lease recovery.
 - External blocker remains Cloudflare staging access for the dedicated Dawn KV namespace, dashboard-managed variables/secrets and hostnames. Real deployment, Claude OAuth acceptance, and live Discord reads remain unverified.
+
+
+## Autonomous cycle 2 — expired message-send lease safety
+- Scope: Dawn-only staging gateway proposal store and Workers integration tests. No locked manager, production, or live Discord resource was touched.
+- Identified that a crashed message-send execution with an expired lease could be automatically reclaimed and replayed after Discord's nonce deduplication window.
+- In `claude-gateway/src/write-proposals.ts`, expired `message.send` execution leases now fail closed with a manual reconciliation instruction; idempotent `channel.update` lease recovery remains supported with fencing tokens.
+- Converted the pre-existing lease-reclaim test to use a safe channel-update action, and added a Workers integration regression test proving expired message-send leases cannot be reclaimed and no duplicate `execution_reclaimed` audit event appears.
+- Code commit: `6183ed1028ea9cc978385c0b4f14425fff77f7b1`.
+- GitHub Actions [43982336958](https://github.com/Blickymania/momentum-movement-fallback/actions/runs/43982336958): success; Node 22 dependencies / strict TypeScript passed; 96 unit/config + 12 Auth Worker + 25 Gateway/Write integration tests = 133 passing tests. Six offline Wrangler dry-runs passed; none deployed.
+- Existing schedulers unchanged; no cron or recurring process was created.
+- Next independent objective: inspect manager-side typed patch validation for divergence from the gateway policy, with a regression test if a concrete mismatch is found.
+- Cloudflare staging account-owned KV, secrets, hostnames and live deployment remain blocked externally. Live Claude OAuth/reconnect, live Discord inventory, and ChatGPT/Ui.Vision operational integration remain unverified.
