@@ -3,7 +3,9 @@
   "name": "discord-claude-auth-staging",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-15",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": false,
   "vars": {
     "OAUTH_ISSUER_URL": "",
@@ -15,5 +17,21 @@
     "GUILD_ID_BESTYOUEVAHAD": "",
     "GUILD_ID_RED_KOCAINE": "",
     "GUILD_ID_DAWN_DOTTA": ""
-  }
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "OAUTH_ONE_TIME_STORE",
+        "class_name": "OAuthOneTimeStore"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "OAuthOneTimeStore"
+      ]
+    }
+  ]
 }
