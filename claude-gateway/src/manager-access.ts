@@ -7,21 +7,8 @@ export interface CurrentGuildAuthorization {
   permissions: string;
 }
 
-const DISCORD_TOKEN_EXPIRY_SKEW_MS = 30_000;
-
-/**
- * Refuse an expired or near-expiry Discord identity token before making
- * manager calls. Older OAuth grants without an expiry timestamp fail closed.
- */
-export function assertDiscordCredentialCurrent(
-  expiresAt: unknown,
-  now = Date.now()
-): asserts expiresAt is number {
-  if (typeof expiresAt !== "number" || !Number.isFinite(expiresAt) ||
-    expiresAt <= now + DISCORD_TOKEN_EXPIRY_SKEW_MS) {
-    throw new Error("Discord authorization has expired or is expiring. Reconnect this MCP server to Discord.");
-  }
-}
+import { assertDiscordCredentialCurrent } from "./discord-token-expiry";
+export { assertDiscordCredentialCurrent } from "./discord-token-expiry";
 
 export interface DiscordAuthorizationService {
   checkGuildAccess(userId: string, guildId: string, discordAccessToken: string): Promise<CurrentGuildAuthorization>;
