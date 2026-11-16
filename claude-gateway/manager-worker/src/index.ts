@@ -2,10 +2,13 @@ export interface ManagerWorkerEnv {
   DISCORD_BOT_TOKEN?: string;
   DISCORD_GUILD_ID?: string;
   DISCORD_APPLICATION_ID?: string;
+  MANAGER_WRITE_SECRET?: string;
 }
 
 type JsonObject = Record<string, unknown>;
 type DiscordFetch = typeof fetch;
+
+import { handleManagerWrite } from "./write-executor";
 
 const API = "https://discord.com/api/v10";
 const SNOWFLAKE = /^\d{15,22}$/;
@@ -66,8 +69,6 @@ export async function handleManagerRequest(
   env: ManagerWorkerEnv,
   discordFetch: DiscordFetch = fetch
 ): Promise<Response> {
-  if (request.method !== "GET") return json({ error: "Method not allowed." }, 405);
-
   let config: ReturnType<typeof requiredConfig>;
   try {
     config = requiredConfig(env);
@@ -81,6 +82,19 @@ export async function handleManagerRequest(
 
   const url = new URL(request.url);
   if (url.search || url.hash) return json({ error: "Query parameters are not supported." }, 400);
+  if (url.pathname === "/internal/v1/write") {
+    if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+    try {
+      return await handleManagerWrite(request, {
+        guildId: config.guildId,
+        token: config.token,
+        writeSecret: env.MANAGER_WRITE_SECRET
+      }, discordFetch);
+    } catch {
+      return json({ error: "Manager write request failed before a verified Discord result was returned." }, 502);
+    }
+  }
+  if (request.method !== "GET") return json({ error: "Method not allowed." }, 405);
 
   try {
     switch (url.pathname) {
