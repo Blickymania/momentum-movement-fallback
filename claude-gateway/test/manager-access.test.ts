@@ -1,10 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
-import { assertCurrentGuildReadAccess, getConfiguredGuildId } from "../src/manager-access";
+import { assertCurrentGuildReadAccess, assertDiscordCredentialCurrent, getConfiguredGuildId } from "../src/manager-access";
 import type { GatewayEnv } from "../src/manager-client";
 
 const env: GatewayEnv = {
   GUILD_ID_DAWN_DOTTA: "1565048205970767992"
 };
+
+describe("Discord identity token expiry", () => {
+  it("accepts a token that remains valid beyond the safety window", () => {
+    expect(() => assertDiscordCredentialCurrent(30_001, 0)).not.toThrow();
+  });
+
+  it("rejects expired, near-expiry, and missing token timestamps with reconnect guidance", () => {
+    for (const expiresAt of [0, 30_000, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => assertDiscordCredentialCurrent(expiresAt, 0)).toThrow(/Reconnect this MCP server to Discord/);
+    }
+  });
+});
 
 describe("current Discord authorization checks", () => {
   it("returns the fixed guild ID for the selected independent manager", () => {
