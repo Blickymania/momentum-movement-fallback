@@ -71,7 +71,13 @@ function createReadOnlyMcpHandler(
         },
         async ({ serverKey }) => {
           const key = serverKey as ServerKey;
-          await assertCurrentGuildReadAccess(env, env.AUTH_SERVER, key, userId, scopes, discordAccessToken);
+          const authorizedGuildIds = authContext.props?.authorizedGuildIds;
+          if (!Array.isArray(authorizedGuildIds) || !authorizedGuildIds.every((id) => typeof id === "string")) {
+            throw new Error("OAuth grant is missing its approved Discord server list.");
+          }
+          await assertCurrentGuildReadAccess(
+            env, env.AUTH_SERVER, key, userId, authorizedGuildIds, scopes, discordAccessToken
+          );
           const result = await readManagerResource(env, key, resource);
           return textResult(result);
         }
