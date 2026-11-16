@@ -12,7 +12,7 @@
   "services": [
     {
       "binding": "AUTH_SERVER",
-      "service": "discord-claude-auth-staging"
+      "service": "discord-claude-auth-dawn-staging"
     },
     {
       "binding": "MANAGER_DAWN_DOTTA",
