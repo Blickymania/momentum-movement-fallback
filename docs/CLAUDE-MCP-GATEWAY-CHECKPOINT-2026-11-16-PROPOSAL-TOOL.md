@@ -35,14 +35,13 @@ The OAuth provider emits a non-fatal CIMD-disabled warning. The tested dynamic c
 
 ## Remaining objectives
 
-1. Implement a lease-based execution claim for already-approved proposals, with bounded retries and fencing tokens so stale Workers cannot overwrite newer results.
-2. Add a typed manager Worker write executor for the two allowlisted action types only. Use Discord message nonce/enforce_nonce for send idempotency and idempotent PATCH semantics for channel updates.
-3. Connect execution results and attempts to the append-only audit log. Ensure an expired execution lease can be safely reclaimed after a Worker crash.
-4. Add end-to-end tests from MCP proposal creation through owner approval, execution, retry, and audit verification.
-5. Only after all execution tests and security checks pass, consider granting `mcp:write`.
-6. Configure Cloudflare staging resources, reciprocal Service Bindings, the shared owner-approval secret, OAuth KV, Discord application credentials, exact guild IDs, manager tokens, and staging hostnames.
-7. Re-run acceptance on Node.js 22.
-8. Complete the ChatGPT/Claude/Ui.Vision handoff and verify a real Claude MCP client connection. The three-agent workflow has not yet been demonstrated end-to-end.
+1. Add a typed manager Worker write executor for the two allowlisted action types only. Use Discord message nonce/enforce_nonce for send idempotency and idempotent PATCH semantics for channel updates.
+2. Connect execution results and attempts to the append-only audit log and verify crash recovery from expired leases.
+3. Add end-to-end tests from MCP proposal creation through owner approval, execution, retry, and audit verification.
+4. Only after all execution tests and security checks pass, consider granting `mcp:write`.
+5. Configure Cloudflare staging resources, reciprocal Service Bindings, the shared owner-approval secret, OAuth KV, Discord application credentials, exact guild IDs, manager tokens, and staging hostnames.
+6. Re-run acceptance on Node.js 22.
+7. Complete the ChatGPT/Claude/Ui.Vision handoff and verify a real Claude MCP client connection. The three-agent workflow has not yet been demonstrated end-to-end.
 
 ## Safety state
 
@@ -55,4 +54,4 @@ The OAuth provider emits a non-fatal CIMD-disabled warning. The tested dynamic c
 
 ## Exact next execution step
 
-Extend the proposal Durable Object with a persistent execution-attempt table and lease-based claim/renew/result operations. Preserve the already-approved proposal as the authorization record, allow a bounded number of retry attempts after lease expiry, and require a unique fencing token for every claim. Do not add or expose a Discord write executor until these recovery semantics pass concurrency and crash-recovery tests.
+Implement the typed manager Worker write executor for the approved `message.send` and `channel.update` proposals. Use the existing lease claim, unique fencing token, bounded retry count, and immutable audit events. Use Discord nonce/enforce_nonce for message sends and idempotent PATCH for channel updates. Keep `mcp:write` disabled until end-to-end execution tests pass.
