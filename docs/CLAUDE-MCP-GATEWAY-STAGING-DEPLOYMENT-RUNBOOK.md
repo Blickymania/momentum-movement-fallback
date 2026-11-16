@@ -174,7 +174,7 @@ Do not treat successful deployment as acceptance. Use a dedicated staging Discor
 5. MCP client initializes and lists the expected tools.
 6. Dawn manager returns only its intended staging guild/application identity and read inventory.
 7. A non-owner cannot approve an owner-only proposal; owner identity and permission are rechecked.
-8. MCP OAuth refresh works; expired/near-expiry Discord credentials return the tested 401 reconnect challenge; a fresh Discord authorization restores access.
+8. MCP OAuth refresh works while the linked Discord credential remains current. If the credential is missing, expired, or within the 30-second safety window, the Auth Worker throws OAuth `invalid_grant`; the provider revokes the MCP grant and its tokens. Complete a fresh Discord authorization to restore access. Automatic Discord refresh-token use is not implemented.
 9. Verify approved execution only with mocked tests until a separate explicit staging test-write approval exists.
 10. Record Worker version IDs, binding names, route states, test outcomes, and rollback targets without recording secret values.
 
@@ -191,7 +191,7 @@ After the Dawn Auth and MCP endpoints are live and staging acceptance passes:
 4. Add the connector, then use **Search and tools → Connect** to complete OAuth.
 5. Sign in to Discord and review `mcp:read` and `offline_access` consent.
 6. Confirm the tool list appears and test a read-only inventory call first.
-7. Verify MCP OAuth refresh. If the underlying Discord credential has expired, complete a fresh Discord authorization; the Discord refresh token is not persisted, so refreshing the MCP OAuth token alone does not renew the Discord credential.
+7. Verify MCP OAuth refresh while the Discord credential is current. Verify that missing/expired/near-expiry Discord credential props cause `invalid_grant` and revocation of the MCP grant; then complete a fresh Discord authorization. The Discord refresh token is not persisted.
 8. Review each owner-approved write carefully. Do not use Claude Research for write-capable tools.
 
 The Auth Worker DCR test accepts both `https://claude.ai/api/mcp/auth_callback` and `https://claude.com/api/mcp/auth_callback`. Claude Desktop remote connectors must be added through **Settings → Connectors**, not by adding a remote server to `claude_desktop_config.json`.
@@ -208,8 +208,8 @@ No Claude connector has been connected in this work. Real Claude UI connection a
 
 ## Current readiness
 
-- Source and static config checks are green. Latest verified Actions run: `43950059288` on staging head `ff1684923ac9b7924cac684173c2f2dea4699984`; strict TypeScript, 88 unit/configuration tests, and 35 Cloudflare Workers integration tests passed (123 total).
-- The Dawn-only Gateway/Auth config pair exists and references only Dawn Auth and Dawn manager services; its four static config checks pass. The full five-server configs remain available but are not the current deployment target.
+- Source and static config checks are green. Latest verified Actions run: `43951509049` (job `133595049630`) on commit `bf41950dcb8d0ad02fbad29b7e5aa4dcb416f23e`; strict TypeScript, 88 unit/configuration tests, and 36 Cloudflare Workers integration tests passed (124 total). The same run completed offline Wrangler dry-runs for the Dawn manager, Auth, and Gateway configs; each bundled successfully and exited before upload.
+- The Dawn-only Gateway/Auth config pair exists and references only Dawn Auth and Dawn manager services; the four Dawn-only config assertions pass. Offline Wrangler dry-run validation also passes for all three authorized Dawn staging Worker configs. The full five-server configs remain available but are not the current deployment target.
 - No Cloudflare staging Worker, KV namespace, route, custom domain, Service Binding, or secret has been created or deployed by this work.
 - Account-owned prerequisites remain: dedicated Dawn `OAUTH_KV` namespace ID, Dawn guild/application IDs, Discord client settings, two HTTPS hostnames, and the Dawn bot/write/owner-approval secrets.
 - No live Discord writes, bot-role changes, or production changes were performed.
