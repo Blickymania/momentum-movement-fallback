@@ -38,6 +38,7 @@ return String(app.id)===A&&Number.isSafeInteger(flags)&&(flags&((1<<12)|(1<<13))
 console.log(JSON.stringify({event:"momentum_bot005_presence_intent",enabled:presenceIntentGranted}));
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.DirectMessages,...(presenceIntentGranted?[GatewayIntentBits.GuildPresences]:[])],partials:[Partials.Channel],allowedMentions:{parse:[]}});
 const { prepareFencedDiscordGatewayOwner } = await import("../../implementation/fenced-discord-gateway-owner.mjs");
+const { createBot005RuntimeShutdown } = await import("../../implementation/bot005-runtime-shutdown.mjs");
 const preparedGatewayOwner = prepareFencedDiscordGatewayOwner({
   client,
   botToken: token,
@@ -48,8 +49,11 @@ const preparedGatewayOwner = prepareFencedDiscordGatewayOwner({
   heartbeatIntervalMs: 10000,
   renewTimeoutMs: 5000
 });
-process.on("SIGTERM", () => { void preparedGatewayOwner.shutdown("sigterm"); });
-process.on("SIGINT", () => { void preparedGatewayOwner.shutdown("sigint"); });
+let runtimeServers = [];
+const shutdownRuntime = createBot005RuntimeShutdown({
+  gatewayOwner: preparedGatewayOwner,
+  getServers: () => runtimeServers
+});
 
 const CORE_COMMANDS=new Set(["addtocase","announce","audit","automod","ban","bot-status","botconfig","botstatus","channelorder","channelposition","chatfirst","closecase","eventcreate","events","help","kick","lock","member","ping","poll","purge","report","role","rules","server","slowmode","statsset","statsstatus","support","tiktok","timeout","unban","warn","dashboard","bot-test","forum-admin"]);
 const SAFE=new Set(["ping","bot-test","bot-status","botstatus","help","server","member","events","rules","tiktok","dashboard","botconfig","forum-admin","audit","statsstatus","automod","support","report","poll","announce","eventcreate","slowmode","closecase","warn","role","addtocase","statsset","channelorder","channelposition","chatfirst","ban","kick","timeout","unban","purge","lock"]);
@@ -556,7 +560,7 @@ if(client.user?.id!==A)throw Error("Discord bot/application mismatch");
 const guild=await client.guilds.fetch(G);
 if(guild.id!==G)throw Error("Wrong authorized guild");
 guildVerified=true;ready=true;preparedGatewayOwner.markApplicationReady();log("gateway_verified",{app:A,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",handlerCount:SAFE.size,commandRegistryManagedElsewhere:true});
-}catch(err){lastError=err instanceof Error?err.name:"identity_failed";ready=false;guildVerified=false;log("identity_failed",{kind:lastError});await preparedGatewayOwner.shutdown("identity_verification_failed");}
+}catch(err){lastError=err instanceof Error?err.name:"identity_failed";ready=false;guildVerified=false;log("identity_failed",{kind:lastError});await shutdownRuntime("identity_verification_failed").catch(error => log("shutdown_failed",{kind:error?.name||"unknown"}));}
 });
 client.on(Events.ShardDisconnect,ev=>{ready=false;preparedGatewayOwner.markApplicationNotReady();log("disconnected",{code:ev.code})});
 client.on(Events.ShardResume,()=>{ready=true;preparedGatewayOwner.markApplicationReady();log("resumed")});
@@ -1290,13 +1294,19 @@ return Response.json({guild:G,verified:unexpected===0,asOf:new Date().toISOStrin
 if(path==="/healthz")return Response.json({service:"Blickymania Bot 005",community:"Momentum Movement",gatewayReady:ready,guildVerified,readOnly,writeScope:"all_36_handlers_with_confirmations_including_forum_and_automod",commandRegistryExecutor:true,supportedRecoveredCommands:SAFE.size,originalFeatureParity:false,commandsResponded,uptimeSeconds:Math.floor((Date.now()-started)/1000),errorKind:lastError},{status:ready&&guildVerified?200:503});
 return Response.json({error:"not-found"},{status:404});
 };
-Bun.serve({hostname:"0.0.0.0",port:Number(Bun.env.PORT||8080),fetch:momentumHttpHandler});
-Bun.serve({hostname:"::",port:8081,fetch:momentumHttpHandler});
-const gatewayStart = await preparedGatewayOwner.start();
-if(!gatewayStart?.ok)throw Error("Bot 005 lease unavailable; Gateway login was not attempted");
+runtimeServers.push(
+  Bun.serve({hostname:"0.0.0.0",port:Number(Bun.env.PORT||8080),fetch:momentumHttpHandler})
+);
+runtimeServers.push(
+  Bun.serve({hostname:"::",port:8081,fetch:momentumHttpHandler})
+);
+process.on("SIGTERM", () => { void shutdownRuntime("sigterm").catch(error => log("shutdown_failed",{kind:error?.name||"unknown"})); });
+process.on("SIGINT", () => { void shutdownRuntime("sigint").catch(error => log("shutdown_failed",{kind:error?.name||"unknown"})); });
 try {
+  const gatewayStart = await preparedGatewayOwner.start();
+  if(!gatewayStart?.ok)throw Error("Bot 005 lease unavailable; Gateway login was not attempted");
   await preparedGatewayOwner.waitUntilReady(30000);
 } catch (error) {
-  await preparedGatewayOwner.shutdown("application_readiness_failed");
+  await shutdownRuntime("startup_or_readiness_failed").catch(shutdownError => log("shutdown_failed",{kind:shutdownError?.name||"unknown"}));
   throw error;
 }

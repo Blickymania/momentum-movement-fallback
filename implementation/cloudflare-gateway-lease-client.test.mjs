@@ -465,3 +465,57 @@ test("lease client reads authenticated state including an empty lease", async ()
   assert.equal(captured.init.method, "GET");
   assert.equal(captured.init.body, undefined);
 });
+
+test("lease renewal cannot remap an owner identity to a different deployment", () => {
+  const db = new DatabaseSync(":memory:");
+  const sql = {
+    exec(statement, ...params) {
+      const prepared = db.prepare(statement);
+      if (statement.includes("RETURNING") || statement.trimStart().startsWith("SELECT")) {
+        return { toArray: () => prepared.all(...params) };
+      }
+      prepared.run(...params);
+      return { toArray: () => [] };
+    }
+  };
+  const ctx = {
+    storage: { sql },
+    blockConcurrencyWhile(callback) { return callback(); }
+  };
+  const coordinator = new GatewayLeaseCoordinator(ctx, {});
+  const ownerId = "primary-deploy:process-unique-001";
+  try {
+    coordinator.bootstrap({
+      scope: GATEWAY_LEASE_SCOPE,
+      ownerId,
+      deploymentId: "primary-deploy",
+      proofId: "operator-confirmed-bootstrap"
+    });
+    const lease = coordinator.acquire({
+      scope: GATEWAY_LEASE_SCOPE,
+      ownerId,
+      deploymentId: "primary-deploy",
+      ttlSeconds: 30
+    });
+    assert.ok(lease);
+    assert.throws(() => coordinator.renew({
+      scope: GATEWAY_LEASE_SCOPE,
+      ownerId,
+      fencingEpoch: lease.fencing_epoch,
+      deploymentId: "standby-deploy",
+      ttlSeconds: 30
+    }), /owner_id_must_be_bound_to_deployment/);
+
+    const renewed = coordinator.renew({
+      scope: GATEWAY_LEASE_SCOPE,
+      ownerId,
+      fencingEpoch: lease.fencing_epoch,
+      deploymentId: "primary-deploy",
+      ttlSeconds: 30
+    });
+    assert.equal(renewed.deployment_id, "primary-deploy");
+    assert.equal(coordinator.read().deployment_id, "primary-deploy");
+  } finally {
+    db.close();
+  }
+});
