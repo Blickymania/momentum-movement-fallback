@@ -7,6 +7,7 @@
     "nodejs_compat"
   ],
   "workers_dev": false,
+  "keep_vars": true,
   "vars": {
     "MCP_RESOURCE_URL": "",
     "OAUTH_ISSUER_URL": "",
