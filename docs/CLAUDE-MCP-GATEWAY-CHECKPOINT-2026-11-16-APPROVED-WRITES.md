@@ -137,3 +137,31 @@ Inspect and close the Discord access-token expiry/reconnect lifecycle with mocke
 - `0542a2f78140b2410c0ed2c5a15e592266f5e83f`
 - CI run `43945836382`: success; 84 unit + 31 Workers integration tests passed; TypeScript check passed.
 - No deployment was performed by this workflow.
+
+
+## Verification update — 2026-11-16 — explicit reconnect challenge passed
+
+- Workflow run: `43946251424` — **success**.
+- Job ID: `133576573107`.
+- Tested staging source commit: `c1de85ca637a4994faeae520d19c9a909c24a948`.
+- `npm ci --no-audit --no-fund`: passed.
+- `npm run typecheck` / `tsc --noEmit`: passed.
+- Unit tests: **84 passed** across 9 files.
+- Cloudflare Workers integration tests: **32 passed** across 7 files:
+  - Auth OAuth, owner approval, one-time store: 8.
+  - OAuth-protected Resource Worker: 5, including explicit 401 `invalid_token` reconnect challenge for both expired and missing Discord credential timestamps.
+  - MCP handler: 4.
+  - Owner approval routes: 3.
+  - Write proposal / execution Durable Object: 12.
+- Total: **116 tests passed**; CI job completed successfully.
+- The reconnect challenge test confirms the Resource Worker rejects before current-guild lookup or private manager invocation and includes `Cache-Control: no-store` plus a Bearer `invalid_token` challenge.
+- The test fixture formatting defect introduced in commit `55074a664538b7f6bf522e317ae4f4fbbae29e06` was corrected in `c1de85ca637a4994faeae520d19c9a909c24a948`; strict TypeScript and the full integration suite now pass on the repaired source.
+- The latest README test-count update changes documentation only; the application/test source remains the tested source above.
+
+## Current verified state and release boundary
+
+- Source implementation, unit suite, Cloudflare Workers integration suite, OAuth-protected Resource Worker, MCP tool registration/execution, exact owner approval, and token expiry/reconnect challenge: **verified in CI**.
+- Staging OAuth KV binding: declared in config with a blank namespace ID; real staging KV namespace not created/connected by this session.
+- Five staging manager service templates: structurally audited; actual Cloudflare service creation and connectivity not verified.
+- Real Discord app setup, five guild/application IDs, private credentials, staging URLs, reciprocal Service Bindings, and end-to-end Claude connection: pending secure staging configuration and acceptance.
+- No production deployment, no Discord live-resource writes, no bot-role changes, and no schedulers were made.
