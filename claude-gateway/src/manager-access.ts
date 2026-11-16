@@ -11,7 +11,7 @@ export interface DiscordAuthorizationService {
   checkGuildAccess(userId: string, guildId: string, discordAccessToken: string): Promise<CurrentGuildAuthorization>;
 }
 
-function configuredGuildId(env: GatewayEnv, key: ServerKey): string {
+export function getConfiguredGuildId(env: GatewayEnv, key: ServerKey): string {
   const ids: Record<ServerKey, string | undefined> = {
     empress: env.GUILD_ID_EMPRESS,
     blickymania: env.GUILD_ID_BLICKYMANIA,
@@ -20,7 +20,7 @@ function configuredGuildId(env: GatewayEnv, key: ServerKey): string {
     "dawn-dotta": env.GUILD_ID_DAWN_DOTTA
   };
   const guildId = ids[key];
-  if (!guildId) throw new Error(`Fixed guild ID for ${key} is not configured.`);
+  if (!guildId || !/^\d{15,22}$/.test(guildId)) throw new Error(`A valid fixed guild ID for ${key} is not configured.`);
   return guildId;
 }
 
@@ -38,7 +38,7 @@ export async function assertCurrentGuildReadAccess(
   discordAccessToken: string
 ): Promise<void> {
   if (!/^\d{15,22}$/.test(userId)) throw new Error("Authenticated Discord user ID is invalid.");
-  const guildId = configuredGuildId(env, serverKey);
+  const guildId = getConfiguredGuildId(env, serverKey);
   if (!authorizedGuildIds.includes(guildId)) {
     throw new Error("This Discord server was not included in the user's approved OAuth grant.");
   }
