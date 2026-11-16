@@ -53,10 +53,10 @@ function runDryRun(target) {
   const outputDir = mkdtempSync(path.join(os.tmpdir(), "dawn-wrangler-dry-run-"));
 
   try {
-    writeFileSync(tempConfigPath, `${JSON.stringify(config, null, 2)}\\n`, { flag: "wx" });
+    writeFileSync(tempConfigPath, `${JSON.stringify(config, null, 2)}\n`, { flag: "wx" });
     const relativeConfig = path.relative(gatewayRoot, tempConfigPath);
 
-    process.stdout.write(`\\n[wrangler dry-run] ${target.label} — ${target.config}\\n`);
+    process.stdout.write(`\n[wrangler dry-run] ${target.label} — ${target.config}\n`);
     const result = spawnSync(
       "npx",
       [
@@ -80,7 +80,7 @@ function runDryRun(target) {
     if (result.status !== 0) {
       throw new Error(`${target.label}: Wrangler dry-run exited with status ${result.status}`);
     }
-    process.stdout.write(`[wrangler dry-run] ${target.label}: passed; no upload performed\\n`);
+    process.stdout.write(`[wrangler dry-run] ${target.label}: passed; no upload performed\n`);
   } finally {
     rmSync(tempConfigPath, { force: true });
     rmSync(outputDir, { recursive: true, force: true });
