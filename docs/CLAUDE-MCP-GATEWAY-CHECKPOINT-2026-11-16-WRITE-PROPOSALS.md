@@ -34,8 +34,8 @@ Environment: Node.js 26.12.1, npm 12.2.2, Vitest 4.1.8, Wrangler 4.115.0.
 ## Remaining objectives
 
 1. The proposal-only `discord_propose_change` tool is implemented: it validates live channel inventory, stores an idempotent proposal, and returns a one-time owner approval URL without executing a Discord write.
-2. Implement a typed manager Worker write executor with execution leases, bounded retries, and idempotent Discord API behavior.
-3. Connect the proposal-only MCP tool to the executor only after the separate owner approval has been verified and consumed.
+2. The proposal store now has persistent execution state, fenced leases, lease renewal, a three-attempt retry cap, and immutable attempt/result auditing.
+3. Implement the typed manager Worker write executor with Discord message nonce/enforce_nonce and idempotent channel PATCH behavior.
 4. Add end-to-end tests from MCP proposal creation through owner approval and execution result recording.
 5. Only then consider exposing `mcp:write` and actual Discord write tools.
 6. Re-run the full acceptance suite on Node 22 before release.
@@ -56,4 +56,4 @@ The proposal store's `verifiedGuildOwner` field is an internal assertion. It is 
 
 ## Exact next execution step
 
-Implement the lease-based typed manager Worker write executor for the approved `message.send` and `channel.update` action types. Ensure an expired execution lease can be reclaimed safely, enforce a small retry limit, use Discord message nonce/enforce_nonce for send idempotency, and append each attempt/result to the immutable audit log. Keep `mcp:write` disabled until this passes end-to-end tests.
+Implement the typed manager Worker write executor for the approved `message.send` and `channel.update` action types. Use the existing lease claim and fencing token, ensure an expired lease can be reclaimed safely, enforce the three-attempt retry limit, use Discord message nonce/enforce_nonce for send idempotency, and append each attempt/result to the immutable audit log. Keep `mcp:write` disabled until this passes end-to-end tests.
