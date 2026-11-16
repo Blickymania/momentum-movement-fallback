@@ -41,4 +41,4 @@ The separate owner-approval flow is connected to the persistent proposal store t
 
 ## Exact next execution step
 
-The proposal-only `discord_propose_change` MCP tool is now implemented and tested. Next, build the lease-based typed manager Worker write executor for the already-approved action types. Keep `mcp:write` disabled until execution retries, idempotency, and end-to-end tests pass.
+The proposal-only `discord_propose_change` MCP tool and persistent execution lease/retry state machine are implemented and tested. Next, build the typed manager Worker write executor for the already-approved action types. Keep `mcp:write` disabled until Discord idempotency and end-to-end tests pass.
