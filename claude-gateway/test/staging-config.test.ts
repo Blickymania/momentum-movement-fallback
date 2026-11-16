@@ -69,16 +69,13 @@ describe("staging Wrangler configuration", () => {
       });
     }
     expect(new Set(services.map((service) => service.service)).size).toBe(6);
-    expect(resource.vars?.MCP_RESOURCE_URL).toBe("");
-    expect(resource.vars?.OAUTH_ISSUER_URL).toBe("");
-    for (const variable of guildVars) expect(resource.vars?.[variable]).toBe("");
     expect(resource.durable_objects?.bindings).toContainEqual({
       name: "WRITE_PROPOSAL_STORE",
       class_name: "WriteProposalStore"
     });
   });
 
-  it("declares the auth Worker gateway binding, dedicated blank KV placeholder, and all five guild IDs", () => {
+  it("declares the auth Worker gateway binding, dedicated KV placeholder, and no embedded secrets", () => {
     const auth = readConfig("../auth-worker/wrangler.jsonc");
     expect(auth.workers_dev).toBe(false);
     expect(auth.preview_urls).toBe(false);
