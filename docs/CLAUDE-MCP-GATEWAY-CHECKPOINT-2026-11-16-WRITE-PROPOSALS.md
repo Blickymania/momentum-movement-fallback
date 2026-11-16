@@ -23,23 +23,23 @@
 Environment: Node.js 26.12.1, npm 12.2.2, Vitest 4.1.8, Wrangler 4.115.0.
 
 - `npm ci`: PASS.
-- `npm run check`: PASS — strict TypeScript and 56 unit tests across 6 files.
-- `npm run test:workers`: PASS — 12 Workers runtime integration tests:
-  - 5 OAuth and one-time OAuth store tests.
-  - 7 write-proposal Durable Object tests covering idempotency, verified owner approval in a separate explicit step, rejection, guild/requester/hash binding, concurrent consume, expiry alarms, and audit immutability.
+- `npm run check`: PASS — strict TypeScript and 63 unit tests across 7 files.
+- `npm run test:workers`: PASS — 18 Workers runtime integration tests:
+  - 8 auth Worker tests (OAuth, one-time stores, owner approval).
+  - 10 gateway Durable Object and private-route tests covering idempotency, verified owner approval in a separate explicit step, rejection, guild/requester/hash binding, concurrent consume, expiry alarms, and audit immutability.
 - Wrangler `deploy --dry-run`: PASS for all seven non-test Worker configs (gateway, OAuth Worker, and five private manager Workers).
 - Wrangler dry-run: PASS for both isolated test configs (OAuth and gateway proposal store).
 - Scope review confirms the gateway still requires `mcp:read`; no `mcp:write` scope or write tool is exposed.
 
 ## Remaining objectives
 
-1. Build the separate owner approval interface and trusted Discord owner authentication path. The gateway must obtain owner verification directly from the private Auth Worker; never accept a caller-supplied boolean.
-2. Add gateway proposal creation/status/approval routing, with per-guild authorization and requester binding.
-3. Add the typed manager write executor, initially restricted to allowlisted non-destructive operations. Keep role mutations, bot-role changes, permission-risk operations, destructive operations, and bulk actions blocked unless separately authorized.
-4. Add end-to-end tests from proposal creation through owner approval and execution result recording.
-5. Only then consider exposing `mcp:write` and the write tools.
+1. The proposal-only `discord_propose_change` tool is implemented: it validates live channel inventory, stores an idempotent proposal, and returns a one-time owner approval URL without executing a Discord write.
+2. Implement a typed manager Worker write executor with execution leases, bounded retries, and idempotent Discord API behavior.
+3. Connect the proposal-only MCP tool to the executor only after the separate owner approval has been verified and consumed.
+4. Add end-to-end tests from MCP proposal creation through owner approval and execution result recording.
+5. Only then consider exposing `mcp:write` and actual Discord write tools.
 6. Re-run the full acceptance suite on Node 22 before release.
-7. Configure actual Cloudflare staging resources, service bindings, hostnames, secrets, Discord application credentials, and the five exact guild IDs.
+7. Configure actual Cloudflare staging resources, reciprocal Service Bindings, hostnames, shared secret, Discord application credentials, and the five exact guild IDs.
 
 ## Important security limitation
 
@@ -56,4 +56,4 @@ The proposal store's `verifiedGuildOwner` field is an internal assertion. It is 
 
 ## Exact next execution step
 
-Implement the separate owner approval OAuth/session flow in the auth Worker. It must bind an approval session to a single proposal ID and guild ID, verify the authenticating Discord user is the current guild owner (not merely Administrator), consume the session once, and provide the gateway with a trusted internal verification result. Keep proposal approval and all writes disabled until this flow passes integration tests.
+Implement the lease-based typed manager Worker write executor for the approved `message.send` and `channel.update` action types. Ensure an expired execution lease can be reclaimed safely, enforce a small retry limit, use Discord message nonce/enforce_nonce for send idempotency, and append each attempt/result to the immutable audit log. Keep `mcp:write` disabled until this passes end-to-end tests.
