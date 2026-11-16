@@ -36,9 +36,18 @@ function validatePatch(value: unknown): Record<string, unknown> {
   if (patch.topic !== undefined && (typeof patch.topic !== "string" || patch.topic.length > 1024)) throw new Error("Invalid channel topic.");
   if (patch.nsfw !== undefined && typeof patch.nsfw !== "boolean") throw new Error("Invalid NSFW flag.");
   if (patch.rate_limit_per_user !== undefined && (!Number.isInteger(patch.rate_limit_per_user) || Number(patch.rate_limit_per_user) < 0 || Number(patch.rate_limit_per_user) > 21600)) throw new Error("Invalid slowmode.");
-  if (patch.default_auto_archive_duration !== undefined && ![60, 1440, 4320, 10080].includes(Number(patch.default_auto_archive_duration))) throw new Error("Invalid auto-archive duration.");
-  if (patch.default_forum_layout !== undefined && ![1, 2].includes(Number(patch.default_forum_layout))) throw new Error("Invalid forum layout.");
-  if (patch.default_sort_order !== undefined && ![0, 1].includes(Number(patch.default_sort_order))) throw new Error("Invalid forum sort order.");
+  if (patch.default_auto_archive_duration !== undefined &&
+      (typeof patch.default_auto_archive_duration !== "number" || ![60, 1440, 4320, 10080].includes(patch.default_auto_archive_duration))) {
+    throw new Error("Invalid auto-archive duration.");
+  }
+  if (patch.default_forum_layout !== undefined &&
+      (typeof patch.default_forum_layout !== "number" || ![1, 2].includes(patch.default_forum_layout))) {
+    throw new Error("Invalid forum layout.");
+  }
+  if (patch.default_sort_order !== undefined &&
+      (typeof patch.default_sort_order !== "number" || ![0, 1].includes(patch.default_sort_order))) {
+    throw new Error("Invalid forum sort order.");
+  }
   return patch;
 }
 function validateAction(value: unknown): WriteAction {

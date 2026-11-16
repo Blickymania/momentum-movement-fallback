@@ -94,6 +94,25 @@ describe("typed Discord manager write executor", () => {
     expect(unused).not.toHaveBeenCalled();
   });
 
+  it("rejects coercible string and boolean forum values before any Discord request", async () => {
+    const fetcher = vi.fn();
+    for (const patch of [
+      { default_auto_archive_duration: "1440" },
+      { default_forum_layout: "1" },
+      { default_forum_layout: true },
+      { default_sort_order: "0" },
+      { default_sort_order: false }
+    ]) {
+      const response = await handleManagerWrite(
+        await requestFor({ type: "channel.update", channelId, patch }),
+        config,
+        fetcher as never
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("maps Discord rate limits to retryable 503 and missing channels to 404", async () => {
     const action = { type: "message.send", channelId, content: "Retryable" };
     let count = 0;
