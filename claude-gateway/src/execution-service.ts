@@ -40,7 +40,7 @@ function discordCode(status?: number): string | undefined {
   return status === undefined ? undefined : `HTTP_${status}`;
 }
 
-/** Internal orchestration only. This is deliberately not registered as an MCP tool while mcp:write is disabled. */
+/** Internal orchestration for the owner-approved MCP execution tool. */
 export async function executeApprovedProposal(
   input: ExecuteApprovedProposalInput,
   dependencies: ExecuteApprovedProposalDependencies
