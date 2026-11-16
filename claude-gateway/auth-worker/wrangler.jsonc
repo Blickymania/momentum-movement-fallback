@@ -33,5 +33,11 @@
         "OAuthOneTimeStore"
       ]
     }
+  ],
+  "services": [
+    {
+      "binding": "GATEWAY_SERVER",
+      "service": "discord-claude-gateway-staging"
+    }
   ]
 }
