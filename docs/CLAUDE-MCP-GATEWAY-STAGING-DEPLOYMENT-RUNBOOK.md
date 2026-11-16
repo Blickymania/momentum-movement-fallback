@@ -77,7 +77,7 @@ Do not commit these values. The Auth/Gateway/Dawn manager configs use `keep_vars
   
   ```bash
   read -rsp "Dedicated Dawn staging OAUTH_KV namespace ID: " DAWN_OAUTH_KV_NAMESPACE_ID
-  printf '\\n'
+  printf '\n'
   export DAWN_OAUTH_KV_NAMESPACE_ID
   npm run prepare:dawn:deploy-configs
   unset DAWN_OAUTH_KV_NAMESPACE_ID
