@@ -40,7 +40,6 @@ describe("staging Wrangler configuration", () => {
       expect(config.name).toBe(`manager-${manager.key}-staging`);
       expect(config.workers_dev).toBe(false);
       expect(config.keep_vars).toBe(true);
-      expect(config.keep_vars).toBe(true);
       expect(config.vars).toMatchObject({
         DISCORD_GUILD_ID: "",
         DISCORD_APPLICATION_ID: ""
