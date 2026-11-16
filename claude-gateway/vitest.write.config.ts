@@ -6,7 +6,8 @@ export default defineConfig({
   test: {
     include: [
       "test/write-proposals.integration.test.ts",
-      "test/owner-approval-routes.integration.test.ts"
+      "test/owner-approval-routes.integration.test.ts",
+      "test/mcp-handler.integration.test.ts"
     ]
   }
 });
