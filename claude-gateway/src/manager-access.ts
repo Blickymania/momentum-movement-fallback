@@ -37,7 +37,7 @@ export async function assertCurrentGuildReadAccess(
   scopes: readonly string[],
   discordAccessToken: string
 ): Promise<void> {
-  if (!/^\\d{15,22}$/.test(userId)) throw new Error("Authenticated Discord user ID is invalid.");
+  if (!/^\d{15,22}$/.test(userId)) throw new Error("Authenticated Discord user ID is invalid.");
   const guildId = configuredGuildId(env, serverKey);
   if (!authorizedGuildIds.includes(guildId)) {
     throw new Error("This Discord server was not included in the user's approved OAuth grant.");
