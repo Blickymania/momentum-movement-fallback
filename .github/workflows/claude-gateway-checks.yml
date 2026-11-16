@@ -24,9 +24,9 @@ concurrency:
 
 jobs:
   typecheck-and-test:
-    name: TypeScript and unit tests (no deployment)
+    name: TypeScript, unit, and Workers integration tests (no deployment)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: claude-gateway
@@ -38,9 +38,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: claude-gateway/package-lock.json
 
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
 
-      - name: Run strict TypeScript and Vitest checks
+      - name: Run strict TypeScript and unit checks
         run: npm run check
+
+      - name: Run Cloudflare Workers integration suites
+        run: npm run test:workers
