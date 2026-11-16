@@ -324,6 +324,58 @@ describe("OAuth authorization Worker end-to-end", () => {
     expect(refreshedGrant?.props.discordTokenExpiresAt).toBe(originalGrant?.props.discordTokenExpiresAt);
   });
 
+  it("revokes an MCP grant when its linked Discord credential enters the expiry safety window", async () => {
+    const auth = createAuth();
+    const clientId = await registerClient(auth);
+    let discordExchangeCount = 0;
+
+    network.use(
+      http.post("https://discord.com/api/v10/oauth2/token", () => {
+        discordExchangeCount += 1;
+        return HttpResponse.json({
+          access_token: "discord-access-near-expiry",
+          token_type: "Bearer",
+          expires_in: 35,
+          refresh_token: "discord-refresh-not-persisted",
+          scope: "identify guilds"
+        });
+      }),
+      http.get("https://discord.com/api/v10/users/@me", () => HttpResponse.json({
+        id: USER_ID,
+        username: "expiry-refresh-user"
+      })),
+      http.get("https://discord.com/api/v10/users/@me/guilds", () => HttpResponse.json([
+        { id: EMPRESS_GUILD, name: "Empress Reigns", owner: true, permissions: "0" }
+      ]))
+    );
+
+    const issued = await authorizeDiscordAndExchange(auth, clientId, "discord-expiry-refresh-state");
+    const originalGrant = await auth.validateToken(RESOURCE, issued.accessToken);
+    expect(originalGrant?.props.discordAccessToken).toBe("discord-access-near-expiry");
+    expect(originalGrant?.props.discordTokenExpiresAt).toBeGreaterThan(Date.now());
+
+    // The shared expiry policy has a 30-second safety window. The initial
+    // consent and code exchange complete while the credential is still valid.
+    await new Promise((resolve) => setTimeout(resolve, 6_000));
+    expect(originalGrant?.props.discordTokenExpiresAt).toBeLessThanOrEqual(Date.now() + 30_000);
+
+    const refreshResponse = await auth.fetch(new Request("https://auth.test/oauth/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: issued.refreshToken,
+        client_id: clientId
+      })
+    }));
+    expect(refreshResponse.status).toBe(400);
+    const error = await refreshResponse.json() as { error: string; error_description?: string };
+    expect(error.error).toBe("invalid_grant");
+    expect(error.error_description).toContain("Discord authorization");
+    expect(await auth.validateToken(RESOURCE, issued.accessToken)).toBeNull();
+    expect(discordExchangeCount).toBe(1);
+  }, 20_000);
+
   it("supports Claude's current and future remote MCP OAuth callback URLs through DCR", async () => {
     const auth = createAuth();
     const redirectUris = [
