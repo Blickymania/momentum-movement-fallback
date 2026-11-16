@@ -26,7 +26,7 @@
 Environment: Node.js 26.12.1, npm 12.2.2, Vitest 4.1.8, Wrangler 4.115.0.
 
 - `npm ci`: PASS.
-- `npm run check`: PASS — strict TypeScript and 56 unit tests across 6 files.
+- `npm run check`: PASS — strict TypeScript and 63 unit tests across 7 files.
 - `npm run test:workers`: PASS — 18 Workers runtime integration tests:
   - 8 auth Worker tests (OAuth end-to-end, one-time state/consent storage, owner-only approval, Administrator rejection, separate owner approval by the requester when applicable, one-time link/callback/decision).
   - 10 gateway tests (proposal store state machine, idempotency, owner approval/rejection, concurrency, expiry, immutable audit, internal route secret, proposal binding, action-hash checks).
@@ -38,9 +38,9 @@ The OAuth provider emits a non-fatal CIMD-disabled warning. CIMD is not enabled 
 
 ## Remaining objectives
 
-1. Add a proposal-only MCP tool that validates a proposed action, creates the per-guild proposal, calls `AUTH_SERVER.createOwnerApprovalSession`, and returns the one-time owner approval link. It must not execute a Discord write.
-2. Implement the typed manager Worker write executor, with idempotency and an explicit allowlist. Keep role changes (especially bot-role changes), destructive actions, and bulk operations blocked.
-3. Connect the proposal store's atomic consume operation to the executor and append execution results to the immutable audit log.
+1. Implement the typed manager Worker write executor for the proposal allowlist, with idempotency, execution leases, bounded retries, and immutable result auditing. Keep role changes (especially bot-role changes), permission overwrites, destructive actions, and bulk operations blocked.
+2. Connect the atomic approved-proposal consume and lease-based executor to the five isolated manager Workers.
+3. Add end-to-end tests from MCP proposal creation through owner approval and Discord API execution/result recording.
 4. Only after end-to-end execution and security tests pass, consider granting `mcp:write`.
 5. Configure the same random `OWNER_APPROVAL_INTERNAL_SECRET` in both Workers and create the two private Service Bindings in the real Cloudflare staging environment.
 6. Configure the OAuth KV namespace, Discord application credentials, exact five guild IDs, manager Worker tokens, and staging hostnames.
@@ -58,4 +58,4 @@ The OAuth provider emits a non-fatal CIMD-disabled warning. CIMD is not enabled 
 
 ## Exact next execution step
 
-Implement the proposal-only MCP tool. Limit the initial action types to safe, non-destructive `message.send` and `channel.update` proposals; validate channel IDs against the selected manager's live channel inventory; create an idempotent pending proposal; request the owner approval URL through the auth Worker RPC; and return the proposal reference/link without executing any Discord API write.
+Implement the typed manager Worker write executor for already-approved proposals. Add a lease-based execution claim with bounded retry and idempotent Discord API behavior before exposing any actual write tool.
