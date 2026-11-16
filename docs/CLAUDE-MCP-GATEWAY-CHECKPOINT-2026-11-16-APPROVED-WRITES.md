@@ -299,3 +299,26 @@ This section supersedes the prior note above that MCP OAuth refresh preserves th
 - Dedicated Dawn-only Gateway/Auth pair and Dawn manager remain the only active deployment target; four other manager communities remain locked.
 - Cloudflare staging KV namespace, Worker deployments, Service Binding connectivity, public routes/custom hostnames, secrets, and real Discord/Claude OAuth acceptance: **not performed**.
 - No production deployment, no live Discord resource writes, no bot-role/permission changes, no scheduler/cron activity.
+
+## Verification update — 2026-11-16 — opt-in free workers.dev activation profiles
+
+- Workflow run: `43952583254` — **success**.
+- Job: `133598690776`.
+- Tested commit: `4dbad4e2b90a7622f4f7ab0c76cd8741d972d583`.
+- Dependency install and strict TypeScript: passed.
+- Unit/configuration suite: **89 passed** across 10 files.
+- Cloudflare Workers integration suite: **36 passed** across 7 files.
+- Total automated tests: **125 passed**.
+- All six offline Wrangler dry-runs passed, each with `--dry-run: exiting now` and the log `passed; no upload performed`: Dawn manager, Dawn Auth bootstrap, Dawn Auth private-final, Dawn Gateway private-final, Dawn Auth workers.dev, Dawn Gateway workers.dev.
+- The existing Dawn Auth/Gateway configs remain private (`workers_dev: false`). A dedicated Auth bootstrap config has no Service Bindings and remains private. Two separate opt-in configs set `workers_dev: true` for the Auth OAuth issuer and Gateway MCP endpoint; they preserve the same Worker names, Service Bindings, Durable Objects, and KV binding as the private-final configs.
+- Deployment sequence is encoded in `docs/CLAUDE-MCP-GATEWAY-STAGING-DEPLOYMENT-RUNBOOK.md`: private Dawn manager → Auth bootstrap without Gateway binding → private Gateway → private Auth with reciprocal binding → configure account `workers.dev` subdomain and exact dashboard variables → deploy Auth/Gateway public activation profiles. This keeps the public endpoints off until both private Service Binding directions work.
+- Only Auth and Gateway become publicly reachable through the account's HTTPS `workers.dev` subdomain; the Discord manager remains private (`workers_dev: false`) in all profiles. The public endpoints still require the app's OAuth flow. Version/Preview URLs remain disabled.
+- This is the preferred no-domain-purchase option for low-volume Dawn staging. The runbook now documents Cloudflare Free quotas: Workers 100,000 requests/day and 10 ms CPU/invocation; KV 100,000 reads, 1,000 writes/deletes/list operations per day and 1 GB; SQLite Durable Objects 100,000 requests/day, 13,000 GB-s/day, 5 million row reads/day, 100,000 row writes/day, and 5 GB aggregate storage. Free-tier limits are hard limits; over-quota operations fail. `workers.dev` is public and Cloudflare recommends custom domains/routes for business-critical production.
+- Latest README commit `56c7fc73babcb2f447e561b9450941e590773248` and runbook commit `1a4cb3e03331a9547e26bef44ee6bc5c0488413e` are documentation/config-guide changes after the tested source commit; the CI workflow is rerun when the README changed and confirms the same test and dry-run suite.
+
+## Still pending
+
+- Cloudflare account owner must configure the free account `workers.dev` subdomain, dedicated Dawn `OAUTH_KV` namespace ID, Dawn guild/application IDs, Discord OAuth app/client/redirect settings, Auth encryption key, owner-approval internal secret, Dawn bot token, and the matching Dawn Gateway/manager write secret pair. Secret values stay in Cloudflare's secret manager and must not be sent in chat or committed.
+- No Cloudflare Worker, KV namespace, Service Binding, workers.dev URL, route, domain, or secret was created or deployed by this work.
+- Live Claude connector registration, Discord consent, OAuth callback, MCP read-only inventory, live connectivity, expiry/reconnect behavior, and rollback still require staging acceptance after deployment.
+- Four locked manager projects and all production resources remain untouched. No Discord message/channel writes, bot-role changes, permission changes, or schedulers were performed.
