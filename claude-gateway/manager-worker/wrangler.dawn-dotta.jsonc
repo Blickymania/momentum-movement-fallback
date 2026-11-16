@@ -5,9 +5,6 @@
   "compatibility_date": "2026-11-15",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
-  "keep_vars": true,
-  "vars": {
-    "DISCORD_GUILD_ID": "",
-    "DISCORD_APPLICATION_ID": ""
-  }
+  "preview_urls": false,
+  "keep_vars": true
 }

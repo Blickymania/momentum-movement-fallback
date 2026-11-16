@@ -6,6 +6,7 @@ type WranglerConfig = {
   name: string;
   workers_dev?: boolean;
   keep_vars?: boolean;
+  preview_urls?: boolean;
   vars?: Record<string, string>;
   services?: Array<{ binding: string; service: string }>;
   kv_namespaces?: Array<{ binding: string; id: string }>;
@@ -25,14 +26,6 @@ const managers = [
   { key: "dawn-dotta", binding: "MANAGER_DAWN_DOTTA" }
 ] as const;
 
-const guildVars = [
-  "GUILD_ID_EMPRESS",
-  "GUILD_ID_BLICKYMANIA",
-  "GUILD_ID_BESTYOUEVAHAD",
-  "GUILD_ID_RED_KOCAINE",
-  "GUILD_ID_DAWN_DOTTA"
-] as const;
-
 describe("staging Wrangler configuration", () => {
   it("declares five distinct private manager Workers with no public routes or embedded secrets", () => {
     for (const manager of managers) {
@@ -40,10 +33,17 @@ describe("staging Wrangler configuration", () => {
       expect(config.name).toBe(`manager-${manager.key}-staging`);
       expect(config.workers_dev).toBe(false);
       expect(config.keep_vars).toBe(true);
-      expect(config.vars).toMatchObject({
-        DISCORD_GUILD_ID: "",
-        DISCORD_APPLICATION_ID: ""
-      });
+      if (manager.key === "dawn-dotta") {
+        expect(config.preview_urls).toBe(false);
+        expect(config.vars).toBeUndefined();
+      } else {
+        // These four manager configs are locked for this execution scope. Do not deploy them
+        // until their blank same-name vars placeholders are removed in an authorized cycle.
+        expect(config.vars).toMatchObject({
+          DISCORD_GUILD_ID: "",
+          DISCORD_APPLICATION_ID: ""
+        });
+      }
       expect(config.services ?? []).toHaveLength(0);
       expect(config.routes ?? []).toHaveLength(0);
       expect(JSON.stringify(config)).not.toMatch(/DISCORD_BOT_TOKEN|MANAGER_WRITE_SECRET/);
@@ -54,7 +54,9 @@ describe("staging Wrangler configuration", () => {
     const resource = readConfig("../wrangler.jsonc");
     const services = resource.services ?? [];
     expect(resource.workers_dev).toBe(false);
+    expect(resource.preview_urls).toBe(false);
     expect(resource.keep_vars).toBe(true);
+    expect(resource.vars).toBeUndefined();
     expect(services).toHaveLength(6);
     expect(services).toContainEqual({
       binding: "AUTH_SERVER",
@@ -79,15 +81,14 @@ describe("staging Wrangler configuration", () => {
   it("declares the auth Worker gateway binding, dedicated blank KV placeholder, and all five guild IDs", () => {
     const auth = readConfig("../auth-worker/wrangler.jsonc");
     expect(auth.workers_dev).toBe(false);
+    expect(auth.preview_urls).toBe(false);
     expect(auth.keep_vars).toBe(true);
+    expect(auth.vars).toBeUndefined();
     expect(auth.services).toContainEqual({
       binding: "GATEWAY_SERVER",
       service: "discord-claude-gateway-staging"
     });
     expect(auth.kv_namespaces).toContainEqual({ binding: "OAUTH_KV", id: "" });
-    expect(auth.vars?.OAUTH_ISSUER_URL).toBe("");
-    expect(auth.vars?.MCP_RESOURCE_URL).toBe("");
-    for (const variable of guildVars) expect(auth.vars?.[variable]).toBe("");
     expect(auth.durable_objects?.bindings).toContainEqual({
       name: "OAUTH_ONE_TIME_STORE",
       class_name: "OAuthOneTimeStore"

@@ -7,16 +7,8 @@
     "nodejs_compat"
   ],
   "workers_dev": false,
+  "preview_urls": false,
   "keep_vars": true,
-  "vars": {
-    "MCP_RESOURCE_URL": "",
-    "OAUTH_ISSUER_URL": "",
-    "GUILD_ID_EMPRESS": "",
-    "GUILD_ID_BLICKYMANIA": "",
-    "GUILD_ID_BESTYOUEVAHAD": "",
-    "GUILD_ID_RED_KOCAINE": "",
-    "GUILD_ID_DAWN_DOTTA": ""
-  },
   "services": [
     {
       "binding": "AUTH_SERVER",

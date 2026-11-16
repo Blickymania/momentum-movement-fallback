@@ -7,18 +7,8 @@
     "nodejs_compat"
   ],
   "workers_dev": false,
+  "preview_urls": false,
   "keep_vars": true,
-  "vars": {
-    "OAUTH_ISSUER_URL": "",
-    "MCP_RESOURCE_URL": "",
-    "DISCORD_CLIENT_ID": "",
-    "DISCORD_REDIRECT_URI": "",
-    "GUILD_ID_EMPRESS": "",
-    "GUILD_ID_BLICKYMANIA": "",
-    "GUILD_ID_BESTYOUEVAHAD": "",
-    "GUILD_ID_RED_KOCAINE": "",
-    "GUILD_ID_DAWN_DOTTA": ""
-  },
   "kv_namespaces": [
     {
       "binding": "OAUTH_KV",
