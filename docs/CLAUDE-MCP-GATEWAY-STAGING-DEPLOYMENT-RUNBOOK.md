@@ -31,6 +31,7 @@ Do not proceed until the Cloudflare account owner has supplied/configured:
    - Auth Worker: `DISCORD_CLIENT_SECRET`, `AUTH_SESSION_ENCRYPTION_KEY`, `OWNER_APPROVAL_INTERNAL_SECRET`.
    - Resource Worker: five distinct `MANAGER_WRITE_SECRET_*` values and the matching `OWNER_APPROVAL_INTERNAL_SECRET`.
    - Each manager Worker: its own `DISCORD_BOT_TOKEN` and matching per-server `MANAGER_WRITE_SECRET`.
+- Each manager Wrangler config sets `keep_vars: true` to preserve existing dashboard-managed variables during deployment.
 7. The same randomly generated `OWNER_APPROVAL_INTERNAL_SECRET` value on Auth and Resource/Gateway Workers. Each manager's write secret must be unique to that manager and match only its corresponding gateway secret.
 
 The resource and auth Wrangler configs currently have `workers_dev: false` and no route/custom-domain declarations. They will not provide a public MCP/OAuth endpoint until the account owner chooses and configures the two HTTPS hostnames and their Cloudflare routes/custom domains. Do not invent a hostname or expose the manager Workers publicly.
