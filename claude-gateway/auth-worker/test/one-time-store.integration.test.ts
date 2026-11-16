@@ -1,4 +1,6 @@
+/// <reference types="@cloudflare/vitest-plugin/types" />
 import { env as cloudflareEnv } from "cloudflare:workers";
+import { runDurableObjectAlarm } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { OAuthOneTimeStore } from "../src/one-time-store";
 
@@ -23,6 +25,13 @@ describe("SQLite OAuth one-time Durable Object", () => {
     const store = newStore();
     await store.put("short-lived", 1);
     await new Promise((resolve) => setTimeout(resolve, 1_100));
+    await expect(store.consume()).resolves.toBeNull();
+  });
+
+  it("runs the scheduled cleanup alarm and removes an abandoned record", async () => {
+    const store = newStore();
+    await store.put("abandoned-record", 60);
+    await expect(runDurableObjectAlarm(store)).resolves.toBe(true);
     await expect(store.consume()).resolves.toBeNull();
   });
 });
