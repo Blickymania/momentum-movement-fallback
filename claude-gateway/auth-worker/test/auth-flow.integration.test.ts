@@ -324,6 +324,30 @@ describe("OAuth authorization Worker end-to-end", () => {
     expect(refreshedGrant?.props.discordTokenExpiresAt).toBe(originalGrant?.props.discordTokenExpiresAt);
   });
 
+  it("supports Claude's current and future remote MCP OAuth callback URLs through DCR", async () => {
+    const auth = createAuth();
+    const redirectUris = [
+      "https://claude.ai/api/mcp/auth_callback",
+      "https://claude.com/api/mcp/auth_callback"
+    ];
+    const response = await auth.fetch(new Request("https://auth.test/oauth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        client_name: "Claude",
+        redirect_uris: redirectUris,
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        token_endpoint_auth_method: "none"
+      })
+    }));
+    expect(response.status, await response.clone().text()).toBe(201);
+    const registered = await response.json() as { client_id: string; client_name: string; redirect_uris: string[] };
+    expect(registered.client_id).toBeTruthy();
+    expect(registered.client_name).toBe("Claude");
+    expect(registered.redirect_uris).toEqual(redirectUris);
+  });
+
   it("fails closed when the authorization environment is incomplete", async () => {
     const auth = createAuth({} as AuthWorkerEnv);
     const response = await auth.fetch(new Request("https://auth.test/authorize"));
