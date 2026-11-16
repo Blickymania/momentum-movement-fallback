@@ -18,7 +18,10 @@ function readConfig(path: string): WranglerConfig {
   return JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as WranglerConfig;
 }
 
-const managers = [
+// Shared gateway bindings remain defined for the five-server architecture.
+// This execution scope reads only the Dawn Dotta manager config; the other four
+// manager projects remain locked and must not be deployed in this cycle.
+const managerBindings = [
   { key: "empress", binding: "MANAGER_EMPRESS" },
   { key: "blickymania", binding: "MANAGER_BLICKYMANIA" },
   { key: "bestyouevahad", binding: "MANAGER_BESTYOUEVAHAD" },
@@ -27,32 +30,22 @@ const managers = [
 ] as const;
 
 describe("staging Wrangler configuration", () => {
-  it("declares five distinct private manager Workers with no public routes or embedded secrets", () => {
-    for (const manager of managers) {
-      const config = readConfig(`../manager-worker/wrangler.${manager.key}.jsonc`);
-      expect(config.name).toBe(`manager-${manager.key}-staging`);
-      expect(config.workers_dev).toBe(false);
-      expect(config.keep_vars).toBe(true);
-      if (manager.key === "dawn-dotta") {
-        expect(config.preview_urls).toBe(false);
-        expect(config.vars).toBeUndefined();
-      } else {
-        // These four manager configs are locked for this execution scope. Do not deploy them
-        // until their blank same-name vars placeholders are removed in an authorized cycle.
-        expect(config.vars).toMatchObject({
-          DISCORD_GUILD_ID: "",
-          DISCORD_APPLICATION_ID: ""
-        });
-      }
-      expect(config.services ?? []).toHaveLength(0);
-      expect(config.routes ?? []).toHaveLength(0);
-      expect(JSON.stringify(config)).not.toMatch(/DISCORD_BOT_TOKEN|MANAGER_WRITE_SECRET/);
-    }
+  it("keeps the authorized Dawn Dotta manager private and preserves dashboard variables", () => {
+    const config = readConfig("../manager-worker/wrangler.dawn-dotta.jsonc");
+    expect(config.name).toBe("manager-dawn-dotta-staging");
+    expect(config.workers_dev).toBe(false);
+    expect(config.preview_urls).toBe(false);
+    expect(config.keep_vars).toBe(true);
+    expect(config.vars).toBeUndefined();
+    expect(config.services ?? []).toHaveLength(0);
+    expect(config.routes ?? []).toHaveLength(0);
+    expect(JSON.stringify(config)).not.toMatch(/DISCORD_BOT_TOKEN|MANAGER_WRITE_SECRET/);
   });
 
-  it("binds the resource Worker to the auth Worker and all five isolated manager Workers", () => {
+  it("binds the shared resource Worker to auth and the five isolated manager service names", () => {
     const resource = readConfig("../wrangler.jsonc");
     const services = resource.services ?? [];
+    expect(resource.name).toBe("discord-claude-gateway-staging");
     expect(resource.workers_dev).toBe(false);
     expect(resource.preview_urls).toBe(false);
     expect(resource.keep_vars).toBe(true);
@@ -62,7 +55,7 @@ describe("staging Wrangler configuration", () => {
       binding: "AUTH_SERVER",
       service: "discord-claude-auth-staging"
     });
-    for (const manager of managers) {
+    for (const manager of managerBindings) {
       expect(services).toContainEqual({
         binding: manager.binding,
         service: `manager-${manager.key}-staging`
@@ -77,6 +70,7 @@ describe("staging Wrangler configuration", () => {
 
   it("declares the auth Worker gateway binding, dedicated KV placeholder, and no embedded secrets", () => {
     const auth = readConfig("../auth-worker/wrangler.jsonc");
+    expect(auth.name).toBe("discord-claude-auth-staging");
     expect(auth.workers_dev).toBe(false);
     expect(auth.preview_urls).toBe(false);
     expect(auth.keep_vars).toBe(true);
