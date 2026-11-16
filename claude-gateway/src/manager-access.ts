@@ -1,6 +1,5 @@
 import { assertGuildAccess, type ServerKey } from "./policy";
 import type { GatewayEnv } from "./manager-client";
-
 export interface CurrentGuildAuthorization {
   isMember: boolean;
   isOwner: boolean;
