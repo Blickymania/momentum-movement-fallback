@@ -4,10 +4,10 @@ This directory contains the isolated Claude MCP gateway and the reusable private
 
 ## Current scope
 
-- Gateway MCP endpoint: read tools plus `discord_propose_change`, a proposal-only tool that does not execute Discord writes.
-- OAuth: a separate Cloudflare OAuth authorization Worker is implemented, compiled in dry-runs, and integration-tested in the local Workers runtime; it is not yet configured or deployed.
-- Manager adapters: one generic read-only Worker source, deployed as five separate private Workers only after staging setup.
-- Discord writes: none are exposed yet. The proposal-only tool writes only to the internal proposal store; role mutations, bot-role changes, permission overwrites, deletes, and bulk actions are not available.
+- Gateway MCP endpoint: read tools, `discord_propose_change` for owner-approved proposals, and `discord_execute_approved_change` to execute only an exact proposal that the current guild owner has separately approved.
+- OAuth: a separate Cloudflare OAuth authorization Worker is implemented and has local Workers-runtime test coverage; it is not yet configured or deployed.
+- Manager adapters: one generic private Worker source, intended to be deployed as five separate Workers with independent guild IDs, bot tokens, write secrets, and Service Bindings.
+- Discord writes: narrowly limited to `message.send` and allowlisted `channel.update` fields. Each action must first be proposed, reviewed through a one-time owner-only Discord verification flow, approved by the current guild owner, then consumed once by the original requester under an execution lease and immutable audit trail. Role mutations, bot-role changes, permission overwrites, deletes, and bulk actions are not available.
 - Production: no routes, secrets, deployments, or Discord changes are authorized by this project checkpoint.
 
 ## Run the checks
@@ -36,7 +36,7 @@ The OAuth Worker source is at `auth-worker/src/index.ts`. It uses the Cloudflare
 - The auth Worker exposes `validateToken`, `checkGuildAccess`, and `createOwnerApprovalSession` RPC methods over its private Service Binding.
 - A separate one-time owner-approval link authenticates through Discord, requires `guild.owner === true` (Administrator is not sufficient), and rechecks ownership at the final approve/reject submission. The auth Worker calls the gateway only through a private Service Binding and a shared internal secret; the gateway rechecks proposal ID, guild, requester, status, and action hash before recording the decision.
 - Every manager read enforces the exact guild list captured in the user's OAuth consent, then rechecks the Discord identity, current guild membership, and owner/Administrator permission. Expired Discord user credentials fail closed and require reauthorization.
-- The current consent catalog grants `mcp:read` only. The `discord_propose_change` tool is available to currently authorized owners/Administrators; it validates a live channel inventory, creates an internal pending proposal, and returns a one-time owner approval link. It never calls a Discord write endpoint. `mcp:write` remains withheld until the typed manager write executor and end-to-end execution tests are implemented and verified.
+- The OAuth grant currently provides `mcp:read`. `discord_propose_change` validates the live channel inventory, creates an internal pending proposal, and returns a one-time owner approval link. `discord_execute_approved_change` is available to the original requester after the current Discord guild owner separately approves the exact action. The executor consumes the approval atomically, obtains a bounded execution lease, calls only the selected private manager using its distinct write secret, and records the outcome in the immutable audit log. This is not arbitrary write access: only `message.send` and `channel.update` are supported; role and bot-role changes, permission overwrites, deletes, and bulk actions remain excluded.
 
 The auth Worker requires a dedicated KV namespace bound as `OAUTH_KV` for the OAuth Provider's supported grant/client storage. Create it in the Cloudflare account, then add the returned namespace ID to `auth-worker/wrangler.jsonc` before any deployment. The config intentionally does not contain a namespace ID.
 
