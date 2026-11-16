@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { checkGuildAccessForToken } from "../src/index";
+import { checkGuildAccessForToken, hasMatchingDiscordOAuthStateCookie } from "../src/index";
 
 const userId = "222222222222222222";
 const guildId = "1565048205970767992";
@@ -14,6 +14,30 @@ function discordFetcher(user: unknown, guilds: unknown, status = 200) {
   });
   return { fetcher: fetcher as unknown as typeof fetch, calls };
 }
+
+describe("Discord OAuth browser-bound state", () => {
+  const state = "f3a4c6d8-1234-4abc-8def-1234567890ab";
+  const cookieName = `__Host-discord-oauth-${state}`;
+
+  it("accepts the state cookie issued to the same browser", () => {
+    const request = new Request("https://auth.example/discord/callback?state=" + state, {
+      headers: { cookie: `${cookieName}=${state}; other=value` }
+    });
+    expect(hasMatchingDiscordOAuthStateCookie(request, state)).toBe(true);
+  });
+
+  it("rejects a callback without the browser-bound state cookie", () => {
+    const request = new Request("https://auth.example/discord/callback?state=" + state);
+    expect(hasMatchingDiscordOAuthStateCookie(request, state)).toBe(false);
+  });
+
+  it("rejects a cookie belonging to a different OAuth state", () => {
+    const request = new Request("https://auth.example/discord/callback?state=" + state, {
+      headers: { cookie: `${cookieName}=different-state` }
+    });
+    expect(hasMatchingDiscordOAuthStateCookie(request, state)).toBe(false);
+  });
+});
 
 describe("live Discord guild authorization", () => {
   it("confirms a current Administrator membership", async () => {
