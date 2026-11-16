@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "discord-claude-gateway-dawn-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-15",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "keep_vars": true,
+  "services": [
+    {
+      "binding": "AUTH_SERVER",
+      "service": "discord-claude-auth-staging"
+    },
+    {
+      "binding": "MANAGER_DAWN_DOTTA",
+      "service": "manager-dawn-dotta-staging"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WRITE_PROPOSAL_STORE",
+        "class_name": "WriteProposalStore"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "WriteProposalStore"
+      ]
+    }
+  ]
+}
