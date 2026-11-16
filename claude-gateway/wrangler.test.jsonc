@@ -5,11 +5,8 @@
   "compatibility_date": "2026-11-16",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
-    "bindings": [
-      { "name": "WRITE_PROPOSAL_STORE", "class_name": "WriteProposalStore" }
-    ]
+    "bindings": [{ "name": "WRITE_PROPOSAL_STORE", "class_name": "WriteProposalStore" }]
   },
-  "migrations": [
-    { "tag": "test-v1", "new_sqlite_classes": ["WriteProposalStore"] }
-  ]
+  "migrations": [{ "tag": "test-v1", "new_sqlite_classes": ["WriteProposalStore"] }],
+  "vars": { "OWNER_APPROVAL_INTERNAL_SECRET": "test-only-secret" }
 }
