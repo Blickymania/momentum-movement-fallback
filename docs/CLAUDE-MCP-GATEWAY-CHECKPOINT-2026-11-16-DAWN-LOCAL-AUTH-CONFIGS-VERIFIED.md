@@ -104,3 +104,15 @@
 - Current branch head before this checkpoint update: `dbf134d7185e83365ff0bf6cfc5ebbeb5450c6b3`.
 - This documentation-only reconciliation did not change application code, secrets, Cloudflare resources, Discord resources, roles, or deployments. No other manager projects were inspected or changed.
 - Next step remains externally dependent: obtain authorized Cloudflare staging account access, create/verify the dedicated Dawn KV namespace, configure account-owned variables/secrets and hostnames, then follow the Dawn-only private deployment order. Keep live Discord operations read-only until separately authorized.
+
+
+## Autonomous cycle 1 — ambiguous message execution safety
+- Scope: Dawn-only gateway source and automated tests. Four other manager projects remain locked; no Discord changes or production deploys.
+- Identified that an ambiguous private manager timeout during `message.send` was marked retryable even though Discord may have accepted the message.
+- Changed `claude-gateway/src/execution-service.ts`: unknown transport outcomes and upstream failures are terminal for message sends; a confirmed Discord HTTP 429 still allows bounded retry; channel updates retain retryability for transient failures.
+- Added targeted unit tests for ambiguous message timeout, safe idempotent channel update retry, and upstream failure without a confirmed Discord rejection.
+- Code commit: `6e9589d7cfc06b4c450b1513007e1fe8b20d356b`; repaired an incorrect consumed-proposal mock in test commit `1b3b868eac0c07f064bc38db28564cd3ac49bdcc`.
+- GitHub Actions run [43981999353](https://github.com/Blickymania/momentum-movement-fallback/actions/runs/43981999353): successful; Node 22 / locked dependencies / strict TypeScript passed; 96 unit/config tests + 12 Auth Worker tests + 24 Gateway/Write integration tests = 132 passing tests; all six offline Wrangler dry-runs passed. No upload or deployment occurred.
+- Scheduler audit unchanged: existing CI remains push/PR/manual, no scheduled maintenance process was created.
+- Remaining risk: after a process crashes during an active message send, the proposal execution lease could expire and be reclaimed automatically. Next cycle: prevent ambiguous expired message leases from generating another send, while retaining idempotent channel-update lease recovery.
+- External blocker remains Cloudflare staging access for the dedicated Dawn KV namespace, dashboard-managed variables/secrets and hostnames. Real deployment, Claude OAuth acceptance, and live Discord reads remain unverified.
