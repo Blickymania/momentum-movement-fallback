@@ -69,3 +69,36 @@ npm run check
 npm run test:workers
 ```
 Capture complete output, repair only confirmed gateway defects, rerun, then add the MCP-level integration test before marking the write path verified.
+
+
+## Verification update — 2026-11-16 — CI green
+
+The prior "not run" test note above described the earlier blocked execution attempt. It is superseded by the following verified GitHub Actions result:
+
+- Workflow run: `43944876281` — **success**, job completed.
+- Tested source commit: `bd89d94fabb626f35647944d9ffb4f2227a81cc1`.
+- TypeScript: `npm run typecheck` completed successfully.
+- Unit suite: `82 passed` across `9 passed` test files via `npm run check`.
+- Cloudflare Worker integration suites: `27 passed` across `6 passed` test files via `npm run test:workers`.
+- The MCP handler integration suite ran in the Workers environment and passed: 4 tests.
+- Owner approval route integration suite passed: 3 tests.
+- Durable Object write proposal integration suite passed: 12 tests.
+- Lockfile reconciliation created staging commit `7e1567a5469d18990e013fab34a9267320d64afc`.
+- GitHub compare confirms that commit is one commit ahead of the tested source and changes only `claude-gateway/package-lock.json`; no application source or test files changed after the successful run.
+- Current staging head at this checkpoint: `7e1567a5469d18990e013fab34a9267320d64afc`.
+
+## Status after verification
+
+- TypeScript and unit checks: **passed in CI**.
+- Cloudflare Workers integration tests: **passed in CI**.
+- MCP approved-write registration and requester/server isolation tests: **passed in CI**.
+- Separate Discord guild-owner approval flow tests: **passed in CI**.
+- Approval consume/lease/audit Durable Object tests: **passed in CI**.
+- Five staging manager bindings and credentials: **not configured or verified**.
+- Full end-to-end Claude OAuth against an actual configured staging OAuth application and Discord tenants: **not run**.
+- Token refresh/reconnect lifecycle: **still requires design, implementation, and tests**.
+- Production deployment and Discord resource writes: **not performed**.
+
+## Next execution target
+
+Inspect and close the Discord access-token expiry/reconnect lifecycle with mocked OAuth/Discord tests. Then document the exact staging configuration prerequisites without reading, copying, or changing any secret values. Keep deployment and Discord writes disabled until the entire staging acceptance sequence is complete and separately authorized.
