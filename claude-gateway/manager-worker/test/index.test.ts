@@ -102,6 +102,17 @@ describe("private read-only Discord manager Worker", () => {
     await expect(response.json()).resolves.toMatchObject({ error: expect.stringMatching(/identity/) });
   });
 
+  it("uses manual redirect handling and fails closed on Discord redirects", async () => {
+    let observedRedirect: RequestRedirect | undefined;
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      observedRedirect = init?.redirect;
+      return new Response(null, { status: 302, headers: { location: "https://attacker.invalid/" } });
+    }) as unknown as typeof fetch;
+    const response = await handleManagerRequest(request("/internal/v1/roles"), env, fetcher);
+    expect(response.status).toBe(502);
+    expect(observedRedirect).toBe("manual");
+  });
+
   it("does not expose the bot token in errors", async () => {
     const fetcher = vi.fn(async () => new Response("secret body", { status: 401 })) as unknown as typeof fetch;
     const response = await handleManagerRequest(request("/internal/v1/roles"), env, fetcher);
