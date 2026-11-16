@@ -41,11 +41,19 @@ jobs:
           cache: npm
           cache-dependency-path: claude-gateway/package-lock.json
 
-      - name: Install locked dependencies
-        run: npm ci --no-audit --no-fund
+      - name: Reconcile and install dependencies
+        run: npm install --no-audit --no-fund
 
       - name: Run strict TypeScript and unit checks
         run: npm run check
 
       - name: Run Cloudflare Workers integration suites
         run: npm run test:workers
+
+      - name: Preserve reconciled lockfile for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-gateway-reconciled-lockfile
+          path: claude-gateway/package-lock.json
+          retention-days: 1
