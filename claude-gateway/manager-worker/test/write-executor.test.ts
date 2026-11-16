@@ -103,7 +103,7 @@ describe("typed Discord manager write executor", () => {
     });
     const limited = await handleManagerWrite(await requestFor(action), config, rateLimited as never);
     expect(limited.status).toBe(503);
-    const missing = await handleManagerWrite(await requestFor(action), config, vi.fn(async () => new Response("missing", { status: 404)) as never);
+    const missing = await handleManagerWrite(await requestFor(action), config, vi.fn(async () => new Response("missing", { status: 404 })) as never);
     expect(missing.status).toBe(404);
   });
 });
