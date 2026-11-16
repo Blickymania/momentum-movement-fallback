@@ -12,7 +12,7 @@
   - Link consumption is one-time.
   - Discord OAuth state is browser-cookie bound.
   - The current Discord guild owner is required (`guild.owner === true`); Administrator permission alone is explicitly insufficient.
-  - The requester cannot approve their own proposal.
+  - The current owner may also be the requester, but must still re-authenticate through the separate one-time approval flow, inspect the exact proposal, and explicitly approve or reject; no agent can approve automatically.
   - The exact proposal is fetched from the gateway and displayed before the decision.
   - Owner identity and guild ownership are checked again when the owner submits Approve or Reject.
   - Decision handles are encrypted, short-lived, and one-time; replay is rejected.
@@ -28,7 +28,7 @@ Environment: Node.js 26.12.1, npm 12.2.2, Vitest 4.1.8, Wrangler 4.115.0.
 - `npm ci`: PASS.
 - `npm run check`: PASS — strict TypeScript and 56 unit tests across 6 files.
 - `npm run test:workers`: PASS — 18 Workers runtime integration tests:
-  - 8 auth Worker tests (OAuth end-to-end, one-time state/consent storage, owner-only approval, Administrator rejection, self-approval rejection, one-time link/callback/decision).
+  - 8 auth Worker tests (OAuth end-to-end, one-time state/consent storage, owner-only approval, Administrator rejection, separate owner approval by the requester when applicable, one-time link/callback/decision).
   - 10 gateway tests (proposal store state machine, idempotency, owner approval/rejection, concurrency, expiry, immutable audit, internal route secret, proposal binding, action-hash checks).
 - Wrangler dry-run: PASS for all seven staging Worker configs and both test Worker configs.
 - Scope/security scan: `requiredScopes: ["mcp:read"]`; no `mcp:write` scope in gateway or auth Worker source.
