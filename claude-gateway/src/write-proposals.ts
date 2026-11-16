@@ -396,6 +396,13 @@ export class WriteProposalStore extends DurableObject<unknown> {
       assert(!(current.status === "failed" && current.retryable === 0), "The previous execution failure is terminal and not retryable.");
       assert(!(current.status === "running" && current.lease_until !== null && current.lease_until > now),
         "An execution lease is still active.");
+      // An expired message-send lease does not prove Discord rejected the send.
+      // Reclaiming it can duplicate a message once Discord's nonce window ends.
+      // Channel updates are idempotent and can still be safely reclaimed.
+      const unresolvedSend = current.status === "running" && current.attempts > 0 &&
+        (JSON.parse(proposal.action_json) as ProposedAction).type === "message.send";
+      assert(!unresolvedSend,
+        "An unconfirmed message send must be reconciled manually; its expired lease cannot be reclaimed.");
       assert(current.attempts < MAX_EXECUTION_ATTEMPTS, "Maximum execution retry count has been reached.");
       const attempt = current.attempts + 1;
       const leaseToken = crypto.randomUUID();

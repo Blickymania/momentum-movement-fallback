@@ -197,9 +197,16 @@ describe("persistent owner-approved write proposals", () => {
     });
   });
 
-  it("reclaims an expired lease with a new fencing token and rejects stale results", async () => {
+  it("reclaims an expired idempotent channel-update lease with a new fencing token and rejects stale results", async () => {
     const store = newStore();
-    const proposal = await create(store);
+    const proposal = await store.createProposal({
+      serverKey: "dawn-dotta",
+      guildId,
+      requesterUserId,
+      action: { type: "channel.update", channelId, patch: { topic: "Safe retry after expired lease" } },
+      policyContext,
+      idempotencyKey: crypto.randomUUID()
+    });
     await approve(store, proposal.id);
     await store.consumeApprovedProposal({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash });
     const first = await store.claimExecution({ proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash, leaseMs: 1_000 });
@@ -222,6 +229,28 @@ describe("persistent owner-approved write proposals", () => {
     });
     expect((await store.getExecutionState(proposal.id))?.attempts).toBe(2);
     expect((await store.getAudit(proposal.id)).map((entry) => entry.eventType)).toContain("execution_reclaimed");
+  });
+
+  it("blocks expired message-send leases from replaying an unconfirmed Discord message", async () => {
+    const store = newStore();
+    const proposal = await create(store);
+    await approve(store, proposal.id);
+    await store.consumeApprovedProposal({
+      proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash
+    });
+    const first = await store.claimExecution({
+      proposalId: proposal.id, guildId, requesterUserId,
+      expectedActionHash: proposal.actionHash, leaseMs: 1_000
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    const rejected = await captureInObject(store, (instance) => instance.claimExecution({
+      proposalId: proposal.id, guildId, requesterUserId, expectedActionHash: proposal.actionHash
+    }));
+    expect(rejected).toMatch(/unconfirmed message send.*reconciled manually/);
+    expect(await store.getExecutionState(proposal.id)).toMatchObject({
+      status: "running", attempts: first.attempt
+    });
+    expect((await store.getAudit(proposal.id)).map((record) => record.eventType)).not.toContain("execution_reclaimed");
   });
 
   it("enforces a three-attempt retry limit", async () => {
