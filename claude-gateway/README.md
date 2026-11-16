@@ -44,10 +44,16 @@ Custom Discord login state and consent handles do **not** use KV. They use the `
 
 The following values are configured later in the Cloudflare staging environment, never committed as secrets:
 
-- Variables: `OAUTH_ISSUER_URL`, `MCP_RESOURCE_URL`, `DISCORD_CLIENT_ID`, `DISCORD_REDIRECT_URI`, and the five `GUILD_ID_*` values.
-- Worker secrets: `DISCORD_CLIENT_SECRET`, `AUTH_SESSION_ENCRYPTION_KEY`, and the same random `OWNER_APPROVAL_INTERNAL_SECRET` on both the gateway and auth Workers. The auth Worker declares a private `GATEWAY_SERVER` Service Binding back to `discord-claude-gateway-staging`; the gateway already declares `AUTH_SERVER`.
+- **Auth Worker variables:** `OAUTH_ISSUER_URL`, `MCP_RESOURCE_URL`, `DISCORD_CLIENT_ID`, `DISCORD_REDIRECT_URI`, and all five `GUILD_ID_*` values.
+- **Gateway Worker variables:** the same `OAUTH_ISSUER_URL`, `MCP_RESOURCE_URL`, and all five `GUILD_ID_*` values. The five guild IDs must exactly match the auth Worker and the corresponding manager Workers.
+- **Each manager Worker variables:** its own matching `DISCORD_GUILD_ID` and its own `DISCORD_APPLICATION_ID`.
+- **Auth Worker secrets:** `DISCORD_CLIENT_SECRET`, `AUTH_SESSION_ENCRYPTION_KEY`, and `OWNER_APPROVAL_INTERNAL_SECRET`.
+- **Gateway Worker secrets:** the same `OWNER_APPROVAL_INTERNAL_SECRET`, plus five different secrets named `MANAGER_WRITE_SECRET_EMPRESS`, `MANAGER_WRITE_SECRET_BLICKYMANIA`, `MANAGER_WRITE_SECRET_BESTYOUEVAHAD`, `MANAGER_WRITE_SECRET_RED_KOCAINE`, and `MANAGER_WRITE_SECRET_DAWN_DOTTA`.
+- **Each manager Worker secrets:** its own `DISCORD_BOT_TOKEN` and its own `MANAGER_WRITE_SECRET`. The manager's `MANAGER_WRITE_SECRET` must match only the corresponding gateway secret above; never reuse one manager's write secret for another manager.
 
-Generate the 32-byte AES key locally with `openssl rand -base64 32` and the internal service secret with `openssl rand -hex 32`. Enter the exact same internal secret separately into both Workers using Cloudflare secret prompts. Do not paste either value into chat, source code, or GitHub. The future staging setup must set `OWNER_APPROVAL_INTERNAL_SECRET` on both Workers.
+The auth Worker declares a private `GATEWAY_SERVER` Service Binding back to `discord-claude-gateway-staging`; the gateway declares `AUTH_SERVER` plus the five isolated manager Service Bindings. Each manager Worker must be deployed as a separate service with `workers_dev: false`.
+
+Generate the 32-byte AES key locally with `openssl rand -base64 32`. Generate the owner-approval internal secret and each of the five unique manager write secrets independently with `openssl rand -hex 32`. Enter secrets directly through Cloudflare's secret prompts, never into source code, Wrangler vars, GitHub, or chat. The owner-approval internal secret is shared only between the auth and gateway Workers; each manager write secret is shared only between its matching gateway configuration and manager Worker.
 
 ## Change proposal and approved-execution MCP tools
 
@@ -74,7 +80,7 @@ The same source at `manager-worker/src/index.ts` is intended to be used by five 
 
 Each config has `workers_dev: false` and blank guild/application IDs. The gateway config has no public workers.dev endpoint and points to separate staging Service Binding names.
 
-Before any staging deployment, the OAuth Worker and all five manager Worker services must exist, the correct guild/application IDs must be configured, and each bot token must be set as a Worker secret using Cloudflare's secret interface. Never put bot tokens in source, Wrangler vars, commits, or chat.
+Before any staging deployment, the auth Worker, gateway Worker, and all five manager Worker services must exist. Configure identical five guild IDs in the auth and gateway Workers and the matching `DISCORD_GUILD_ID` in each corresponding manager Worker. Set each manager's correct application ID, unique bot token, and unique write secret, and mirror that write secret only in the corresponding gateway secret. Configure the shared owner-approval secret on the auth and gateway Workers. Never put bot tokens or write secrets in source, Wrangler vars, commits, or chat.
 
 ## Current staging bindings
 
