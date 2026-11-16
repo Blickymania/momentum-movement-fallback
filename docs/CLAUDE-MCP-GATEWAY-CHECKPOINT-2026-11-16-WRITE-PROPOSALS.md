@@ -26,7 +26,7 @@ Environment: Node.js 26.12.1, npm 12.2.2, Vitest 4.1.8, Wrangler 4.115.0.
 - `npm run check`: PASS — strict TypeScript and 56 unit tests across 6 files.
 - `npm run test:workers`: PASS — 12 Workers runtime integration tests:
   - 5 OAuth and one-time OAuth store tests.
-  - 7 write-proposal Durable Object tests covering idempotency, independent owner approval, rejection, guild/requester/hash binding, concurrent consume, expiry alarms, and audit immutability.
+  - 7 write-proposal Durable Object tests covering idempotency, verified owner approval in a separate explicit step, rejection, guild/requester/hash binding, concurrent consume, expiry alarms, and audit immutability.
 - Wrangler `deploy --dry-run`: PASS for all seven non-test Worker configs (gateway, OAuth Worker, and five private manager Workers).
 - Wrangler dry-run: PASS for both isolated test configs (OAuth and gateway proposal store).
 - Scope review confirms the gateway still requires `mcp:read`; no `mcp:write` scope or write tool is exposed.
