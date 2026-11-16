@@ -19,7 +19,7 @@ Command: `npm run check` (using the bootstrapped npm 12.2.2 shim in the isolated
 
 - TypeScript strict check: PASS.
 - Vitest: PASS — 5 test files, 49 tests passed.
-- Wrangler `deploy --dry-run`: PASS for all six Worker configurations:
+- Wrangler `deploy --dry-run`: PASS for all seven Worker configurations:
   - gateway router
   - OAuth authorization Worker
   - Empress private manager Worker
@@ -28,7 +28,7 @@ Command: `npm run check` (using the bootstrapped npm 12.2.2 shim in the isolated
   - Red Kocaine private manager Worker
   - Dawn Dotta private manager Worker
 
-The six Wrangler checks were dry-runs only; no deployment occurred. The environment used Node.js 26.12.1, not the documented Node 22 target. Re-run the acceptance suite on Node 22 before release.
+The seven Wrangler checks were dry-runs only; no deployment occurred. The environment used Node.js 26.12.1, not the documented Node 22 target. Re-run the acceptance suite on Node 22 before release.
 
 ## Current security and integration blockers
 
