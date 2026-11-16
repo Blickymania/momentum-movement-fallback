@@ -85,7 +85,7 @@ describe("current Discord authorization checks", () => {
       }))
     };
     await expect(assertCurrentGuildReadAccess(
-      env, auth, "dawn-dotta", ["1565048205970767992"], ["mcp:read"], "test-access-token"
+      env, auth, "dawn-dotta", "bad-user", ["1565048205970767992"], ["mcp:read"], "test-access-token"
     )).rejects.toThrow(/user ID is invalid/);
     expect(auth.checkGuildAccess).not.toHaveBeenCalled();
   });
