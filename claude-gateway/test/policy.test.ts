@@ -150,7 +150,8 @@ describe("single-use approval binding", () => {
   const approval = {
     status: "approved" as const,
     proposalUserId: "222222222222222222",
-    approverUserId: "222222222222222222",
+    approverUserId: "333333333333333333",
+    approverIsOwner: true,
     callerUserId: "222222222222222222",
     proposalGuildId: guildId,
     requestedGuildId: guildId,
@@ -161,7 +162,7 @@ describe("single-use approval binding", () => {
     consumed: false
   };
 
-  it("accepts the exact unexpired approval for the same user and guild", () => {
+  it("accepts a separate verified owner approval for the original requester", () => {
     expect(() => assertApprovalReady(approval)).not.toThrow();
   });
 
@@ -170,7 +171,15 @@ describe("single-use approval binding", () => {
   });
 
   it("rejects approval reuse by another user", () => {
-    expect(() => assertApprovalReady({ ...approval, callerUserId: "333333333333333333" })).toThrow(/different Discord user/);
+    expect(() => assertApprovalReady({ ...approval, callerUserId: "333333333333333333" })).toThrow(/original requester/);
+  });
+
+  it("rejects self-approval by the proposal requester", () => {
+    expect(() => assertApprovalReady({ ...approval, approverUserId: approval.proposalUserId })).toThrow(/separate owner approval/);
+  });
+
+  it("rejects an approver who is not verified as the guild owner", () => {
+    expect(() => assertApprovalReady({ ...approval, approverIsOwner: false })).toThrow(/verified Discord guild owner/);
   });
 
   it("rejects approval use in another guild", () => {
