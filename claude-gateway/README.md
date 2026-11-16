@@ -4,10 +4,10 @@ This directory contains the isolated Claude MCP gateway and the reusable private
 
 ## Current scope
 
-- Gateway MCP endpoint: read-only tools only.
+- Gateway MCP endpoint: read tools plus `discord_propose_change`, a proposal-only tool that does not execute Discord writes.
 - OAuth: a separate Cloudflare OAuth authorization Worker is implemented, compiled in dry-runs, and integration-tested in the local Workers runtime; it is not yet configured or deployed.
 - Manager adapters: one generic read-only Worker source, deployed as five separate private Workers only after staging setup.
-- Writes: not exposed. No role mutations or destructive operations.
+- Discord writes: none are exposed yet. The proposal-only tool writes only to the internal proposal store; role mutations, bot-role changes, permission overwrites, deletes, and bulk actions are not available.
 - Production: no routes, secrets, deployments, or Discord changes are authorized by this project checkpoint.
 
 ## Run the checks
@@ -36,7 +36,7 @@ The OAuth Worker source is at `auth-worker/src/index.ts`. It uses the Cloudflare
 - The auth Worker exposes `validateToken`, `checkGuildAccess`, and `createOwnerApprovalSession` RPC methods over its private Service Binding.
 - A separate one-time owner-approval link authenticates through Discord, requires `guild.owner === true` (Administrator is not sufficient), and rechecks ownership at the final approve/reject submission. The auth Worker calls the gateway only through a private Service Binding and a shared internal secret; the gateway rechecks proposal ID, guild, requester, status, and action hash before recording the decision.
 - Every manager read enforces the exact guild list captured in the user's OAuth consent, then rechecks the Discord identity, current guild membership, and owner/Administrator permission. Expired Discord user credentials fail closed and require reauthorization.
-- The current consent catalog grants `mcp:read` only. A persistent write-proposal store and immutable audit log are implemented, but write scope remains withheld until a separate owner-verification/approval interface and typed manager write executor are implemented and verified.
+- The current consent catalog grants `mcp:read` only. The `discord_propose_change` tool is available to currently authorized owners/Administrators; it validates a live channel inventory, creates an internal pending proposal, and returns a one-time owner approval link. It never calls a Discord write endpoint. `mcp:write` remains withheld until the typed manager write executor and end-to-end execution tests are implemented and verified.
 
 The auth Worker requires a dedicated KV namespace bound as `OAUTH_KV` for the OAuth Provider's supported grant/client storage. Create it in the Cloudflare account, then add the returned namespace ID to `auth-worker/wrangler.jsonc` before any deployment. The config intentionally does not contain a namespace ID.
 
@@ -48,6 +48,15 @@ The following values are configured later in the Cloudflare staging environment,
 - Worker secrets: `DISCORD_CLIENT_SECRET`, `AUTH_SESSION_ENCRYPTION_KEY`, and the same random `OWNER_APPROVAL_INTERNAL_SECRET` on both the gateway and auth Workers. The auth Worker declares a private `GATEWAY_SERVER` Service Binding back to `discord-claude-gateway-staging`; the gateway already declares `AUTH_SERVER`.
 
 Generate the 32-byte AES key locally with `openssl rand -base64 32` and the internal service secret with `openssl rand -hex 32`. Enter the exact same internal secret separately into both Workers using Cloudflare secret prompts. Do not paste either value into chat, source code, or GitHub. The future staging setup must set `OWNER_APPROVAL_INTERNAL_SECRET` on both Workers.
+
+## Proposal-only MCP tool
+
+`discord_propose_change` is the first controlled write-workflow step, not a Discord write tool. It requires the caller to have current owner/Administrator access to the exact OAuth-consented guild. It reads the selected manager's live channel inventory before storing a proposal. The initial allowlist is:
+
+- `message.send` proposals for text and announcement channels only.
+- `channel.update` proposals for text, announcement, and forum channels. Forum layout/archive fields are restricted to forum channels.
+
+Permission overwrites, all role changes (including bot roles), deletes, bulk actions, and unsupported channel types are rejected. The proposal store uses a stable idempotency key; the tool returns a one-time owner approval URL. The current guild owner must inspect the exact action and explicitly approve or reject it through the separate Discord OAuth flow. No Discord write is performed at proposal time, and no executor is wired yet.
 
 ## Manager Worker isolation
 
@@ -78,4 +87,4 @@ Those services do not yet exist. The gateway's `MCP_RESOURCE_URL` and `OAUTH_ISS
 
 ## Do not deploy yet
 
-The OAuth authorization Worker is locally compiled and integration-tested but remains unconfigured and undeployed. The per-guild write-proposal Durable Object and immutable audit log are implemented and tested but are not connected to MCP tools or deployed. The separate Discord owner-approval interface and private gateway decision bridge are now implemented and locally tested, but the shared internal secret and circular Service Bindings are not configured/deployed. Proposal creation is not yet exposed as an MCP tool, and the typed manager write executor and write-tool integration remain outstanding. The five private manager Workers have not been deployed. Run the full source checks first, then complete integration and security tests. Production release requires a separate explicit decision.
+The OAuth authorization Worker is locally compiled and integration-tested but remains unconfigured and undeployed. The per-guild write-proposal Durable Object, immutable audit log, separate Discord owner-approval interface, private gateway decision bridge, and proposal-only `discord_propose_change` MCP tool are implemented and locally tested. The shared internal secret and reciprocal Service Bindings are not configured/deployed. The typed manager write executor, execution lease/retry handling, and actual Discord write-tool integration remain outstanding. The five private manager Workers have not been deployed. Run the full source checks first, then complete integration and security tests. Production release requires a separate explicit decision.
