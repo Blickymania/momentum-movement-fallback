@@ -378,10 +378,6 @@ async function finishOwnerApprovalLogin(
   if (!targetGuild || targetGuild.owner !== true) {
     return new Response("Only the current owner of this Discord server can approve this request. Administrator permission is not sufficient.", { status: 403 });
   }
-  if (user.id === loginState.session.requesterUserId) {
-    return new Response("The person who requested this change cannot approve it.", { status: 403 });
-  }
-
   const query = new URLSearchParams({ proposalId: loginState.session.proposalId, guildId: loginState.session.guildId });
   const proposalResponse = await gatewayInternalRequest(env, `/internal/owner-approval/proposal?${query}`);
   if (!proposalResponse.ok) return new Response("This proposal is no longer available for approval.", { status: 409 });
@@ -436,7 +432,7 @@ async function completeOwnerApprovalDecision(request: Request, env: AuthWorkerEn
     discordJson<DiscordGuild[]>(`${DISCORD_API}/users/@me/guilds`, { headers: { authorization: `Bearer ${payload.discordAccessToken}` } })
   ]);
   const targetGuild = guilds.find((guild) => guild.id === payload.guildId);
-  if (user.id !== payload.approverUserId || !targetGuild || targetGuild.owner !== true || user.id === payload.requesterUserId) {
+  if (user.id !== payload.approverUserId || !targetGuild || targetGuild.owner !== true) {
     return new Response("Current Discord guild-owner verification failed. No approval was recorded.", { status: 403 });
   }
 
