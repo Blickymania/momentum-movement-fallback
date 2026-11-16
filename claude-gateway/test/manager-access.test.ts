@@ -16,10 +16,10 @@ describe("current Discord authorization checks", () => {
       }))
     };
     await expect(assertCurrentGuildReadAccess(
-      env, auth, "dawn-dotta", "discord-user-1", ["mcp:read"], "test-access-token"
+      env, auth, "dawn-dotta", "222222222222222221", ["1565048205970767992"], ["mcp:read"], "test-access-token"
     )).resolves.toBeUndefined();
     expect(auth.checkGuildAccess).toHaveBeenCalledWith(
-      "discord-user-1", "1565048205970767992"
+      "222222222222222221", "1565048205970767992", "test-access-token"
     );
   });
 
@@ -32,7 +32,7 @@ describe("current Discord authorization checks", () => {
       }))
     };
     await expect(assertCurrentGuildReadAccess(
-      env, auth, "dawn-dotta", "discord-user-2", ["mcp:read"], "test-access-token"
+      env, auth, "dawn-dotta", "222222222222222222", ["1565048205970767992"], ["mcp:read"], "test-access-token"
     )).rejects.toThrow(/not been granted access/);
   });
 
@@ -45,7 +45,7 @@ describe("current Discord authorization checks", () => {
       }))
     };
     await expect(assertCurrentGuildReadAccess(
-      env, auth, "dawn-dotta", "discord-user-3", ["mcp:read"], "test-access-token"
+      env, auth, "dawn-dotta", "222222222222222223", ["1565048205970767992"], ["mcp:read"], "test-access-token"
     )).rejects.toThrow(/Administrator/);
   });
 
@@ -58,8 +58,36 @@ describe("current Discord authorization checks", () => {
       }))
     };
     await expect(assertCurrentGuildReadAccess(
-      env, auth, "dawn-dotta", "discord-user-4", [], "test-access-token"
+      env, auth, "dawn-dotta", "222222222222222224", ["1565048205970767992"], [], "test-access-token"
     )).rejects.toThrow(/mcp:read/);
+  });
+
+  it("rejects a guild that was not included in the OAuth consent grant", async () => {
+    const auth = {
+      checkGuildAccess: vi.fn(async () => ({
+        isMember: true,
+        isOwner: true,
+        permissions: "8"
+      }))
+    };
+    await expect(assertCurrentGuildReadAccess(
+      env, auth, "dawn-dotta", "222222222222222226", [], ["mcp:read"], "test-access-token"
+    )).rejects.toThrow(/not included in the user's approved OAuth grant/);
+    expect(auth.checkGuildAccess).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed Discord user IDs before calling the authorization service", async () => {
+    const auth = {
+      checkGuildAccess: vi.fn(async () => ({
+        isMember: true,
+        isOwner: true,
+        permissions: "8"
+      }))
+    };
+    await expect(assertCurrentGuildReadAccess(
+      env, auth, "dawn-dotta", ["1565048205970767992"], ["mcp:read"], "test-access-token"
+    )).rejects.toThrow(/user ID is invalid/);
+    expect(auth.checkGuildAccess).not.toHaveBeenCalled();
   });
 
   it("fails closed when the guild ID is not configured", async () => {
@@ -71,7 +99,7 @@ describe("current Discord authorization checks", () => {
       }))
     };
     await expect(assertCurrentGuildReadAccess(
-      {}, auth, "dawn-dotta", "discord-user-5", ["mcp:read"], "test-access-token"
+      {}, auth, "dawn-dotta", "222222222222222225", ["1565048205970767992"], ["mcp:read"], "test-access-token"
     )).rejects.toThrow(/not configured/);
     expect(auth.checkGuildAccess).not.toHaveBeenCalled();
   });
