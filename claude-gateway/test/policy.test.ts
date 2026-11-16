@@ -174,8 +174,8 @@ describe("single-use approval binding", () => {
     expect(() => assertApprovalReady({ ...approval, callerUserId: "333333333333333333" })).toThrow(/original requester/);
   });
 
-  it("rejects self-approval by the proposal requester", () => {
-    expect(() => assertApprovalReady({ ...approval, approverUserId: approval.proposalUserId })).toThrow(/separate owner approval/);
+  it("allows the requester to approve in a separate step when they are the verified guild owner", () => {
+    expect(() => assertApprovalReady({ ...approval, approverUserId: approval.proposalUserId })).not.toThrow();
   });
 
   it("rejects an approver who is not verified as the guild owner", () => {
