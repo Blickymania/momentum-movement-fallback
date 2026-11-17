@@ -166,3 +166,10 @@
 - Verified the signed-in Cloudflare account's existing `workers.dev` subdomain in Workers & Pages. Derived the Dawn staging OAuth callback and MCP endpoint using the Auth and Gateway worker names documented in the runbook. Account-specific URLs are omitted from this repository.
 - Verified the exact callback is absent from the matched application's OAuth2 settings. Left the OAuth2 page open for the owner. No OAuth redirect, secret, bot role, or Cloudflare resource changed. No deployment or scheduled process ran.
 - Resume with owner approval for the exact callback on the matched app. Enter existing credentials through encrypted controls, then follow the private-first Worker deployment and live acceptance sequence in the runbook.
+
+## Follow-up checkpoint — Dawn staging redirect registered
+
+- With owner approval, appended the exact Dawn staging Auth callback to the OAuth2 redirects for `Blickymania Bot 005`. Discord saved the configuration. Reloaded the OAuth2 settings and verified one copy of the new callback and both pre-existing redirects.
+- No credentials were retrieved or rotated. No Discord roles or Worker resources changed, and no scheduled processes ran.
+- A terminal is now available with Node and npm. The deployment environment has no configured Cloudflare API token or account ID environment variables. Cloudflare browser dashboard access was previously verified.
+- Remaining work: configure the existing Discord OAuth client secret and approved bot token through encrypted controls, obtain Cloudflare deployment authentication for the chosen runner, and execute the runbook's private-first deployment and staging acceptance checks. Keep the registered redirect and existing OAuth routes intact.
