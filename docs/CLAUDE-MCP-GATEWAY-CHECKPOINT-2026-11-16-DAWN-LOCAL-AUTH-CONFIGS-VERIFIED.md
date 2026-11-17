@@ -203,3 +203,8 @@
 - The runner can fetch the staging branch and dependencies. Regenerated all three ignored Auth configs with the previously verified dedicated KV binding. Pinned Wrangler reports no authenticated account. An isolated Wrangler 4.119.0 invocation supports Cloudflare's device authorization and successfully requested a short-lived approval. The project's pinned Wrangler dependency was not changed.
 - No staging Worker has been deployed in this cycle. No credential values or device codes were committed. No scheduler or production change was introduced.
 - Resume by completing Cloudflare device approval in the approved account, verifying the runner account, then deploying the Dawn private profiles in runbook order. The existing Discord OAuth client secret and bot token are still needed for encrypted Worker configuration before public staging acceptance.
+
+## Follow-up checkpoint — managed runner authentication blocked
+
+- The Cloudflare device-login process could not complete because the managed runner explicitly blocked outbound access to `dash.cloudflare.com:443`. A separate pinned Wrangler account check confirmed the runner remained unauthenticated. No deployment was attempted and no credentials were accessed or rotated.
+- Start a fresh Wrangler sign-in on a networked runner with Cloudflare access. Use the Dawn staging branch, install locked dependencies with `npm ci --no-audit --no-fund`, confirm the approved account with `npx --no-install wrangler whoami`, and resume the private deployment order. Bring the existing Discord OAuth secret and approved Dawn bot token for encrypted dashboard entry.
