@@ -28,7 +28,7 @@ function makeLeaseTransport({ denyAcquire = false, denyFence = false } = {}) {
       const method = init?.method || "GET";
       calls.push({ path: url.pathname, method });
       if (url.pathname === "/lease/acquire" && method === "POST") {
-        if (denyAcquire) return new Response(JSON.stringify({ ok: false }), { status: 409 });
+        if (denyAcquire) return new Response(JSON.stringify({ ok: false, reason: "lease_unavailable" }), { status: 409 });
         const body = JSON.parse(init.body);
         const now = Date.now();
         if (lease && lease.lease_until_ms > now) {

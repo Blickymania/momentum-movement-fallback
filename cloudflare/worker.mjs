@@ -219,6 +219,7 @@ async function fenceCandidate(request, env) {
     return json({
       ok: true,
       fenced: true,
+      candidateOwnerId: result.fenceConfirmation.fence_target_owner_id,
       previousDeploymentId: result.previousDeploymentId,
       candidateDeploymentId: result.candidateDeploymentId,
       previousServiceId: result.previousServiceId,

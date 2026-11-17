@@ -92,7 +92,7 @@ export function prepareFencedDiscordGatewayOwner({
     if (!destroyInFlight) {
       destroyInFlight = Promise.resolve()
         .then(() => client.destroy())
-        .finally(() => { destroyInFlight = null; });
+        .catch(error => { destroyInFlight = null; throw error; });
     }
     return destroyInFlight;
   }
@@ -162,7 +162,7 @@ export function prepareFencedDiscordGatewayOwner({
                 .then(value => {
                   cleanup();
                   if (signal.aborted || closed) {
-                    void destroyClientOnce().catch(() => {});
+                    void Promise.resolve().then(() => client.destroy()).catch(() => {});
                     return;
                   }
                   resolve(value);

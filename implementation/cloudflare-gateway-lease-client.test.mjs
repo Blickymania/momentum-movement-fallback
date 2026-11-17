@@ -193,7 +193,7 @@ test("Worker separates operator bootstrap and bot fence-request credentials; dir
     const denied = await worker.fetch(new Request("https://lease.example.com" + path, {
       method: "POST",
       headers: { authorization: "Bearer " + token, "content-type": "application/json" },
-      body: JSON.stringify({ candidateOwnerId: "standby-owner", candidateDeploymentId: "standby-deploy" })
+      body: JSON.stringify({ candidateOwnerId: "standby-deploy:process-unique", candidateDeploymentId: "standby-deploy" })
     }), env);
     assert.equal(denied.status, 401);
   }

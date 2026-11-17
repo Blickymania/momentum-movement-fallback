@@ -333,30 +333,6 @@ export class GatewayLeaseCoordinator {
     }
 
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-      let body;
-      try {
-        const raw = await request.text();
-        if (raw.length > 4096) return json({ error: "request_too_large" }, 413);
-        body = JSON.parse(raw);
-      } catch {
-        return json({ error: "invalid_json" }, 400);
-      }
-      if (!body || typeof body !== "object" || Array.isArray(body) ||
-          Object.keys(body).sort().join(",") !== "interactionId,source") {
-        return json({ error: "coaching_claim_invalid" }, 400);
-      }
-      try {
-        const result = this.claimCoachingInteraction(body);
-        return json({ ok: true, claimed: result.claimed });
-      } catch (error) {
-        const reason = error instanceof Error && /^[a-z0-9_]{1,80}$/.test(error.message)
-          ? error.message
-          : "coaching_claim_invalid";
-        return json({ ok: false, reason }, 400);
-      }
-    }
-
-    if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
     const paths = {
       "/lease/bootstrap": value => this.bootstrap(value),
