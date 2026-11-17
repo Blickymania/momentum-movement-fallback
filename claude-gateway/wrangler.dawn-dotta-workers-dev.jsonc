@@ -9,6 +9,9 @@
   "workers_dev": true,
   "preview_urls": false,
   "keep_vars": true,
+  "secrets": {
+    "required": ["OWNER_APPROVAL_INTERNAL_SECRET", "MANAGER_WRITE_SECRET_DAWN_DOTTA"]
+  },
   "services": [
     {
       "binding": "AUTH_SERVER",

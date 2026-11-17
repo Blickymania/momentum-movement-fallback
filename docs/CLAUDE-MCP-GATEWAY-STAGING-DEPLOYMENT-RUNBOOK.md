@@ -88,6 +88,7 @@ Do not commit these values. The Auth/Gateway/Dawn manager configs use `keep_vars
   - `auth-worker/wrangler.dawn-dotta.local.jsonc`
   - `auth-worker/wrangler.dawn-dotta-workers-dev.local.jsonc`
 - These local files are git-ignored. Confirm that the namespace ID belongs to the dedicated Dawn staging namespace before proceeding. Do not reuse a production namespace.
+- If the templates changed since the local profiles were generated, move the old local files aside before rerunning the helper. Use profiles generated from the current staging checkout for deployment.
 
 ### Secrets
 
@@ -198,6 +199,8 @@ npx wrangler deploy --config wrangler.dawn-dotta-workers-dev.jsonc
 ```
 
 These profiles use the same Worker names, Service Bindings, Durable Objects, and KV binding as the already-deployed private configs; their only exposure change is `workers_dev: true`. They preserve `preview_urls: false` and `keep_vars: true`.
+
+The Auth and Gateway public profiles also declare their required secret names. Wrangler rejects activation if the corresponding secrets are missing. The private profiles allow first deployment before dashboard secret entry, and the manager remains private. Verify the manager's two secrets and the shared secret values separately before activation. See [Cloudflare's required secrets documentation](https://developers.cloudflare.com/workers/configuration/secrets/#validate-secrets-before-deploy).
 
 Confirm:
 - Auth is reachable at the issuer URL and its Discord callback URL over HTTPS.

@@ -9,6 +9,9 @@
   "workers_dev": true,
   "preview_urls": false,
   "keep_vars": true,
+  "secrets": {
+    "required": ["DISCORD_CLIENT_SECRET", "AUTH_SESSION_ENCRYPTION_KEY", "OWNER_APPROVAL_INTERNAL_SECRET"]
+  },
   "kv_namespaces": [
     {
       "binding": "OAUTH_KV",

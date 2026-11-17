@@ -8,6 +8,7 @@ type WranglerConfig = {
   keep_vars?: boolean;
   preview_urls?: boolean;
   vars?: Record<string, string>;
+  secrets?: { required: string[] };
   services?: Array<{ binding: string; service: string }>;
   kv_namespaces?: Array<{ binding: string; id: string }>;
   durable_objects?: { bindings?: Array<{ name: string; class_name: string }> };
@@ -131,6 +132,9 @@ describe("staging Wrangler configuration", () => {
     expect(authBootstrap.services ?? []).toHaveLength(0);
     expect(authPrivate.workers_dev).toBe(false);
     expect(gatewayPrivate.workers_dev).toBe(false);
+    for (const config of [manager, authBootstrap, authPrivate, gatewayPrivate]) {
+      expect(config.secrets).toBeUndefined();
+    }
 
     expect(authPublic.name).toBe(authPrivate.name);
     expect(authPublic.workers_dev).toBe(true);
@@ -146,7 +150,14 @@ describe("staging Wrangler configuration", () => {
     expect(gatewayPublic.keep_vars).toBe(true);
     expect(gatewayPublic.services).toEqual(gatewayPrivate.services);
     expect(gatewayPublic.durable_objects).toEqual(gatewayPrivate.durable_objects);
-    expect(JSON.stringify([authPublic, gatewayPublic])).not.toMatch(/DISCORD_CLIENT_SECRET|AUTH_SESSION_ENCRYPTION_KEY|OWNER_APPROVAL_INTERNAL_SECRET|MANAGER_WRITE_SECRET/);
+    expect(authPublic.secrets?.required).toEqual([
+      "DISCORD_CLIENT_SECRET", "AUTH_SESSION_ENCRYPTION_KEY", "OWNER_APPROVAL_INTERNAL_SECRET"
+    ]);
+    expect(gatewayPublic.secrets?.required).toEqual([
+      "OWNER_APPROVAL_INTERNAL_SECRET", "MANAGER_WRITE_SECRET_DAWN_DOTTA"
+    ]);
+    expect(authPublic.vars).toBeUndefined();
+    expect(gatewayPublic.vars).toBeUndefined();
   });
 
 });
