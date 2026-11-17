@@ -181,3 +181,10 @@
 - Verified Cloudflare Workers Builds already lists `Blickymania/momentum-movement-fallback` under an existing GitHub integration. The initial import form exposes build/deploy commands and previews, but no source branch override. Preview builds were enabled by default. No deployment was submitted from this form.
 - Remaining dependencies: a Cloudflare-authenticated Wrangler runner that reaches the Cloudflare API, plus secure availability of the existing Discord OAuth client secret and approved Dawn bot token. Use the registered OAuth callback and dedicated KV namespace. Deploy privately in runbook order, verify reciprocal bindings, then enable the two public OAuth/MCP endpoints and run live acceptance.
 - No production resources, Discord settings, Worker deployments, GitHub app permissions, or scheduled processes changed during this cycle.
+
+## Follow-up checkpoint — existing GitHub deployment path audited
+
+- The staging branch has its established offline checks and no workflow that deploys the Dawn Claude gateway.
+- Checked the repository's GitHub deployment environments and Actions secret names. The repository's existing Dawn manager deployment environment contains no secrets or variables, and there is no separate Claude gateway staging environment. No explicitly named Cloudflare, Dawn, or Discord deployment credential was visible among the repository-level secret names. No credential values were accessed.
+- The available settings do not establish a ready-to-run GitHub deployment path. No environment, credential, workflow, deployment, or scheduled process was changed or started.
+- Resume in a networked Cloudflare-authenticated Wrangler runner with the approved Discord credentials available for encrypted entry. The OAuth redirect, verified OAuth KV binding, and private-first deployment sequence are already established.
