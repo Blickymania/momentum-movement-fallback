@@ -124,6 +124,8 @@ Cloudflare describes `workers.dev` as public and intended for personal/hobby pro
 
 Run the commands from `claude-gateway` in a runner that can reach Cloudflare. Install the locked dependencies with `npm ci --no-audit --no-fund`, then run `npx --no-install wrangler whoami` and confirm the authenticated account is the approved Dawn staging account. Verify the dedicated KV namespace, generate the ignored Auth configs, and have the approved Discord credentials available before starting. For an existing staging Worker, check its route state and record its current version before deploying.
 
+For a remote runner without a browser callback, use Cloudflare's [device authorization](https://developers.cloudflare.com/changelog/post/2026-08-04-wrangler-login-device-flow/) for sign-in. The locked Wrangler 4.115.0 release predates that option. Run `npm exec --yes --package=wrangler@4.119.0 -- wrangler login --device --browser=false --scopes account:read user:read workers:write` as a separate login invocation, and approve it in the Cloudflare dashboard. Continue with the locked Wrangler for account verification and deployment.
+
 For a new Worker, deploy its private config first and then enter its variables and secrets in **Settings → Variables and Secrets**. The private profiles have no public routes or scheduled triggers. Do not invoke a Worker until its settings are in place. See [Cloudflare's dashboard secret instructions](https://developers.cloudflare.com/workers/configuration/secrets/).
 
 ### 1. Deploy the authorized Dawn manager
@@ -250,7 +252,7 @@ No Claude connector has been connected in this work. Real Claude UI connection a
 
 ## Current readiness
 
-- Latest verified application-code CI is [run 43982612715](https://github.com/Blickymania/momentum-movement-fallback/actions/runs/43982612715) on `d0f22d6f07ba1d292646b575310728dce7df5cb5`. Strict TypeScript, 134 tests, and six offline Wrangler dry-runs passed. The dry-runs exited before upload.
+- Latest verified application-code CI is [run 43995340325](https://github.com/Blickymania/momentum-movement-fallback/actions/runs/43995340325) on `5284b6cf66e3d393db9737aa53dc581979339411`. Strict TypeScript, 136 tests, and six offline Wrangler dry-runs passed. The dry-runs exited before upload.
 - The unit/configuration suite includes five tests for `prepare:dawn:deploy-configs`: required namespace ID, three-profile generation, unchanged tracked templates, no ID leakage to stdout, owner-only file permissions, overwrite protection, validate-before-write behavior, and Git ignore coverage.
 - Dawn has a private bootstrap/final binding sequence plus separate opt-in public `workers.dev` profiles for Auth and Gateway. The manager remains private in all profiles. Five config integration checks verify the private/public profile boundaries, binding graph, and no embedded secrets. Six Wrangler dry-runs validate the manager and all five Auth/Gateway profile combinations.
 - The deployment runbook now uses the guarded local-config preparation helper and generated ignored `.local.jsonc` profiles. The current recovery checkpoint is `docs/CLAUDE-MCP-GATEWAY-CHECKPOINT-2026-11-16-DAWN-LOCAL-AUTH-CONFIGS-VERIFIED.md`.
