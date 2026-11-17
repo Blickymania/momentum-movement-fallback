@@ -173,3 +173,11 @@
 - No credentials were retrieved or rotated. No Discord roles or Worker resources changed, and no scheduled processes ran.
 - A terminal is now available with Node and npm. The deployment environment has no configured Cloudflare API token or account ID environment variables. Cloudflare browser dashboard access was previously verified.
 - Remaining work: configure the existing Discord OAuth client secret and approved bot token through encrypted controls, obtain Cloudflare deployment authentication for the chosen runner, and execute the runbook's private-first deployment and staging acceptance checks. Keep the registered redirect and existing OAuth routes intact.
+
+## Follow-up checkpoint — Dawn deployment preflight and hosted build inspection
+
+- Verified the dedicated `dawn-dotta-staging-oauth` namespace in the signed-in Cloudflare account. Ran the committed local Auth config generator against the verified namespace in scratch. All three generated profiles passed checks for owner-only permissions, identical KV binding, template equivalence apart from that binding, correct private/public flag, and disabled previews. Account IDs and generated configs were kept out of Git. Regenerate them from the runbook if the scratch environment is lost.
+- The current local execution environment has Node and npm. Direct Cloudflare API connectivity timed out, the npm registry probe timed out, and the executor had no configured Cloudflare API token.
+- Verified Cloudflare Workers Builds already lists `Blickymania/momentum-movement-fallback` under an existing GitHub integration. The initial import form exposes build/deploy commands and previews, but no source branch override. Preview builds were enabled by default. No deployment was submitted from this form.
+- Remaining dependencies: a Cloudflare-authenticated Wrangler runner that reaches the Cloudflare API, plus secure availability of the existing Discord OAuth client secret and approved Dawn bot token. Use the registered OAuth callback and dedicated KV namespace. Deploy privately in runbook order, verify reciprocal bindings, then enable the two public OAuth/MCP endpoints and run live acceptance.
+- No production resources, Discord settings, Worker deployments, GitHub app permissions, or scheduled processes changed during this cycle.
