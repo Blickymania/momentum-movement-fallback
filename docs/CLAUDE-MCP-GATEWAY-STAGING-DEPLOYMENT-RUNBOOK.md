@@ -49,7 +49,7 @@ If a Workers Free limit is exceeded, further operations of that type fail until 
 
 ## Required Cloudflare-owned staging inputs
 
-Do not proceed until the Cloudflare account owner has configured these values in the staging account only.
+Have the approved Dawn staging settings and credentials ready for encrypted entry. For a first deployment, add each Worker's settings after its private Worker exists. Keep public routes disabled until all settings and private bindings have been verified.
 
 ### Non-secret dashboard variables
 
@@ -122,7 +122,9 @@ Cloudflare describes `workers.dev` as public and intended for personal/hobby pro
 
 ## Deployment order
 
-All commands below are from the `claude-gateway` directory. Run them only after the account-owned values and secrets above are configured and verified.
+Run the commands from `claude-gateway` in a runner that can reach Cloudflare. Install the locked dependencies with `npm ci --no-audit --no-fund`, then run `npx --no-install wrangler whoami` and confirm the authenticated account is the approved Dawn staging account. Verify the dedicated KV namespace, generate the ignored Auth configs, and have the approved Discord credentials available before starting. For an existing staging Worker, check its route state and record its current version before deploying.
+
+For a new Worker, deploy its private config first and then enter its variables and secrets in **Settings → Variables and Secrets**. The private profiles have no public routes or scheduled triggers. Do not invoke a Worker until its settings are in place. See [Cloudflare's dashboard secret instructions](https://developers.cloudflare.com/workers/configuration/secrets/).
 
 ### 1. Deploy the authorized Dawn manager
 
@@ -130,7 +132,7 @@ All commands below are from the `claude-gateway` directory. Run them only after 
 npx wrangler deploy --config manager-worker/wrangler.dawn-dotta.jsonc
 ```
 
-Confirm:
+Add the manager variables and encrypted secrets listed above through the Cloudflare dashboard, then confirm:
 - Worker name is exactly `manager-dawn-dotta-staging`.
 - `workers_dev` and Version/Preview URLs are disabled.
 - No route or custom domain exists.
@@ -147,7 +149,7 @@ Use the generated local bootstrap-only config. It has the final Dawn Auth Worker
 npx wrangler deploy --config auth-worker/wrangler.dawn-dotta-bootstrap.local.jsonc
 ```
 
-This creates the Auth target needed by the Gateway while keeping the OAuth endpoint private during bootstrap.
+This creates the Auth target needed by the Gateway while keeping the OAuth endpoint private during bootstrap. Add the Auth variables and encrypted secrets listed above and confirm both public routing controls remain disabled.
 
 ### 3. Deploy the Dawn-only Gateway
 
@@ -161,7 +163,7 @@ Confirm the Service Bindings are exactly:
 - `AUTH_SERVER` → `discord-claude-auth-dawn-staging`
 - `MANAGER_DAWN_DOTTA` → `manager-dawn-dotta-staging`
 
-No other manager binding should be present in this Dawn-only config.
+No other manager binding should be present in this Dawn-only config. Add the Gateway variables and encrypted secrets listed above and verify their names in the dashboard.
 
 ### 4. Redeploy Dawn Auth with its final Gateway binding
 
@@ -177,10 +179,10 @@ Confirm both private directions:
 
 Do not enable the public `workers.dev` endpoint yet.
 
-### 5. Configure the account subdomain and dashboard variables
+### 5. Check account hostname, settings, and routes before activation
 
-- In Cloudflare Workers & Pages, configure the account's `workers.dev` subdomain.
-- Set `OAUTH_ISSUER_URL`, `MCP_RESOURCE_URL`, and `DISCORD_REDIRECT_URI` using the exact hostnames above.
+- Verify the account's existing `workers.dev` subdomain in Workers & Pages and confirm the exact Discord callback remains registered on the approved application.
+- Verify the dashboard variable values for `OAUTH_ISSUER_URL`, `MCP_RESOURCE_URL`, and `DISCORD_REDIRECT_URI`. Compare the approved secret names without displaying their values.
 - Keep `preview_urls: false`; do not enable Version/Preview URLs or Deployment URLs.
 - Confirm `workers.dev` is being enabled only for the Dawn Auth and Dawn Gateway Worker names. The Dawn manager remains private.
 
@@ -248,12 +250,12 @@ No Claude connector has been connected in this work. Real Claude UI connection a
 
 ## Current readiness
 
-- Latest verified GitHub Actions run: `43962359403` on code commit `01a927e79bf93decfa4f8e4fc915636f30b4c4e3`; [run details](https://github.com/Blickymania/momentum-movement-fallback/actions/runs/43962359403). Node.js 22 dependency installation and strict TypeScript passed; 94 unit/configuration tests, 12 Auth Worker integration tests, and 24 Gateway/Write integration tests passed (130 total). All six offline Wrangler dry-runs passed: Dawn manager, Auth bootstrap, private Auth, private Gateway, public Auth workers.dev, and public Gateway workers.dev. Each dry-run exited before upload.
+- Latest verified application-code CI is [run 43982612715](https://github.com/Blickymania/momentum-movement-fallback/actions/runs/43982612715) on `d0f22d6f07ba1d292646b575310728dce7df5cb5`. Strict TypeScript, 134 tests, and six offline Wrangler dry-runs passed. The dry-runs exited before upload.
 - The unit/configuration suite includes five tests for `prepare:dawn:deploy-configs`: required namespace ID, three-profile generation, unchanged tracked templates, no ID leakage to stdout, owner-only file permissions, overwrite protection, validate-before-write behavior, and Git ignore coverage.
 - Dawn has a private bootstrap/final binding sequence plus separate opt-in public `workers.dev` profiles for Auth and Gateway. The manager remains private in all profiles. Five config integration checks verify the private/public profile boundaries, binding graph, and no embedded secrets. Six Wrangler dry-runs validate the manager and all five Auth/Gateway profile combinations.
 - The deployment runbook now uses the guarded local-config preparation helper and generated ignored `.local.jsonc` profiles. The current recovery checkpoint is `docs/CLAUDE-MCP-GATEWAY-CHECKPOINT-2026-11-16-DAWN-LOCAL-AUTH-CONFIGS-VERIFIED.md`.
 - The successful CI run validates source, tests, and offline bundles only. It does not prove live Cloudflare bindings, OAuth consent/reconnect, or Discord API access.
-- No Cloudflare staging Worker, KV namespace, route, custom domain, Service Binding, or secret has been created or deployed by this work.
-- Account-owned prerequisites remain: Cloudflare account `workers.dev` subdomain, dedicated Dawn `OAUTH_KV` namespace ID, Dawn guild/application IDs, Discord client settings, and the Dawn bot/write/owner-approval secrets.
+- The Cloudflare account subdomain, dedicated Dawn OAuth KV namespace and binding, and Discord OAuth callback registration have been verified. No staging Worker has been deployed.
+- Remaining deployment inputs are a Cloudflare-authenticated runner with API connectivity and secure access to the approved Discord credentials. Configure the Dawn variables and secrets during private bootstrap before enabling the two public routes.
 - No live Discord writes, bot-role changes, or production changes were performed.
 - No scheduler, cron, reminder, or recurring maintenance was created.
