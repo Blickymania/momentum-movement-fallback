@@ -222,3 +222,9 @@
 - Verified the actual command with a stubbed Wrangler invocation. The default branch and a missing branch stopped before Wrangler. The Dawn staging branch invoked only the private manager profile.
 - The import wizard selected a build token associated with a different project. Do not reuse or change that token. A dedicated Workers Builds token is available through the form but requires owner approval because it grants Worker deployment access. No token was created, and the form was not submitted.
 - Resume by authorizing a dedicated Dawn build token and creating the guarded Workers Builds project. The initial default-branch build must stop before deployment. Set branch control to the Dawn staging branch and check that preview builds remain disabled, then run the private manager build and verify its deployed version and private routes.
+
+## Follow-up checkpoint — guarded Cloudflare manager project initialized
+
+- With owner approval, created the separate Cloudflare Workers Builds project `manager-dawn-dotta-staging` and its dedicated build token. The import used `claude-gateway` as root, disabled preview builds, and retained the exact Dawn staging branch guard. No existing deployment token was changed or selected.
+- Initial Cloudflare build `4e938228` stopped before Wrangler with the expected Dawn branch guard. No Worker code deployment was verified at this checkpoint.
+- Resume in Dawn manager Settings → Build → Branch control. Select the Dawn staging branch, keep previews off, and start a new build from that branch. Verify the deployed manager has no public route before configuring its runtime credentials. Do not retry the default-branch build.
