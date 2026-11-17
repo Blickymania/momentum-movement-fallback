@@ -110,6 +110,12 @@ export async function handleManagerRequest(
         if (applicationObject.id !== config.applicationId) {
           return json({ error: "Bot application identity does not match this manager." }, 502);
         }
+        if (botObject.id !== config.applicationId) {
+          return json({ error: "Bot user identity does not match this manager." }, 502);
+        }
+        if (guildObject.id !== config.guildId) {
+          return json({ error: "Guild identity does not match this manager." }, 502);
+        }
         return json({
           connected: true,
           applicationId: config.applicationId,

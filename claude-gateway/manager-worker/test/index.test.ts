@@ -78,7 +78,7 @@ describe("private read-only Discord manager Worker", () => {
   it("verifies the bot application identity for status reads", async () => {
     const { fetcher } = discordFetcher([
       { id: applicationId },
-      { id: "bot-user", username: "TestBot" },
+      { id: applicationId, username: "TestBot" },
       { id: guildId, name: "Momentum Movement" }
     ]);
     const response = await handleManagerRequest(request("/internal/v1/status"), env, fetcher);
@@ -86,7 +86,7 @@ describe("private read-only Discord manager Worker", () => {
     await expect(response.json()).resolves.toMatchObject({
       connected: true,
       applicationId,
-      bot: { id: "bot-user", username: "TestBot" },
+      bot: { id: applicationId, username: "TestBot" },
       guild: { id: guildId, name: "Momentum Movement" }
     });
   });
@@ -100,6 +100,28 @@ describe("private read-only Discord manager Worker", () => {
     const response = await handleManagerRequest(request("/internal/v1/status"), env, fetcher);
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toMatchObject({ error: expect.stringMatching(/identity/) });
+  });
+
+  it("rejects a current bot user that does not match the configured application", async () => {
+    const { fetcher } = discordFetcher([
+      { id: applicationId },
+      { id: "999999999999999999", username: "WrongBot" },
+      { id: guildId, name: "Momentum Movement" }
+    ]);
+    const response = await handleManagerRequest(request("/internal/v1/status"), env, fetcher);
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({ error: "Bot user identity does not match this manager." });
+  });
+
+  it("rejects a guild response that does not match the configured guild", async () => {
+    const { fetcher } = discordFetcher([
+      { id: applicationId },
+      { id: applicationId, username: "TestBot" },
+      { id: "999999999999999999", name: "Wrong Guild" }
+    ]);
+    const response = await handleManagerRequest(request("/internal/v1/status"), env, fetcher);
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({ error: "Guild identity does not match this manager." });
   });
 
   it("uses manual redirect handling and fails closed on Discord redirects", async () => {
