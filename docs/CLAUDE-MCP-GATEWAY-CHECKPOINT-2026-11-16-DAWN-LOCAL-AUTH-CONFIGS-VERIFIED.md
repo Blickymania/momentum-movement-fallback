@@ -160,3 +160,9 @@
 - Checked the matched application's OAuth2 settings. The Dawn staging callback is absent. The portal offers a secret reset control, and no credential was retrieved or rotated. No application, redirect, bot role, Discord resource, or Cloudflare Worker was changed.
 - Cloudflare's Workers dashboard offers GitHub-backed Workers Builds. Official documentation confirms the connection can trigger deployments on pushes. No repository connection or deployment was started. The existing GitHub Actions workflows remain as previously audited.
 - Resume after the owner identifies the approved staging application and confirms whether the existing OAuth client secret and Dawn bot credential are available through approved encrypted controls. Preserve any existing redirects, credentials, and bot roles. Run the private-first deployment sequence from the runbook in an authenticated Wrangler environment or evaluate a repository-scoped Cloudflare Builds connection with approval before granting access.
+
+## Follow-up checkpoint — staging callback derived
+
+- Verified the signed-in Cloudflare account's existing `workers.dev` subdomain in Workers & Pages. Derived the Dawn staging OAuth callback and MCP endpoint using the Auth and Gateway worker names documented in the runbook. Account-specific URLs are omitted from this repository.
+- Verified the exact callback is absent from the matched application's OAuth2 settings. Left the OAuth2 page open for the owner. No OAuth redirect, secret, bot role, or Cloudflare resource changed. No deployment or scheduled process ran.
+- Resume with owner approval for the exact callback on the matched app. Enter existing credentials through encrypted controls, then follow the private-first Worker deployment and live acceptance sequence in the runbook.
