@@ -44,6 +44,12 @@ test("defers only the isolated Bot 005 rules command", () => {
   });
 });
 
+test("defers only isolated Bot 005 help", () => {
+  const route = { status: "routed", handlers: ["bot005-help"] };
+  assert.deepEqual(planner({ type: 2, guild_id: GUILD, data: { name: "help" } }, route), { status: "ready", response: { type: 5 } });
+  assert.deepEqual(planner({ type: 2, guild_id: GUILD, data: { name: "server" } }, route), { status: "blocked", reason: "bot005_help_route_type_mismatch" });
+});
+
 test("defers only isolated Bot 005 server aliases", () => {
   const route = { status: "routed", handlers: ["bot005-server"] };
   for (const name of ["server", "dashboard"]) assert.deepEqual(planner({ type: 2, guild_id: GUILD, data: { name } }, route), { status: "ready", response: { type: 5 } });

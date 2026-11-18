@@ -505,6 +505,32 @@ test("rules capability requires its matching flag before opening a Gateway socke
   });
 });
 
+test("/help responds through its isolated default-off handler", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-help"] });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const storage = new MemoryDOStorage(), object = makeObject(storage, { GATEWAY_HANDLER_MANIFEST: manifestValue, BOT005_HELP_ENABLED: "true" });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 202);
+    const socket = sockets[0]; dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise; await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: { session_id: "help-session", resume_gateway_url: "wss://resume.help.example" } }); await core.serial;
+    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: { id: "1569000000000000064", application_id: APP_ID, guild_id: GUILD_ID,
+      channel_id: "1565643996624199760", token: "non-production-help-interaction-token", type: 2,
+      member: { user: { id: "1569000000000000002" } }, data: { name: "help" } } }); await core.serial;
+    const inbox = core.getInbox("bot-alpha"), [queued] = await inbox.listPending();
+    assert.equal(queued.interactionAckState, "acknowledged"); assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-help"]);
+    assert.equal((await object.dispatchers.get("bot-alpha").drain({ limit: 1 })).status, "ok");
+    assert.equal(calls.filter((call) => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 1);
+  });
+});
+
+test("help capability requires its matching flag before opening a Gateway socket", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-help"] });
+  await withRuntime({}, async ({ sockets }) => {
+    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifestValue });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 503); assert.equal(sockets.length, 0);
+  });
+});
+
 test("isolated /server and /dashboard read only verified guild counts", async () => {
   const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-server"] });
   await withRuntime({}, async ({ calls, sockets }) => {
