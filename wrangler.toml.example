@@ -8,6 +8,7 @@ workers_dev = true
 [vars]
 AUTHORIZED_GUILD_ID = "1565048205970767992"
 APPLICATION_ID = "1565304619838742598"
+SOCIAL_TIKTOK_URL = ""
 MCP_OAUTH_ENABLED = "false"
 GATEWAY_COORDINATOR_ENABLED = "false"
 BOT005_PROFILE_MODAL_ENABLED = "false"
@@ -19,6 +20,7 @@ BOT005_EVENTS_ENABLED = "false"
 BOT005_MEMBER_ENABLED = "false"
 BOT005_SERVER_ENABLED = "false"
 BOT005_HELP_ENABLED = "false"
+BOT005_TIKTOK_ENABLED = "false"
 
 [[durable_objects.bindings]]
 name = "GATEWAY_COORDINATOR"
@@ -50,7 +52,7 @@ migrations_dir = "migrations"
 # BOT005_EVENTS_ENABLED=true; "bot005-member" requires BOT005_MEMBER_ENABLED=true.
 # "bot005-server" requires BOT005_SERVER_ENABLED=true; "bot005-help" requires
 # BOT005_HELP_ENABLED=true.
-# Keep all nine flags disabled until the complete
+# Set SOCIAL_TIKTOK_URL only to the official HTTPS profile URL; it is not a secret.\n# Keep all ten flags disabled until the complete
 # feature and restore gates pass. Do not enable general "bot005" while only
 # these isolated features are available.
 #

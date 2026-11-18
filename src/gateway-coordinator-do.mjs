@@ -12,6 +12,7 @@ import { createBot005EventsHandler } from "./bot005-events-handler.mjs";
 import { createBot005MemberHandler } from "./bot005-member-handler.mjs";
 import { createBot005ServerHandler } from "./bot005-server-handler.mjs";
 import { createBot005HelpHandler } from "./bot005-help-handler.mjs";
+import { createBot005TikTokHandler } from "./bot005-tiktok-handler.mjs";
 import { DurableBot005ProfileStore, createBot005ProfileCipher } from "./durable-bot005-profile-store.mjs";
 import { createDiscordDeferredReplyEditor } from "./discord-deferred-reply.mjs";
 import { GatewayEventDispatcher, DurableGatewayDeliveryLedger } from "./durable-gateway-dispatcher.mjs";
@@ -95,13 +96,15 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
   const serverFlagEnabled = env.BOT005_SERVER_ENABLED === "true";
   const declaresHelp = enabled.includes("bot005-help");
   const helpFlagEnabled = env.BOT005_HELP_ENABLED === "true";
+  const declaresTikTok = enabled.includes("bot005-tiktok");
+  const tiktokFlagEnabled = env.BOT005_TIKTOK_ENABLED === "true";
   if (declaresProfileModal !== profileFlagEnabled || declaresPing !== pingFlagEnabled ||
       declaresStatus !== statusFlagEnabled || declaresRules !== rulesFlagEnabled ||
       declaresStatsStatus !== statsStatusFlagEnabled || declaresEvents !== eventsFlagEnabled ||
-      declaresMember !== memberFlagEnabled || declaresServer !== serverFlagEnabled || declaresHelp !== helpFlagEnabled) {
+      declaresMember !== memberFlagEnabled || declaresServer !== serverFlagEnabled || declaresHelp !== helpFlagEnabled || declaresTikTok !== tiktokFlagEnabled) {
     throw new TypeError("Bot 005 isolated capability manifest and runtime flags must explicitly agree");
   }
-  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server", "bot005-help"].includes(id))) {
+  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server", "bot005-help", "bot005-tiktok"].includes(id))) {
     throw new TypeError("Gateway feature handler adapter is unavailable");
   }
   return Object.freeze({
@@ -114,6 +117,7 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
     memberEnabled: declaresMember,
     serverEnabled: declaresServer,
     helpEnabled: declaresHelp,
+    tiktokEnabled: declaresTikTok,
   });
 }
 
@@ -266,6 +270,15 @@ export class GatewayCoordinatorDurableObject {
             if (!Array.isArray(channels)) throw new Error("discord_rules_channel_response_invalid");
             return channels;
           },
+          guildId: handlerRegistry.manifest.guildId,
+          applicationId: handlerRegistry.manifest.applicationId,
+        });
+      }
+      if (capabilities.tiktokEnabled) {
+        handlers["bot005-tiktok"] = createBot005TikTokHandler({
+          revealInteraction: (payload) => tokenVault.decryptPayload(payload),
+          editDeferredReply: createDiscordDeferredReplyEditor(),
+          configuredUrl: this.env.SOCIAL_TIKTOK_URL || "",
           guildId: handlerRegistry.manifest.guildId,
           applicationId: handlerRegistry.manifest.applicationId,
         });

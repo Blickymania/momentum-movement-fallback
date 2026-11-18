@@ -102,7 +102,7 @@ test("routes /rules only through its isolated read-only capability", () => {
   assert.equal(other.status, "disabled");
 });
 
-test("routes /help only through its isolated capability", () => {
+test("routes /tiktok only through its isolated capability", () => {\n  const registry = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005-tiktok"] }));\n  const route = registry.route(event("INTERACTION_CREATE", { guild_id: GUILD, application_id: APP, type: 2, data: { name: "tiktok" } }));\n  assert.deepEqual(route.handlers, ["bot005-tiktok"]);\n  assert.equal(route.routeKey, "command:tiktok");\n});\n\ntest("routes /help only through its isolated capability", () => {
   const registry = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005-help"] }));
   const route = registry.route(event("INTERACTION_CREATE", { guild_id: GUILD, application_id: APP, type: 2, data: { name: "help" } }));
   assert.deepEqual(route.handlers, ["bot005-help"]);

@@ -17,6 +17,7 @@ const HANDLERS = Object.freeze([
   "bot005-member",
   "bot005-server",
   "bot005-help",
+  "bot005-tiktok",
   "social-owner-console",
   "fan-club-level-up",
   "discord-engagement-engine",
@@ -141,6 +142,10 @@ function interactionRoute(config, interaction) {
       return { status: "disabled", reason: "handler_disabled", handler: owner, handlers: [] };
     }
     return { status: "routed", eventType: "INTERACTION_CREATE", handlers: [owner], routeKey: customId.split(":")[0] };
+  }
+
+  if (data.name === "tiktok" && enabled(config, "bot005-tiktok")) {
+    return { status: "routed", eventType: "INTERACTION_CREATE", handlers: ["bot005-tiktok"], routeKey: "command:tiktok" };
   }
 
   if (data.name === "help" && enabled(config, "bot005-help")) {
