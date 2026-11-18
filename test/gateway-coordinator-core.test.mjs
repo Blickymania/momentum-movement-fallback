@@ -680,6 +680,7 @@ test("sends the source-backed Bot 005 modal ACK once before dispatch wakeup", as
   await h.flush();
   frame(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
     id: "1569000000000000001",
+    type: 3,
     application_id: APP_A,
     guild_id: GUILD_A,
     token: "secret-token-for-ack-test",
@@ -687,7 +688,7 @@ test("sends the source-backed Bot 005 modal ACK once before dispatch wakeup", as
   }});
   await h.flush();
   const inbox = h.core.getInbox("bot-alpha");
-  assert.equal((await inbox.listPending())[0].interactionAckState, "acknowledged", JSON.stringify({ logs: h.logs, ackCalls, ackInput, callbackObservedState }));
+  assert.equal((await inbox.listPending())[0].interactionAckState, "acknowledged");
   assert.equal(ackCalls, 1);
   assert.equal(ackInput?.interactionId, "1569000000000000001");
   assert.equal(ackInput?.response?.type, 9);
@@ -695,6 +696,7 @@ test("sends the source-backed Bot 005 modal ACK once before dispatch wakeup", as
   assert.deepEqual(order, ["ack", "dispatch-wakeup"]);
   frame(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
     id: "1569000000000000001",
+    type: 3,
     application_id: APP_A, guild_id: GUILD_A,
     token: "secret-token-for-ack-test",
     data: { component_type: 2, custom_id: "membercard:edit" },
