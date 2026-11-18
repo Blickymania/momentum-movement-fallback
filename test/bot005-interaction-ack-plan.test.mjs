@@ -76,6 +76,21 @@ test("uses the supplied modal response and validates its type before returning i
   });
 });
 
+test("defers only the isolated profile modal submission route", () => {
+  const profileRoute = { status: "routed", handlers: ["bot005-profile-modal"] };
+  for (const custom_id of ["memberdata:profile", "memberdata:birthday", "memberdata:anniversary"]) {
+    assert.deepEqual(planner({ type: 5, data: { custom_id } }, profileRoute), {
+      status: "ready", response: { type: 5 },
+    });
+  }
+  assert.deepEqual(planner({ type: 3, data: { custom_id: "memberdata:birthday" } }, profileRoute), {
+    status: "blocked", reason: "bot005_profile_modal_route_type_mismatch",
+  });
+  assert.deepEqual(planner({ type: 5, data: { custom_id: "coach:request:step2" } }, profileRoute), {
+    status: "blocked", reason: "bot005_profile_modal_selector_not_supported",
+  });
+});
+
 test("defers ordinary modal submissions but delegates the multi-step coaching modal", () => {
   assert.deepEqual(planner({ type: 5, data: { custom_id: "profilev7:save" } }, routed), {
     status: "ready", response: { type: 5 },
