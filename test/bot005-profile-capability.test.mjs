@@ -77,22 +77,22 @@ test("capability guard requires both explicit manifest registration and exact ru
   const registry = createGatewayHandlerRegistry(manifest(["bot005-profile-modal"]));
   assert.throws(() => validateGatewayFeatureCapabilities(registry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(registry, { BOT005_PROFILE_MODAL_ENABLED: "true" }), {
-    profileModalEnabled: true, pingEnabled: false, statusEnabled: false,
+    profileModalEnabled: true, pingEnabled: false, statusEnabled: false, rulesEnabled: false,
   });
   const pingRegistry = createGatewayHandlerRegistry(manifest(["bot005-ping"]));
   assert.throws(() => validateGatewayFeatureCapabilities(pingRegistry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(pingRegistry, { BOT005_PING_ENABLED: "true" }), {
-    profileModalEnabled: false, pingEnabled: true, statusEnabled: false,
+    profileModalEnabled: false, pingEnabled: true, statusEnabled: false, rulesEnabled: false,
   });
 
   const statusRegistry = createGatewayHandlerRegistry(manifest(["bot005-status"]));
   assert.throws(() => validateGatewayFeatureCapabilities(statusRegistry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(statusRegistry, { BOT005_STATUS_ENABLED: "true" }), {
-    profileModalEnabled: false, pingEnabled: false, statusEnabled: true,
+    profileModalEnabled: false, pingEnabled: false, statusEnabled: true, rulesEnabled: false,
   });
 
   const defaultRegistry = createGatewayHandlerRegistry(manifest(["discord-engagement-engine"]));
-  assert.deepEqual(validateGatewayFeatureCapabilities(defaultRegistry, {}), { profileModalEnabled: false, pingEnabled: false, statusEnabled: false });
+  assert.deepEqual(validateGatewayFeatureCapabilities(defaultRegistry, {}), { profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false });
   assert.throws(() => validateGatewayFeatureCapabilities(defaultRegistry, {
     BOT005_PROFILE_MODAL_ENABLED: "true",
   }), /explicitly agree/);
