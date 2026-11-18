@@ -646,6 +646,8 @@ test("stop closes sockets, clears the one alarm, and persists stopped state", as
 test("sends the source-backed Bot 005 modal ACK once before dispatch wakeup", async () => {
   const order = [];
   let ackCalls = 0;
+  let ackInput = null;
+  let callbackObservedState = null;
   const handlerRegistry = {
     route: ({ eventType }) => eventType === "INTERACTION_CREATE"
       ? { status: "routed", handlers: ["bot005"] }
@@ -662,10 +664,9 @@ test("sends the source-backed Bot 005 modal ACK once before dispatch wakeup", as
     acknowledgeInteraction: async (input) => {
       ackCalls += 1;
       order.push("ack");
-      assert.equal(input.interactionId, "1569000000000000001");
-      assert.equal(input.response.type, 9);
+      ackInput = input;
       const pending = await h.core.getInbox("bot-alpha").listPending();
-      assert.equal(pending[0].interactionAckState, "attempting");
+      callbackObservedState = pending[0]?.interactionAckState ?? null;
       return { acknowledged: true, responseType: 9, status: 204 };
     },
     onDispatch: async () => { order.push("dispatch-wakeup"); },
@@ -687,6 +688,10 @@ test("sends the source-backed Bot 005 modal ACK once before dispatch wakeup", as
   await h.flush();
   const inbox = h.core.getInbox("bot-alpha");
   assert.equal((await inbox.listPending())[0].interactionAckState, "acknowledged", JSON.stringify(h.logs));
+  assert.equal(ackCalls, 1);
+  assert.equal(ackInput?.interactionId, "1569000000000000001");
+  assert.equal(ackInput?.response?.type, 9);
+  assert.equal(callbackObservedState, "attempting");
   assert.deepEqual(order, ["ack", "dispatch-wakeup"]);
   frame(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
     id: "1569000000000000001",
