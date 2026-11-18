@@ -4,6 +4,7 @@ import { GatewayCoordinatorDurableObject } from "../src/gateway-coordinator-do.m
 import { DurableEngagementLedger } from "../src/durable-engagement-ledger.mjs";
 import { DurableGatewayDeliveryLedger } from "../src/durable-gateway-dispatcher.mjs";
 import { DurableBot005ProfileStore, createBot005ProfileCipher } from "../src/durable-bot005-profile-store.mjs";
+import { DurableBot005ConfirmationStore } from "../src/durable-bot005-confirmations.mjs";
 import { parseBot005ProfileModal } from "../src/bot005-profile-modal.mjs";
 import { createBot005PingHandler } from "../src/bot005-ping-handler.mjs";
 import { createBot005StatusHandler } from "../src/bot005-status-handler.mjs";
@@ -992,6 +993,54 @@ test("owner-only /forum-admin thread reads only the selected thread and its foru
     assert.equal(calls.filter(call => call.path === "/api/v10/channels/1566000000000000001" && call.method === "GET").length, 1);
     assert.equal(calls.filter(call => call.path.includes("/channels") && call.method !== "GET").length, 0);
     assert.equal(JSON.stringify(calls).includes("non-production-forum-thread-token"), false);
+  });
+});
+
+test("owner-bound forum confirmation follows exact ACK and durable dispatch without a Discord mutation", async () => {
+  const id = "forum_confirm_nonce_0001", messageId = "1566060000000000000";
+  const storage = new MemoryDOStorage();
+  const store = new DurableBot005ConfirmationStore(storage, {
+    key: "bot005:forum-confirmations:bot-alpha",
+  });
+  await store.create({
+    id, kind: "forum-rename", actorId: "1565200000000000001", guildId: GUILD_ID,
+    channelId: "1565643251783049237", expiresAt: Date.now() + 120_000,
+    payload: { threadId: "1566000000000000005", forumId: "1566000000000000001", before: "Old", title: "New" },
+  });
+  await store.bindMessage(id, messageId);
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-forum-confirm"] });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const object = makeObject(storage, {
+      GATEWAY_HANDLER_MANIFEST: manifestValue,
+      BOT005_FORUM_CONFIRM_ENABLED: "true",
+    });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 202);
+    const socket = sockets[0]; dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise; await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: { session_id: "forum-confirm-session", resume_gateway_url: "wss://resume.forum-confirm.example" } }); await core.serial;
+    const sendClick = async (sequence, interactionId, token) => {
+      dispatch(socket, { op: 0, s: sequence, t: "INTERACTION_CREATE", d: {
+        id: interactionId, application_id: APP_ID, guild_id: GUILD_ID,
+        channel_id: "1565643251783049237", token, type: 3,
+        member: { user: { id: "1565200000000000001" } },
+        message: { id: messageId, author: { id: APP_ID } },
+        data: { custom_id: "mm005:forum-confirm:confirm:" + id },
+      } });
+      await core.serial;
+      const [queued] = await core.getInbox("bot-alpha").listPending();
+      assert.equal(queued.interactionAckState, "acknowledged");
+      assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-forum-confirm"]);
+      assert.equal((await object.dispatchers.get("bot-alpha").drain({ limit: 1 })).status, "ok");
+    };
+    await sendClick(2, "1569000000000000104", "non-production-forum-confirm-token-one");
+    assert.equal((await store.get(id)).state, "failed");
+    assert.equal((await store.get(id)).resultCode, "executor_unavailable");
+    await sendClick(3, "1569000000000000105", "non-production-forum-confirm-token-two");
+    assert.equal((await store.get(id)).state, "failed");
+    assert.equal(calls.filter(call => call.path.includes("/channels") && call.method !== "GET").length, 0);
+    assert.equal(calls.filter(call => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 2);
+    assert.equal(JSON.stringify([...storage.values]).includes("non-production-forum-confirm-token-one"), false);
+    assert.equal(JSON.stringify([...storage.values]).includes("non-production-forum-confirm-token-two"), false);
   });
 });
 
