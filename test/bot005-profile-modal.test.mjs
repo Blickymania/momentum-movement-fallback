@@ -56,6 +56,8 @@ test("accepts valid leap-day birthday with optional private year", () => {
     visibility: "private",
   }), { guildId: GUILD, applicationId: APP });
   assert.equal(result.status, "ready");
+  assert.equal(result.guildId, GUILD);
+  assert.equal(result.applicationId, APP);
   assert.deepEqual(result.values, { date: "02-29", year: "", visibility: "private" });
 });
 
@@ -64,6 +66,8 @@ test("requires a valid streaming anniversary year and date", () => {
     date: "08-15", year: "2021", visibility: "public",
   }), { guildId: GUILD, applicationId: APP });
   assert.equal(good.status, "ready");
+  assert.equal(good.guildId, GUILD);
+  assert.equal(good.applicationId, APP);
   assert.deepEqual(good.values, { date: "08-15", year: "2021", visibility: "public" });
   assert.equal(parseBot005ProfileModal(submit("memberdata:anniversary", {
     date: "08-15", year: "", visibility: "private",

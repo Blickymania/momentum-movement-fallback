@@ -97,6 +97,8 @@ export function parseBot005ProfileModal(interaction, {
     return Object.freeze({
       status: "ready",
       interactionId: interaction.id,
+      guildId,
+      applicationId,
       userId,
       kind: anniversary ? "anniversary" : "birthday",
       values: Object.freeze({
