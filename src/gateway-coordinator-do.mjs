@@ -3,6 +3,9 @@ import { createGatewayHandlerRegistry } from "./gateway-handler-registry.mjs";
 import { createInteractionTokenVault } from "./interaction-token-vault.mjs";
 import { createBot005InteractionAckPlanner } from "./bot005-interaction-ack-plan.mjs";
 import { createDiscordInteractionAcknowledger } from "./discord-interaction-ack.mjs";
+import { createBot005ProfileModalHandler } from "./bot005-profile-handler.mjs";
+import { DurableBot005ProfileStore, createBot005ProfileCipher } from "./durable-bot005-profile-store.mjs";
+import { createDiscordDeferredReplyEditor } from "./discord-deferred-reply.mjs";
 import { GatewayEventDispatcher, DurableGatewayDeliveryLedger } from "./durable-gateway-dispatcher.mjs";
 import { DurableEngagementLedger, createEngagementMessageHandler } from "./durable-engagement-ledger.mjs";
 import { createDiscordEngagementChannelResolver } from "./discord-engagement-channel-policy.mjs";
@@ -63,6 +66,20 @@ function readHandlerRegistry(raw, definitions) {
   return registry;
 }
 
+export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
+  const enabled = handlerRegistry?.manifest?.enabledHandlers;
+  if (!Array.isArray(enabled)) throw new TypeError("Gateway handler manifest is invalid");
+  const declaresProfileModal = enabled.includes("bot005-profile-modal");
+  const profileFlagEnabled = env.BOT005_PROFILE_MODAL_ENABLED === "true";
+  if (declaresProfileModal !== profileFlagEnabled) {
+    throw new TypeError("Bot 005 profile modal manifest and capability flag must explicitly agree");
+  }
+  if (enabled.some((id) => id !== "discord-engagement-engine" && id !== "bot005-profile-modal")) {
+    throw new TypeError("Gateway feature handler adapter is unavailable");
+  }
+  return Object.freeze({ profileModalEnabled: declaresProfileModal });
+}
+
 /**
  * One SQLite-backed Durable Object for all verified Discord Gateway identities.
  *
@@ -87,8 +104,8 @@ export class GatewayCoordinatorDurableObject {
   async createCore() {
     const definitions = readDefinitions(this.env.GATEWAY_CLIENT_DEFINITIONS);
     const handlerRegistry = readHandlerRegistry(this.env.GATEWAY_HANDLER_MANIFEST, definitions);
-    if (handlerRegistry.manifest.livePublisher !== "none" ||
-        handlerRegistry.manifest.enabledHandlers.some((id) => id !== "discord-engagement-engine")) {
+    const capabilities = validateGatewayFeatureCapabilities(handlerRegistry, this.env);
+    if (handlerRegistry.manifest.livePublisher !== "none") {
       throw new TypeError("Gateway feature handler adapter is unavailable");
     }
     const tokenVault = createInteractionTokenVault(this.env.GATEWAY_INTERACTION_ENCRYPTION_KEY);
@@ -153,28 +170,47 @@ export class GatewayCoordinatorDurableObject {
     });
     await core.initialize();
     this.dispatchers.clear();
-    if (handlerRegistry.manifest.enabledHandlers.includes("discord-engagement-engine")) {
+    const needsDispatcher = handlerRegistry.manifest.enabledHandlers.length > 0;
+    if (needsDispatcher) {
       const enabledDefinitions = definitions.filter((definition) => definition.enabled);
       if (enabledDefinitions.length !== 1) {
-        throw new TypeError("Engagement Engine requires exactly one explicitly enabled Gateway identity");
+        throw new TypeError("Gateway feature handlers require exactly one explicitly enabled Gateway identity");
       }
       const definition = enabledDefinitions[0];
       const token = this.env[definition.tokenRef];
       if (typeof token !== "string" || token.trim().length < 20) {
-        throw new TypeError("Engagement Engine token reference is unavailable");
+        throw new TypeError("Gateway feature handler token reference is unavailable");
       }
-      this.engagementLedger = new DurableEngagementLedger(this.state.storage, {
-        guildId: handlerRegistry.manifest.guildId,
-        namespace: "momentum",
-      });
-      await this.engagementLedger.initialize();
-      const handler = createEngagementMessageHandler({
-        ledger: this.engagementLedger,
-        channelResolver: createDiscordEngagementChannelResolver({
-          token,
+      const handlers = {};
+      if (handlerRegistry.manifest.enabledHandlers.includes("discord-engagement-engine")) {
+        this.engagementLedger = new DurableEngagementLedger(this.state.storage, {
           guildId: handlerRegistry.manifest.guildId,
-        }),
-      });
+          namespace: "momentum",
+        });
+        await this.engagementLedger.initialize();
+        handlers["discord-engagement-engine"] = createEngagementMessageHandler({
+          ledger: this.engagementLedger,
+          channelResolver: createDiscordEngagementChannelResolver({
+            token,
+            guildId: handlerRegistry.manifest.guildId,
+          }),
+        });
+      }
+      if (capabilities.profileModalEnabled) {
+        const profileCipher = createBot005ProfileCipher(this.env.BOT005_PROFILE_ENCRYPTION_KEY);
+        const profileStore = new DurableBot005ProfileStore(this.state.storage, {
+          guildId: handlerRegistry.manifest.guildId,
+          applicationId: handlerRegistry.manifest.applicationId,
+          cipher: profileCipher,
+        });
+        handlers["bot005-profile-modal"] = createBot005ProfileModalHandler({
+          store: profileStore,
+          revealInteraction: (payload) => tokenVault.decryptPayload(payload),
+          editDeferredReply: createDiscordDeferredReplyEditor(),
+          guildId: handlerRegistry.manifest.guildId,
+          applicationId: handlerRegistry.manifest.applicationId,
+        });
+      }
       const deliveryLedger = new DurableGatewayDeliveryLedger(this.state.storage, {
         namespace: "gateway-dispatch-" + definition.id,
       });
@@ -182,7 +218,7 @@ export class GatewayCoordinatorDurableObject {
         inbox: core.getInbox(definition.id),
         registry: handlerRegistry,
         ledger: deliveryLedger,
-        handlers: { "discord-engagement-engine": handler },
+        handlers,
       }));
     }
     return core;

@@ -8,6 +8,7 @@ const CORE_COMMANDS = Object.freeze([
 
 const HANDLERS = Object.freeze([
   "bot005",
+  "bot005-profile-modal",
   "social-owner-console",
   "fan-club-level-up",
   "discord-engagement-engine",
@@ -97,7 +98,9 @@ function interactionRoute(config, interaction) {
   if (customId) {
     let owner = null;
 
-    if (customId.startsWith("cw:")) {
+    if (interaction.type === 5 && ["memberdata:profile", "memberdata:birthday", "memberdata:anniversary"].includes(customId)) {
+      owner = "bot005-profile-modal";
+    } else if (customId.startsWith("cw:")) {
       owner = "live-events-listener";
     } else if (customId.startsWith("ln2:")) {
       owner = "live-now-v2";
