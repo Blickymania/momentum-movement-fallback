@@ -235,3 +235,20 @@ test("defers only /forum-admin inspect with its selected forum option", () => {
     status: "blocked", reason: "bot005_forum_inspect_route_type_mismatch",
   });
 });
+
+
+test("defers only /forum-admin thread with a selected thread ID", () => {
+  const route = { status: "routed", handlers: ["bot005-forum-thread"] };
+  const interaction = { type: 2, guild_id: GUILD, data: { name: "forum-admin", options: [
+    { type: 1, name: "thread", options: [{ type: 3, name: "thread_id", value: "1566000000000000005" }] },
+  ] } };
+  assert.deepEqual(planner(interaction, route), { status: "ready", response: { type: 5 } });
+  assert.deepEqual(planner({ ...interaction, data: { name: "forum-admin", options: [{ type: 1, name: "inspect" }] } }, route), {
+    status: "blocked", reason: "bot005_forum_thread_route_type_mismatch",
+  });
+  assert.deepEqual(planner({ ...interaction, data: { name: "forum-admin", options: [
+    { type: 1, name: "thread", options: [] },
+  ] } }, route), {
+    status: "blocked", reason: "bot005_forum_thread_route_type_mismatch",
+  });
+});

@@ -20,6 +20,7 @@ const HANDLERS = Object.freeze([
   "bot005-tiktok",
   "bot005-forum-diagnose",
   "bot005-forum-inspect",
+  "bot005-forum-thread",
   "social-owner-console",
   "fan-club-level-up",
   "discord-engagement-engine",
@@ -148,6 +149,10 @@ function interactionRoute(config, interaction) {
 
   if (data.name === "tiktok" && enabled(config, "bot005-tiktok")) {
     return { status: "routed", eventType: "INTERACTION_CREATE", handlers: ["bot005-tiktok"], routeKey: "command:tiktok" };
+  }
+
+  if (data.name === "forum-admin" && data.options?.[0]?.name === "thread" && enabled(config, "bot005-forum-thread")) {
+    return { status: "routed", eventType: "INTERACTION_CREATE", handlers: ["bot005-forum-thread"], routeKey: "command:forum-admin:thread" };
   }
 
   if (data.name === "forum-admin" && data.options?.[0]?.name === "inspect" && enabled(config, "bot005-forum-inspect")) {

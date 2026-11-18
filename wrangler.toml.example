@@ -23,6 +23,7 @@ BOT005_HELP_ENABLED = "false"
 BOT005_TIKTOK_ENABLED = "false"
 BOT005_FORUM_DIAGNOSE_ENABLED = "false"
 BOT005_FORUM_INSPECT_ENABLED = "false"
+BOT005_FORUM_THREAD_ENABLED = "false"
 
 [[durable_objects.bindings]]
 name = "GATEWAY_COORDINATOR"
@@ -58,8 +59,10 @@ migrations_dir = "migrations"
 # BOT005_FORUM_DIAGNOSE_ENABLED=true.
 # The owner-only read-only "bot005-forum-inspect" handler requires
 # BOT005_FORUM_INSPECT_ENABLED=true.
+# The owner-only read-only "bot005-forum-thread" handler requires
+# BOT005_FORUM_THREAD_ENABLED=true.
 # Set SOCIAL_TIKTOK_URL only to the official HTTPS profile URL; it is not a secret.
-# Keep all twelve flags disabled until the complete
+# Keep all thirteen flags disabled until the complete
 # feature and restore gates pass. Do not enable general "bot005" while only
 # these isolated features are available.
 #

@@ -121,7 +121,7 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     if (!interaction || typeof interaction !== "object" || Array.isArray(interaction) ||
         route?.status !== "routed" || !Array.isArray(route.handlers) ||
         route.handlers.length !== 1 ||
-        !["bot005", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server", "bot005-help", "bot005-tiktok", "bot005-forum-diagnose", "bot005-forum-inspect"].includes(route.handlers[0])) {
+        !["bot005", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server", "bot005-help", "bot005-tiktok", "bot005-forum-diagnose", "bot005-forum-inspect", "bot005-forum-thread"].includes(route.handlers[0])) {
       return blocked("bot005_route_not_verified");
     }
 
@@ -137,6 +137,7 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     const tiktokOnly = route.handlers[0] === "bot005-tiktok";
     const forumDiagnoseOnly = route.handlers[0] === "bot005-forum-diagnose";
     const forumInspectOnly = route.handlers[0] === "bot005-forum-inspect";
+    const forumThreadOnly = route.handlers[0] === "bot005-forum-thread";
     const type = Number(interaction.type);
     if (profileModalOnly && type !== 5) return blocked("bot005_profile_modal_route_type_mismatch");
     if (pingOnly && (type !== 2 || interaction.data?.name !== "ping")) {
@@ -175,6 +176,12 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     if (forumInspectOnly && (type !== 2 || interaction.data?.name !== "forum-admin" ||
         interaction.data?.options?.[0]?.name !== "inspect" || typeof selectedForum?.value !== "string")) {
       return blocked("bot005_forum_inspect_route_type_mismatch");
+    }
+    const threadOptions = interaction.data?.options?.[0]?.options;
+    const selectedThreadId = Array.isArray(threadOptions) ? threadOptions.find((option) => option?.name === "thread_id")?.value : null;
+    if (forumThreadOnly && (type !== 2 || interaction.data?.name !== "forum-admin" ||
+        interaction.data?.options?.[0]?.name !== "thread" || typeof selectedThreadId !== "string")) {
+      return blocked("bot005_forum_thread_route_type_mismatch");
     }
     if (type === 1) return ready({ type: 1 });
 

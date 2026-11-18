@@ -157,6 +157,11 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
         { id: "1567000000000000011", guild_id: "1565048205970767993", status: 1, name: "Foreign event", scheduled_start_time: "2027-01-02T00:00:00.000Z" },
       ]);
     }
+    if (parsed.pathname === "/api/v10/channels/1566000000000000005") {
+      return okJson({ id: "1566000000000000005", guild_id: GUILD_ID, parent_id: "1566000000000000001", type: 11,
+        name: "Momentum thread", applied_tags: ["1566000000000000002"],
+        thread_metadata: { archived: false, locked: false, archive_timestamp: "2026-11-01T00:00:00.000Z" } });
+    }
     if (parsed.pathname === "/api/v10/channels/1566000000000000001") {
       return okJson({ id: "1566000000000000001", guild_id: GUILD_ID, type: 15, name: "community-forum", available_tags: [
         { id: "1566000000000000002", name: "General", moderated: false },
@@ -955,6 +960,43 @@ test("owner-only /forum-admin diagnose follows exact ACK, guild-scoped GETs and 
 
 test("forum diagnose capability requires its matching flag before opening a Gateway socket", async () => {
   const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-forum-diagnose"] });
+  await withRuntime({}, async ({ sockets }) => {
+    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifestValue });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 503);
+    assert.equal(sockets.length, 0);
+  });
+});
+
+
+test("owner-only /forum-admin thread reads only the selected thread and its forum parent", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-forum-thread"] });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifestValue, BOT005_FORUM_THREAD_ENABLED: "true" });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 202);
+    const socket = sockets[0]; dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise; await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: { session_id: "forum-thread-session", resume_gateway_url: "wss://resume.forum-thread.example" } }); await core.serial;
+    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+      id: "1569000000000000103", application_id: APP_ID, guild_id: GUILD_ID,
+      channel_id: "1565643996624199760", token: "non-production-forum-thread-token", type: 2,
+      member: { user: { id: "1565200000000000001" }, permissions: "0" },
+      data: { name: "forum-admin", options: [{ type: 1, name: "thread", options: [
+        { type: 3, name: "thread_id", value: "1566000000000000005" },
+      ] }] },
+    } }); await core.serial;
+    const inbox = core.getInbox("bot-alpha"), [queued] = await inbox.listPending();
+    assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-forum-thread"]);
+    assert.equal(queued.interactionAckState, "acknowledged");
+    assert.equal((await object.dispatchers.get("bot-alpha").drain({ limit: 1 })).status, "ok");
+    assert.equal(calls.filter(call => call.path === "/api/v10/channels/1566000000000000005" && call.method === "GET").length, 1);
+    assert.equal(calls.filter(call => call.path === "/api/v10/channels/1566000000000000001" && call.method === "GET").length, 1);
+    assert.equal(calls.filter(call => call.path.includes("/channels") && call.method !== "GET").length, 0);
+    assert.equal(JSON.stringify(calls).includes("non-production-forum-thread-token"), false);
+  });
+});
+
+test("forum thread capability requires its matching flag before opening a Gateway socket", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-forum-thread"] });
   await withRuntime({}, async ({ sockets }) => {
     const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifestValue });
     assert.equal((await object.fetch(control("/start", "POST"))).status, 503);
