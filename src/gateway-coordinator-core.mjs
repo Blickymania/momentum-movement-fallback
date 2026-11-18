@@ -117,6 +117,9 @@ export class GatewayCoordinatorCore {
     fingerprintToken,
     handlerRegistry,
     protectInteraction,
+    planInteractionAck,
+    acknowledgeInteraction,
+    revealInteraction,
     onDispatch,
     log = () => {},
   } = {}) {
@@ -130,6 +133,9 @@ export class GatewayCoordinatorCore {
         (fingerprintToken !== undefined && typeof fingerprintToken !== "function") ||
         (handlerRegistry !== undefined && typeof handlerRegistry.route !== "function") ||
         (protectInteraction !== undefined && typeof protectInteraction !== "function") ||
+        (planInteractionAck !== undefined && typeof planInteractionAck !== "function") ||
+        (acknowledgeInteraction !== undefined && typeof acknowledgeInteraction !== "function") ||
+        (revealInteraction !== undefined && typeof revealInteraction !== "function") ||
         (onDispatch !== undefined && typeof onDispatch !== "function") ||
         typeof log !== "function") {
       throw new TypeError("Gateway coordinator dependencies are incomplete");
@@ -145,6 +151,9 @@ export class GatewayCoordinatorCore {
     this.verifyIdentity = verifyIdentity;
     this.handlerRegistry = handlerRegistry ?? null;
     this.protectInteraction = protectInteraction ?? null;
+    this.planInteractionAck = planInteractionAck ?? null;
+    this.acknowledgeInteraction = acknowledgeInteraction ?? null;
+    this.revealInteraction = revealInteraction ?? null;
     this.onDispatch = onDispatch ?? null;
     this.pendingDispatchWakeups = [];
     this.fingerprintToken = fingerprintToken ?? (async (token) => {
@@ -420,6 +429,72 @@ export class GatewayCoordinatorCore {
     }
   }
 
+  async attemptInteractionAcknowledgement(id, eventKey, interaction, route) {
+    const inbox = this.getInbox(id);
+    const claim = await inbox.claimInteractionAckAttempt(eventKey, { now: this.now() });
+    if (!claim.claimed) return claim;
+
+    try {
+      if (!this.planInteractionAck || !this.acknowledgeInteraction) {
+        throw new Error("interaction_ack_adapter_unavailable");
+      }
+      const plan = this.planInteractionAck(interaction, route);
+      if (plan?.status !== "ready" || !plan.response) {
+        throw new Error(typeof plan?.reason === "string" ? plan.reason : "interaction_ack_plan_blocked");
+      }
+      const result = await this.acknowledgeInteraction({
+        interactionId: interaction.id,
+        token: interaction.token,
+        response: plan.response,
+      });
+      if (result?.acknowledged !== true) throw new Error("interaction_ack_unconfirmed");
+      const saved = await inbox.setInteractionAckState(eventKey, "acknowledged");
+      if (!saved.updated && !saved.idempotent) throw new Error("interaction_ack_state_not_saved");
+      return { acknowledged: true, responseType: plan.response.type };
+    } catch (error) {
+      try { await inbox.setInteractionAckState(eventKey, "failed"); }
+      catch { this.log("gateway_interaction_ack_outcome_persist_failed", { clientId: id, eventKey }); }
+      const reason = typeof error?.code === "string" ? error.code : "interaction_ack_failed";
+      this.log("gateway_interaction_ack_failed", { clientId: id, eventKey, reason });
+      return { acknowledged: false, reason };
+    }
+  }
+
+  async recoverInteractionAcknowledgement(id, event) {
+    if (!event || event.eventType !== "INTERACTION_CREATE") return { recovered: false };
+    const inbox = this.getInbox(id);
+    if (event.interactionAckState === "attempting") {
+      const expired = await inbox.expireInteractionAckAttempt(event.eventKey, { now: this.now() });
+      if (!expired.expired && Number.isSafeInteger(event.interactionAckAttemptedAt)) {
+        return { recovered: false, retryAt: event.interactionAckAttemptedAt + 5001 };
+      }
+      return { recovered: expired.expired, failed: expired.expired };
+    }
+    if (event.interactionAckState !== "pending") return { recovered: false };
+    if (!this.revealInteraction || this.now() >= event.receivedAt + 2500) {
+      return {
+        ...(await this.attemptInteractionAcknowledgement(id, event.eventKey, {}, null)),
+        recovered: true,
+      };
+    }
+    try {
+      const interaction = await this.revealInteraction(event.payload);
+      const route = this.handlerRegistry?.route({
+        eventType: event.eventType,
+        payload: interaction,
+      });
+      return {
+        ...(await this.attemptInteractionAcknowledgement(id, event.eventKey, interaction, route)),
+        recovered: true,
+      };
+    } catch {
+      return {
+        ...(await this.attemptInteractionAcknowledgement(id, event.eventKey, {}, null)),
+        recovered: true,
+      };
+    }
+  }
+
   async handleMessage(id, socket, generation, raw) {
     const state = this.sessions.get(id);
     if (!state || this.sockets.get(id) !== socket || state.generation !== generation) return;
@@ -550,6 +625,9 @@ export class GatewayCoordinatorCore {
           }
           try {
             const queued = await inbox.enqueueDispatch(event);
+            if (queued.accepted && event.eventType === "INTERACTION_CREATE") {
+              await this.attemptInteractionAcknowledgement(id, queued.eventKey, frame.d ?? {}, route);
+            }
             if (queued.accepted && this.onDispatch) {
               this.pendingDispatchWakeups.push(Object.freeze({
                 clientId: id,

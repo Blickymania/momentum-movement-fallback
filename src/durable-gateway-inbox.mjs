@@ -267,6 +267,67 @@ export class DurableGatewayInbox {
     ).slice(0, limit);
   }
 
+  async claimInteractionAckAttempt(eventKey, { now = Date.now(), deadlineMs = 2500 } = {}) {
+    if (typeof eventKey !== "string" || eventKey.length < 1 || eventKey.length > 512 ||
+        !Number.isSafeInteger(now) || !Number.isSafeInteger(deadlineMs) ||
+        deadlineMs < 500 || deadlineMs > 2500) {
+      throw new TypeError("Interaction acknowledgement attempt is invalid");
+    }
+    const key = eventStorageKey(this.eventPrefix, eventKey);
+    return this.storage.transaction(async (txn) => {
+      const record = await txn.get(key);
+      if (record === undefined || record.eventType !== "INTERACTION_CREATE") {
+        return { claimed: false, reason: "interaction_event_missing" };
+      }
+      if (record.interactionAckState !== "pending") {
+        return { claimed: false, state: record.interactionAckState ?? "unknown" };
+      }
+      if (!Number.isSafeInteger(record.receivedAt) || now >= record.receivedAt + deadlineMs) {
+        await txn.put(key, {
+          ...record,
+          interactionAckState: "failed",
+          interactionAckUpdatedAt: now,
+          interactionAckFailure: "deadline_expired_before_attempt",
+        });
+        return { claimed: false, expired: true, state: "failed" };
+      }
+      const next = {
+        ...record,
+        interactionAckState: "attempting",
+        interactionAckAttemptedAt: now,
+      };
+      await txn.put(key, next);
+      return { claimed: true, state: "attempting" };
+    });
+  }
+
+  async expireInteractionAckAttempt(eventKey, { now = Date.now(), staleMs = 5000 } = {}) {
+    if (typeof eventKey !== "string" || eventKey.length < 1 || eventKey.length > 512 ||
+        !Number.isSafeInteger(now) || !Number.isSafeInteger(staleMs) ||
+        staleMs < 2500 || staleMs > 30_000) {
+      throw new TypeError("Interaction acknowledgement expiry is invalid");
+    }
+    const key = eventStorageKey(this.eventPrefix, eventKey);
+    return this.storage.transaction(async (txn) => {
+      const record = await txn.get(key);
+      if (record === undefined || record.eventType !== "INTERACTION_CREATE") {
+        return { expired: false, reason: "interaction_event_missing" };
+      }
+      if (record.interactionAckState !== "attempting" ||
+          !Number.isSafeInteger(record.interactionAckAttemptedAt) ||
+          now < record.interactionAckAttemptedAt + staleMs) {
+        return { expired: false, state: record.interactionAckState ?? "unknown" };
+      }
+      await txn.put(key, {
+        ...record,
+        interactionAckState: "failed",
+        interactionAckUpdatedAt: now,
+        interactionAckFailure: "attempt_outcome_unknown",
+      });
+      return { expired: true, state: "failed" };
+    });
+  }
+
   async setInteractionAckState(eventKey, nextState) {
     if (typeof eventKey !== "string" || eventKey.length < 1 || eventKey.length > 512 ||
         !["acknowledged", "failed"].includes(nextState)) {
@@ -281,13 +342,14 @@ export class DurableGatewayInbox {
       if (record.interactionAckState === nextState) {
         return { updated: false, idempotent: true, state: nextState };
       }
-      if (record.interactionAckState !== "pending") {
+      if (record.interactionAckState !== "attempting") {
         return { updated: false, reason: "interaction_ack_transition_invalid" };
       }
       await txn.put(key, {
         ...record,
         interactionAckState: nextState,
         interactionAckUpdatedAt: Date.now(),
+        ...(nextState === "failed" ? { interactionAckFailure: "callback_failed_or_unavailable" } : {}),
       });
       return { updated: true, state: nextState };
     });

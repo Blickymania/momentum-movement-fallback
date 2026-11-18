@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GatewayCoordinatorCore } from "../src/gateway-coordinator-core.mjs";
+import { createBot005InteractionAckPlanner } from "../src/bot005-interaction-ack-plan.mjs";
 
 const GUILD_A = "1565048205970767992";
 const GUILD_B = "1565048205970767993";
@@ -83,7 +84,7 @@ const definitions = [
   { id: "bot-disabled", guildId: "1565304619838742500", applicationId: "1565304619838742501", intents: 1, enabled: false, tokenRef: "BOT_DISABLED_TOKEN" },
 ];
 
-function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken, clientDefinitions = definitions, handlerRegistry, protectInteraction, onDispatch } = {}) {
+function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken, clientDefinitions = definitions, handlerRegistry, protectInteraction, planInteractionAck, acknowledgeInteraction, revealInteraction, onDispatch } = {}) {
   const storage = new MemoryDOStorage();
   const sockets = [];
   const tokens = new Map([
@@ -114,6 +115,9 @@ function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, f
     ...(fingerprintToken ? { fingerprintToken } : {}),
     ...(handlerRegistry ? { handlerRegistry } : {}),
     ...(protectInteraction ? { protectInteraction } : {}),
+    ...(planInteractionAck ? { planInteractionAck } : {}),
+    ...(acknowledgeInteraction ? { acknowledgeInteraction } : {}),
+    ...(revealInteraction ? { revealInteraction } : {}),
     ...(onDispatch ? { onDispatch } : {}),
     log: (event, metadata) => logs.push({ event, metadata }),
   });
@@ -636,4 +640,59 @@ test("stop closes sockets, clears the one alarm, and persists stopped state", as
   assert.ok(sockets.every((socket) => socket.closed.at(-1).code === 1000));
   assert.equal(await h.storage.getAlarm(), null);
   assert.ok([...h.core.sessions.values()].every((state) => state.status === "stopped"));
+});
+
+
+test("sends the source-backed Bot 005 modal ACK once before dispatch wakeup", async () => {
+  const order = [];
+  let ackCalls = 0;
+  const handlerRegistry = {
+    route: ({ eventType }) => eventType === "INTERACTION_CREATE"
+      ? { status: "routed", handlers: ["bot005"] }
+      : { status: "ignored", reason: "not_interaction" },
+  };
+  const h = makeHarness({
+    handlerRegistry,
+    protectInteraction: async (payload) => {
+      const { token, ...safe } = payload;
+      return { ...safe, interaction_token: { version: 1, algorithm: "A256GCM", iv: "iv", ciphertext: "cipher" } };
+    },
+    planInteractionAck: createBot005InteractionAckPlanner(),
+    acknowledgeInteraction: async (input) => {
+      ackCalls += 1;
+      order.push("ack");
+      assert.equal(input.interactionId, "1569000000000000001");
+      assert.equal(input.response.type, 9);
+      const pending = await h.core.getInbox("bot-alpha").listPending();
+      assert.equal(pending[0].interactionAckState, "attempting");
+      return { acknowledged: true, responseType: 9, status: 204 };
+    },
+    onDispatch: async () => { order.push("dispatch-wakeup"); },
+  });
+  await h.core.initialize();
+  await h.core.start();
+  const socket = h.sockets[0];
+  frame(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+  await h.flush();
+  frame(socket, { op: 0, s: 1, t: "READY", d: { session_id: "session", resume_gateway_url: "wss://resume.example" } });
+  await h.flush();
+  frame(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+    id: "1569000000000000001",
+    application_id: APP_A,
+    guild_id: GUILD_A,
+    token: "secret-token-for-ack-test",
+    data: { component_type: 2, custom_id: "membercard:edit" },
+  }});
+  await h.flush();
+  const inbox = h.core.getInbox("bot-alpha");
+  assert.equal((await inbox.listPending())[0].interactionAckState, "acknowledged");
+  assert.deepEqual(order, ["ack", "dispatch-wakeup"]);
+  frame(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+    id: "1569000000000000001",
+    application_id: APP_A, guild_id: GUILD_A,
+    token: "secret-token-for-ack-test",
+    data: { component_type: 2, custom_id: "membercard:edit" },
+  }});
+  await h.flush();
+  assert.equal(ackCalls, 1);
 });

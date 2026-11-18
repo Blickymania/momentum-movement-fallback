@@ -1,6 +1,8 @@
 import { GatewayCoordinatorCore } from "./gateway-coordinator-core.mjs";
 import { createGatewayHandlerRegistry } from "./gateway-handler-registry.mjs";
 import { createInteractionTokenVault } from "./interaction-token-vault.mjs";
+import { createBot005InteractionAckPlanner } from "./bot005-interaction-ack-plan.mjs";
+import { createDiscordInteractionAcknowledger } from "./discord-interaction-ack.mjs";
 import { GatewayEventDispatcher, DurableGatewayDeliveryLedger } from "./durable-gateway-dispatcher.mjs";
 import { DurableEngagementLedger, createEngagementMessageHandler } from "./durable-engagement-ledger.mjs";
 import { createDiscordEngagementChannelResolver } from "./discord-engagement-channel-policy.mjs";
@@ -90,12 +92,17 @@ export class GatewayCoordinatorDurableObject {
       throw new TypeError("Gateway feature handler adapter is unavailable");
     }
     const tokenVault = createInteractionTokenVault(this.env.GATEWAY_INTERACTION_ENCRYPTION_KEY);
+    const planInteractionAck = createBot005InteractionAckPlanner();
+    const acknowledgeInteraction = createDiscordInteractionAcknowledger();
     this.tokenVault = tokenVault;
     const core = new GatewayCoordinatorCore({
       storage: this.state.storage,
       definitions,
       handlerRegistry,
       protectInteraction: (payload) => tokenVault.encryptPayload(payload),
+      revealInteraction: (payload) => tokenVault.decryptPayload(payload),
+      planInteractionAck,
+      acknowledgeInteraction,
       tokenProvider: async (reference) => this.env[reference],
       fingerprintToken: async (token) => {
         const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
@@ -209,6 +216,14 @@ export class GatewayCoordinatorDurableObject {
     await core.alarm();
     if (core.stopped) return;
     for (const [clientId, dispatcher] of this.dispatchers) {
+      const inbox = core.getInbox(clientId);
+      for (const event of await inbox.listPending(25)) {
+        if (event.eventType !== "INTERACTION_CREATE") continue;
+        const recovery = await core.recoverInteractionAcknowledgement(clientId, event);
+        if (Number.isSafeInteger(recovery.retryAt)) {
+          await this.scheduleEarlierAlarm(recovery.retryAt);
+        }
+      }
       const summary = await dispatcher.drain({ limit: 25 });
       if (summary.status === "retry_wait" && Number.isFinite(summary.retryAt)) {
         await this.scheduleEarlierAlarm(summary.retryAt);

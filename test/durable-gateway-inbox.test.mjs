@@ -309,6 +309,12 @@ test("interaction ACK outcome is durable, idempotent, and cannot be reversed", a
     eventType: "INTERACTION_CREATE", payload: { id: "interaction-1" },
   });
   assert.equal((await inbox.listPending())[0].interactionAckState, "pending");
+  assert.deepEqual(await inbox.claimInteractionAckAttempt(inserted.eventKey, { now: (await inbox.listPending())[0].receivedAt + 1 }), {
+    claimed: true, state: "attempting",
+  });
+  assert.deepEqual(await inbox.claimInteractionAckAttempt(inserted.eventKey, { now: (await inbox.listPending())[0].receivedAt + 2 }), {
+    claimed: false, state: "attempting",
+  });
   assert.deepEqual(await inbox.setInteractionAckState(inserted.eventKey, "acknowledged"), {
     updated: true, state: "acknowledged",
   });
@@ -318,4 +324,25 @@ test("interaction ACK outcome is durable, idempotent, and cannot be reversed", a
   assert.deepEqual(await inbox.setInteractionAckState(inserted.eventKey, "failed"), {
     updated: false, reason: "interaction_ack_transition_invalid",
   });
+});
+
+test("interaction ACK attempts expire without retry after an uncertain outcome", async () => {
+  const inbox = makeInbox();
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  const inserted = await inbox.enqueueDispatch({
+    guildId: "guild", sessionId: "session-a", sequence: 11,
+    eventType: "INTERACTION_CREATE", payload: { id: "interaction-2" },
+  });
+  const event = (await inbox.listPending())[0];
+  assert.deepEqual(await inbox.claimInteractionAckAttempt(inserted.eventKey, { now: event.receivedAt + 1 }), {
+    claimed: true, state: "attempting",
+  });
+  assert.deepEqual(await inbox.expireInteractionAckAttempt(inserted.eventKey, { now: event.receivedAt + 5001 }), {
+    expired: true, state: "failed",
+  });
+  assert.deepEqual(await inbox.claimInteractionAckAttempt(inserted.eventKey, { now: event.receivedAt + 6000 }), {
+    claimed: false, state: "failed",
+  });
+  assert.equal((await inbox.listPending())[0].interactionAckFailure, "attempt_outcome_unknown");
 });
