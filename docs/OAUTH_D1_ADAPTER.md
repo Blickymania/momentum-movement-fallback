@@ -1,7 +1,7 @@
 # Momentum Movement OAuth adapter — design and verification
 
 **Scope:** Dawn Dotta / Momentum Movement only.  
-**Status:** D1 persistence adapter implemented and locally tested; Worker routes and D1 runtime are not yet integrated.
+**Status:** D1 persistence adapter, OAuth route handlers, and Worker wiring are implemented and covered by local SQLite/HTTP tests with mocked Discord responses. Cloudflare D1 runtime, the complete flow through the Worker endpoint, and production-data migration remain unverified.
 
 ## Existing OAuth behavior to preserve
 
@@ -51,7 +51,7 @@ The same conditional-claim + nonce-matched insert pattern is used for code redem
 
 Local Node SQLite adapter harness uses Node's built-in SQLite API to exercise the same SQL and transactional behavior without Cloudflare credentials.
 
-**Latest test result:** 11 tests passed, 0 failed.
+**Latest candidate CI:** 218 tests passed, 0 failed. Adapter/schema checks use Node SQLite; Discord OAuth endpoints are mocked.
 
 Tests cover:
 
@@ -71,13 +71,11 @@ This is local SQLite verification only. It does not prove Cloudflare D1 deployme
 
 ## Remaining integration work
 
-- Implement Cloudflare Worker route handlers using this adapter.
-- Keep the Discord OAuth callback's owner/admin lookup and exact guild binding.
-- Move the existing OAuth route code without weakening its CSRF state, PKCE, redirect URI, resource and scope validation.
-- Use a versioned Wrangler D1 migration at deploy time; do not create schema on every request.
-- Add a Worker HTTP integration test for the complete OAuth code flow.
-- Verify Cloudflare's D1 runtime using the no-card Free account before creating any resource.
-- Preserve the existing Railway OAuth database and service as rollback until the new Worker has passed the soak test.
+- Add a Worker HTTP integration test that exercises the complete OAuth code flow through `createMomentumManagerWorker`; current route tests call the OAuth router directly, while Worker tests cover its authentication and scope boundary.
+- Verify Cloudflare's D1 runtime and no-card account eligibility before provisioning a database; no D1 binding or database exists yet.
+- Apply the versioned Wrangler migration to an isolated D1 database and verify schema health, transactions, row counts, checksums, and backup/restore behavior before any data migration.
+- Recover the OAuth backup archive and checksum, establish verified source/target coverage, and rehearse restore; no production OAuth data has been copied.
+- Preserve the existing Railway OAuth database and service as rollback until the replacement passes functional tests and soak.
 - Do not migrate ChatGPT/plugin MCP endpoint URLs or credentials without verifying the external connector configuration and its owner-authorized update path.
 
 ## Billing and scheduler rules
