@@ -83,7 +83,7 @@ test("capability guard requires both explicit manifest registration and exact ru
   const baseline = {
     profileModalEnabled: false, pingEnabled: false, statusEnabled: false,
     rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false,
-    memberEnabled: false, serverEnabled: false, helpEnabled: false, tiktokEnabled: false, forumDiagnoseEnabled: false, forumInspectEnabled: false, forumThreadEnabled: false, forumConfirmEnabled: false,
+    memberEnabled: false, serverEnabled: false, helpEnabled: false, tiktokEnabled: false, forumDiagnoseEnabled: false, forumInspectEnabled: false, forumThreadEnabled: false, forumConfirmEnabled: false, forumRenameEnabled: false,
   };
   const verify = (handler, flag, activeKey) => {
     const registry = createGatewayHandlerRegistry(manifest([handler]));
