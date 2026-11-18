@@ -45,12 +45,24 @@ function validateEvent(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new TypeError("Gateway event must be an object");
   }
-  const { guildId, sessionId, sequence, eventType, payload } = input;
+  const { guildId, sessionId, sequence, eventType, payload, dispatchRoute } = input;
   const key = gatewayEventKey(guildId, sessionId, sequence, eventType);
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new TypeError("Gateway event payload must be an object");
   }
-  return { key, guildId, sessionId, sequence, eventType, payload };
+  if (dispatchRoute !== undefined && dispatchRoute !== null) {
+    if (!dispatchRoute || typeof dispatchRoute !== "object" || Array.isArray(dispatchRoute) ||
+        !["routed", "disabled", "unhandled"].includes(dispatchRoute.status)) {
+      throw new TypeError("Gateway dispatch route metadata is invalid");
+    }
+    if (dispatchRoute.status === "routed" &&
+        (dispatchRoute.eventType !== eventType || !Array.isArray(dispatchRoute.handlers) ||
+          dispatchRoute.handlers.length < 1 || dispatchRoute.handlers.length > 8 ||
+          dispatchRoute.handlers.some((id) => typeof id !== "string" || !/^[A-Za-z0-9:_-]{1,96}$/.test(id)))) {
+      throw new TypeError("Gateway dispatch route does not match its event");
+    }
+  }
+  return { key, guildId, sessionId, sequence, eventType, payload, dispatchRoute: dispatchRoute ?? null };
 }
 
 /**
@@ -216,6 +228,7 @@ export class DurableGatewayInbox {
         sequence: event.sequence,
         eventType: event.eventType,
         payload: event.payload,
+        dispatchRoute: event.dispatchRoute,
         payloadBytes: bytes,
         queueOrder: nextOrder,
         receivedAt: Date.now(),

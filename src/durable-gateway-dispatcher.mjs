@@ -313,7 +313,7 @@ export class GatewayEventDispatcher {
           summary.status = "awaiting_interaction_ack";
           break;
         }
-        const route = this.registry.route(event);
+        const route = event.dispatchRoute ?? this.registry.route(event);
         if (route.status === "ignored") {
           await this.ledger.recordDisposition(event.eventKey, "ignored", route);
           const ack = await this.inbox.acknowledge([event.eventKey]);

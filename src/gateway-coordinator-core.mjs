@@ -599,6 +599,7 @@ export class GatewayCoordinatorCore {
             });
             break;
           }
+          if (route) event.dispatchRoute = route;
           if (event.eventType === "INTERACTION_CREATE") {
             if (!this.protectInteraction || typeof event.payload?.token !== "string") {
               state.status = "fatal";

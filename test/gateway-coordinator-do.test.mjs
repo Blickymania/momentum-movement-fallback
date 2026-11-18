@@ -301,6 +301,12 @@ test("profile modal capability reaches the durable store and deferred reply thro
     const inbox = core.getInbox("bot-alpha");
     const [queued] = await inbox.listPending();
     assert.equal(queued.interactionAckState, "acknowledged");
+    assert.deepEqual(queued.dispatchRoute, {
+      status: "routed",
+      eventType: "INTERACTION_CREATE",
+      handlers: ["bot005-profile-modal"],
+      routeKey: "memberdata",
+    });
     await object.alarm();
     assert.equal((await inbox.listPending()).length, 0);
 
