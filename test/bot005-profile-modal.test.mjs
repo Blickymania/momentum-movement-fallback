@@ -36,6 +36,8 @@ test("normalizes the recovered profile modal fields and strips leading social @"
   assert.deepEqual(result, {
     status: "ready",
     interactionId: base.id,
+    guildId: GUILD,
+    applicationId: APP,
     userId: "1569000000000000002",
     kind: "profile",
     values: {
