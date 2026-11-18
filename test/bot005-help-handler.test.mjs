@@ -11,7 +11,7 @@ test("/help lists only coded command names and clearly states disabled candidate
     editDeferredReply: async (reply) => replies.push(reply), guildId: GUILD, applicationId: APP });
   assert.deepEqual(await handler(event()), { committed: true, receiptId: "bot005-help-" + interaction.id });
   assert.match(replies[0].content, /Coded slash-command names: .*\/help/);
-  assert.match(replies[0].content, /other 26 of the 36/);
+  assert.match(replies[0].content, /other 24 of the 36/);
   assert.match(replies[0].content, /All candidate feature flags are off/);
   assert.match(replies[0].content, /Production remains on Railway/);
   assert.equal(Object.hasOwn(replies[0], "flags"), false);
