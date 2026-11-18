@@ -77,7 +77,7 @@ export function createBot005ForumConfirmHandler({
         }
       }
     }
-    await editDeferredReply({ applicationId, token: interaction.token, content: safeText(content, 500) });
+    await editDeferredReply({ applicationId, token: interaction.token, content: safeText(content, 500), components: [] });
     return { committed: true, receiptId: "bot005-forum-confirm-" + interaction.id };
   };
 }

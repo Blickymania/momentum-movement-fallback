@@ -297,6 +297,16 @@ test("routes only /forum-admin inspect through its isolated read-only capability
 });
 
 
+test("routes only the exact forum confirmation component to its isolated capability", () => {
+  const registry = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005-forum-confirm"] }));
+  const payload = { type: 3, guild_id: GUILD, application_id: APP, channel_id: "1565643251783049237", message: { id: "1566060000000000000", author: { id: APP } }, data: { custom_id: "mm005:forum-confirm:confirm:confirmation_nonce_0001" } };
+  const route = registry.route({ eventType: "INTERACTION_CREATE", payload });
+  assert.deepEqual(route.handlers, ["bot005-forum-confirm"]);
+  assert.equal(route.routeKey, "mm005");
+  const disabled = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005"] })).route({ eventType: "INTERACTION_CREATE", payload });
+  assert.equal(disabled.status, "disabled");
+});
+
 test("routes only /forum-admin thread through its isolated read-only capability", () => {
   const registry = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005-forum-thread"] }));
   const route = registry.route(event("INTERACTION_CREATE", {

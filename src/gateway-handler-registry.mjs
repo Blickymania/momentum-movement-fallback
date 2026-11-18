@@ -21,6 +21,7 @@ const HANDLERS = Object.freeze([
   "bot005-forum-diagnose",
   "bot005-forum-inspect",
   "bot005-forum-thread",
+  "bot005-forum-confirm",
   "social-owner-console",
   "fan-club-level-up",
   "discord-engagement-engine",
@@ -136,6 +137,8 @@ function interactionRoute(config, interaction) {
       owner = socialBook ? "social-owner-console" : "bot005";
     } else if (customId.startsWith("social3:") || customId.startsWith("db10:")) {
       owner = "social-owner-console";
+    } else if (customId.startsWith("mm005:forum-confirm:")) {
+      owner = "bot005-forum-confirm";
     } else if (BOT005_PREFIXES.some((prefix) => customId.startsWith(prefix))) {
       owner = "bot005";
     }

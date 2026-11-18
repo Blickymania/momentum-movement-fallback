@@ -121,7 +121,7 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     if (!interaction || typeof interaction !== "object" || Array.isArray(interaction) ||
         route?.status !== "routed" || !Array.isArray(route.handlers) ||
         route.handlers.length !== 1 ||
-        !["bot005", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server", "bot005-help", "bot005-tiktok", "bot005-forum-diagnose", "bot005-forum-inspect", "bot005-forum-thread"].includes(route.handlers[0])) {
+        !["bot005", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server", "bot005-help", "bot005-tiktok", "bot005-forum-diagnose", "bot005-forum-inspect", "bot005-forum-thread", "bot005-forum-confirm"].includes(route.handlers[0])) {
       return blocked("bot005_route_not_verified");
     }
 
@@ -138,6 +138,7 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     const forumDiagnoseOnly = route.handlers[0] === "bot005-forum-diagnose";
     const forumInspectOnly = route.handlers[0] === "bot005-forum-inspect";
     const forumThreadOnly = route.handlers[0] === "bot005-forum-thread";
+    const forumConfirmOnly = route.handlers[0] === "bot005-forum-confirm";
     const type = Number(interaction.type);
     if (profileModalOnly && type !== 5) return blocked("bot005_profile_modal_route_type_mismatch");
     if (pingOnly && (type !== 2 || interaction.data?.name !== "ping")) {
@@ -179,6 +180,14 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     }
     const threadOptions = interaction.data?.options?.[0]?.options;
     const selectedThreadId = Array.isArray(threadOptions) ? threadOptions.find((option) => option?.name === "thread_id")?.value : null;
+    if (forumConfirmOnly && (type !== 3 ||
+        !/^mm005:forum-confirm:(confirm|cancel):[A-Za-z0-9_-]{16,64}$/.test(interaction.data?.custom_id ?? "") ||
+        !/^\d{15,22}$/.test(String(interaction.guild_id ?? "")) ||
+        !/^\d{15,22}$/.test(String(interaction.channel_id ?? "")) ||
+        !/^\d{15,22}$/.test(String(interaction.message?.id ?? "")) ||
+        String(interaction.message?.author?.id ?? "") !== String(interaction.application_id ?? ""))) {
+      return blocked("bot005_forum_confirm_route_type_mismatch");
+    }
     if (forumThreadOnly && (type !== 2 || interaction.data?.name !== "forum-admin" ||
         interaction.data?.options?.[0]?.name !== "thread" || typeof selectedThreadId !== "string")) {
       return blocked("bot005_forum_thread_route_type_mismatch");

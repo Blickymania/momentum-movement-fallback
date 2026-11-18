@@ -237,6 +237,14 @@ test("defers only /forum-admin inspect with its selected forum option", () => {
 });
 
 
+test("defer-updates only an exact owner-bound forum confirmation component", () => {
+  const route = { status: "routed", handlers: ["bot005-forum-confirm"] };
+  const valid = button("mm005:forum-confirm:confirm:confirmation_nonce_0001", { application_id: APP, channel_id: "1565643251783049237", message: { id: "1566060000000000000", author: { id: APP } } });
+  assert.deepEqual(planner(valid, route), { status: "ready", response: { type: 6 } });
+  assert.deepEqual(planner({ ...valid, data: { custom_id: "mm005:forum-confirm:confirm:bad" } }, route), { status: "blocked", reason: "bot005_forum_confirm_route_type_mismatch" });
+  assert.deepEqual(planner({ ...valid, message: { id: "1566060000000000000", author: { id: "1565200000000000001" } } }, route), { status: "blocked", reason: "bot005_forum_confirm_route_type_mismatch" });
+});
+
 test("defers only /forum-admin thread with a selected thread ID", () => {
   const route = { status: "routed", handlers: ["bot005-forum-thread"] };
   const interaction = { type: 2, guild_id: GUILD, data: { name: "forum-admin", options: [

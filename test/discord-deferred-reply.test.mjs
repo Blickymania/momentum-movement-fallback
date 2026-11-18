@@ -26,6 +26,15 @@ test("PATCHes the deferred original reply with mention parsing disabled", async 
   assert.equal(request.options.signal.timeoutMs, 5000);
 });
 
+test("can clear confirmation components when editing a deferred component response", async () => {
+  let body;
+  const edit = createDiscordDeferredReplyEditor({ fetchImpl: async (_url, options) => { body = JSON.parse(options.body); return { ok: true, status: 200 }; }, timeoutSignal: () => ({}) });
+  await edit({ applicationId: APP, token: TOKEN, content: "Done.", components: [] });
+  assert.deepEqual(body.components, []);
+  assert.deepEqual(body.allowed_mentions, { parse: [] });
+  await assert.rejects(() => edit({ applicationId: APP, token: TOKEN, content: "Done.", components: [{ type: 1 }] }), /invalid/);
+});
+
 test("rejects invalid endpoint data before network and never retries rejected requests", async () => {
   let calls = 0;
   const edit = createDiscordDeferredReplyEditor({

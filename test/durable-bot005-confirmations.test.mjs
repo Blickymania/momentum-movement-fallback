@@ -125,6 +125,15 @@ test("enforces capacity instead of evicting live pending confirmations", async (
   assert.equal((await store.get(ID)).state, "pending");
 });
 
+test("confirmation plans survive reconstruction from the same durable storage", async () => {
+  const { storage } = fixture();
+  const first = new DurableBot005ConfirmationStore(storage, { now: () => 1_000_000 });
+  await first.create(plan());
+  await first.bindMessage(ID, MESSAGE);
+  const restarted = new DurableBot005ConfirmationStore(storage, { now: () => 1_000_000 });
+  assert.equal((await restarted.claim(ID, actor())).status, "claimed");
+});
+
 test("fails closed on corrupted persisted state", async () => {
   const key = "bot005:confirmation-plans:v1";
   const storage = new MemoryStorage({ key, value: { plans: [{ id: "bad" }] } });

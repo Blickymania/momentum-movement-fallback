@@ -38,6 +38,12 @@ class MemoryStorage {
   }
 }
 
+test("forum confirmation capability requires its matching default-off flag", () => {
+  const registry = createGatewayHandlerRegistry(manifest(["bot005-forum-confirm"]));
+  assert.throws(() => validateGatewayFeatureCapabilities(registry, {}), /explicitly agree/);
+  assert.equal(validateGatewayFeatureCapabilities(registry, { BOT005_FORUM_CONFIRM_ENABLED: "true" }).forumConfirmEnabled, true);
+});
+
 test("profile modal capability routes only the three supported type-5 forms", () => {
   const registry = createGatewayHandlerRegistry(manifest(["bot005-profile-modal"]));
   for (const customId of ["memberdata:profile", "memberdata:birthday", "memberdata:anniversary"]) {

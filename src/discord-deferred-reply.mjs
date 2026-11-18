@@ -24,10 +24,11 @@ export function createDiscordDeferredReplyEditor({
     throw new TypeError("Deferred interaction reply editor configuration is invalid");
   }
 
-  return async function editDeferredReply({ applicationId, token, content } = {}) {
+  return async function editDeferredReply({ applicationId, token, content, components } = {}) {
     if (!validSnowflake(applicationId) || !validateToken(token) ||
         typeof content !== "string" || content.length < 1 ||
-        content.length > MAX_CONTENT_LENGTH) {
+        content.length > MAX_CONTENT_LENGTH ||
+        (components !== undefined && (!Array.isArray(components) || components.length !== 0))) {
       throw new TypeError("Deferred interaction reply edit is invalid");
     }
 
@@ -40,6 +41,7 @@ export function createDiscordDeferredReplyEditor({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           content,
+          ...(components === undefined ? {} : { components }),
           allowed_mentions: { parse: [] },
         }),
         signal: timeoutSignal(timeoutMs),

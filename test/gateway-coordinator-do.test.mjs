@@ -995,6 +995,15 @@ test("owner-only /forum-admin thread reads only the selected thread and its foru
   });
 });
 
+test("forum confirmation capability requires its matching flag before opening a Gateway socket", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-forum-confirm"] });
+  await withRuntime({}, async ({ sockets }) => {
+    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifestValue });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 503);
+    assert.equal(sockets.length, 0);
+  });
+});
+
 test("forum thread capability requires its matching flag before opening a Gateway socket", async () => {
   const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-forum-thread"] });
   await withRuntime({}, async ({ sockets }) => {
