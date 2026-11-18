@@ -88,6 +88,7 @@ Discord interaction payloads contain a short-lived webhook bearer token. It must
 - `src/interaction-token-vault.mjs`: AES-256-GCM interaction-token protection.
 - `src/gateway-coordinator-core.mjs`: registry-aware ingress filtering, encrypted interaction payload persistence and post-frame dispatch wakeups.
 - `src/gateway-coordinator-do.mjs`: matching-identity checks, shared-alarm dispatcher drain and the first Engagement Engine handler. Unsupported handler IDs fail closed.
+- `src/bot005-interaction-ack-plan.mjs`: pure Bot 005 response planner for registered commands, ordinary buttons, known modal selectors and the multi-step coaching modal. Modal builders remain explicit dependencies; the planner is not wired to Gateway ingress.
 
 ## Recovered interaction ACK inventory
 
@@ -103,9 +104,9 @@ Read-only counts from recovered source snapshots show different acknowledgement 
 | LIVE & Events Listener | 1 | 0 | 0 | 0 |
 | Engagement Engine | 0 | 2 | 0 | 0 |
 
-A generic component defer is unsafe: some selectors open modals, while modal submissions and commands use separate response paths. The next adapter must select an owner-specific initial response before dispatch, validate that exactly one response is sent, and keep token decryption transient. Keep Gateway activation disabled until those paths and actual source identity are verified.
+A generic component defer is unsafe: some selectors open modals, while modal submissions and commands use separate response paths. `src/bot005-interaction-ack-plan.mjs` now plans Bot 005 command type 5 and ordinary component type 6 responses. Known modal-opening selectors require a supplied type-9 form builder; the multi-step coaching modal requires a separate response handler. These paths fail closed when their builder is absent. The planner is not yet called by Gateway ingress; owner-specific planners for the other feature IDs and actual source identity verification remain outstanding. Keep Gateway activation disabled.
 
-**Not yet complete:** six feature-handler adapters, route-specific immediate interaction acknowledgements, actual production Bot 005 identity/source verification, and live deadline/parity tests. The message-only Engagement adapter does not establish feature parity. Do not activate a live Gateway until all applicable handlers are ported and tested.
+**Not yet complete:** six feature-handler adapters, integration of any ACK planner into Gateway ingress, modal form builders for Bot 005 and other modal-capable handlers, actual production Bot 005 identity/source verification, and live deadline/parity tests. The message-only Engagement adapter does not establish feature parity. Do not activate a live Gateway until all applicable handlers are ported and tested.
 
 
 ## First feature-handler port: Discord Engagement Engine message awards
