@@ -316,7 +316,7 @@ test("profile modal capability reaches the durable store and deferred reply thro
     const decryptedInteraction = await object.tokenVault.decryptPayload(queued.payload);
     const parsedSubmission = parseBot005ProfileModal(decryptedInteraction, { guildId: GUILD_ID, applicationId: APP_ID });
     assert.equal(parsedSubmission.status, "ready", JSON.stringify(parsedSubmission));
-    assert.equal(profileStore.validateSubmission(parsedSubmission), true);
+    assert.equal(profileStore.validateSubmission(parsedSubmission), true, JSON.stringify(parsedSubmission));
     const dispatchResult = await object.dispatchers.get("bot-alpha").drain({ limit: 1 });
     const deliveryLedger = new DurableGatewayDeliveryLedger(storage, { namespace: "gateway-dispatch-bot-alpha" });
     const failedDelivery = await deliveryLedger.get(queued.eventKey, "bot005-profile-modal");
