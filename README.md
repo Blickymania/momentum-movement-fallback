@@ -24,7 +24,7 @@ This branch contains recovered Railway sources and a no-card Cloudflare Free mig
 - `wrangler.toml.example` — SQLite Durable Object binding and migration; placeholder D1 database ID; OAuth and Gateway flags false; no Cron Trigger.
 - `recovered/railway/` — source snapshots and existing backup scripts.
 
-**Important implementation boundary:** the protocol, coordinator, registry, encrypted token storage, and standalone delivery ledger/dispatcher have deterministic local tests. The original seven feature-handler implementations have not all been ported to Workers/DO adapters, the dispatcher is not yet wired into the DO runtime, and immediate Discord interaction acknowledgements have not been verified against the live Discord API deadline. The Gateway coordinator must remain disabled and must not start production sockets until those feature adapters are implemented and proven. Passing the core tests does not establish feature parity.
+**Important implementation boundary:** the coordinator and durable dispatcher are now wired together for one Engagement Engine `MESSAGE_CREATE` adapter. The adapter is constructed only when explicitly enabled in the handler manifest, and unsupported handler IDs fail closed. A mocked Durable Object test verifies scoring receipt completion before FIFO inbox acknowledgement. The remaining six original feature handlers and all immediate interaction ACK/defer/modal behavior are incomplete; this does not establish feature parity or live Discord behavior. Keep the Gateway disabled until interaction acknowledgement and all required handlers are implemented and tested.
 
 ## Tests and development
 
@@ -38,7 +38,7 @@ npm run test:gateway
 npm run test:worker
 ```
 
-Latest complete repository regression: **139 tests passed, 0 failed, 0 skipped** across 11 test files. All 11 source modules and 11 test files passed Node `--check`. These tests use local SQLite/D1-compatible wrappers, fake Durable Object storage, fake WebSockets and mocked Discord REST. They do not prove a real Cloudflare deployment, real D1/DO service behavior, live Discord OAuth, live interactions, a 24-hour socket lifecycle or production cutover. The hosted runner has Node but not npm; commands were executed directly with `node --test` and `node --check`.
+Latest complete repository regression: **159 tests passed, 0 failed, 0 skipped** across 11 test files. All 11 source modules and 11 test files passed Node `--check`. These tests use local SQLite/D1-compatible wrappers, fake Durable Object storage, fake WebSockets and mocked Discord REST. They do not prove a real Cloudflare deployment, real D1/DO service behavior, live Discord OAuth, live interactions, a 24-hour socket lifecycle or production cutover. The hosted runner has Node but not npm; commands were executed directly with `node --test` and `node --check`.
 
 ## No-card and production safety gates
 
@@ -56,7 +56,7 @@ Latest complete repository regression: **139 tests passed, 0 failed, 0 skipped**
 ## Remaining objectives
 
 1. Port each of the seven feature handlers behind the registry, beginning with durable idempotent receipts and the appropriate interaction ACK/defer/modal behavior.
-2. Wire the dispatcher into the Durable Object and prove event delivery, handler retries, interaction acknowledgement within Discord deadlines and no duplicate side effects.
+2. Complete and test immediate interaction ACK/defer/modal handling, then port the remaining feature handlers and verify retries, FIFO acknowledgement, idempotency and restart recovery. Keep Gateway activation disabled until these gates pass.
 3. Verify actual bot/token identities, runtime flags and privileged intents using a secure non-disclosing check; keep distinct identities isolated.
 4. Obtain owner Cloudflare sign-in and verify a no-card Free plan. Deploy only isolated test D1/DO resources after that.
 5. Run a 24-hour Gateway lifecycle and quota soak; verify heartbeat/ACK, restart/resume, eviction/recreation, queues and quota exhaustion.

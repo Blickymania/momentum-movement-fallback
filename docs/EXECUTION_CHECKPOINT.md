@@ -55,11 +55,11 @@
 - `src/durable-gateway-dispatcher.mjs`: per-event/per-handler leases, stable idempotency keys, bounded retry/backoff, durable receipts, quarantine and FIFO acknowledgement only after all selected handlers commit.
 - `src/interaction-token-vault.mjs`: AES-256-GCM for short-lived Discord interaction webhook tokens with unique nonce and AAD bound to interaction, application and guild IDs. Plaintext token is removed before durable payload storage.
 - DO startup requires `GATEWAY_INTERACTION_ENCRYPTION_KEY` (64 hex chars/32 random bytes), handler manifest and client definitions. The coordinator fails closed rather than storing an unprotected interaction token.
-- These modules are tested independently. **The actual seven feature-handler implementations have not yet been ported into Workers/DO adapters. The dispatcher is not yet wired into DO execution. Immediate interaction ACK/defer/modal behavior has not been proven against Discord's live deadline.** The Gateway must remain disabled until those adapters and acknowledgement flows exist and pass parity tests.
+- The Durable Object now wires the dispatcher to its single existing alarm for one adapter: Engagement Engine `MESSAGE_CREATE`. Its token is resolved only through the configured definition's `tokenRef`; unsupported feature handlers fail closed. A focused Durable Object test verifies that the durable XP receipt is completed before inbox acknowledgement. **The other six original feature adapters, immediate interaction ACK/defer/modal behavior, and live Discord deadline verification are still incomplete.** Keep the Gateway disabled until all interaction paths and feature parity are implemented and tested.
 
 ## Verification
 
-**Latest full repository regression:** **139 tests passed, 0 failed, 0 skipped** across all 11 test files.  
+**Latest full repository regression:** **159 tests passed, 0 failed, 0 skipped** across all 11 test files.  
 **Syntax verification:** all 11 source modules and all 11 test files passed Node `--check`.
 
 Coverage includes manager-core permissions/identity, OAuth/D1 transactions and concurrency, OAuth routes, Worker/MCP auth/readiness, Gateway protocol, 1,200-event multi-page inbox FIFO, handler-registry ownership/collisions, durable dispatcher leases/retries/crash idempotency, interaction token encryption/tamper rejection, multi-session coordinator lifecycle and Durable Object identity/restart recovery.
@@ -92,4 +92,4 @@ The hosted test runner lacked npm, so package scripts were not executed through 
 
 ## Exact next execution step
 
-Port the original feature handlers one at a time behind the registry. Begin with the Engagement Engine's `MESSAGE_CREATE` award path and durable idempotency receipt. Then implement the immediate interaction ACK/defer/modal adapter (including transient decryption of the interaction token), then LIVE/Event, Fan Club, Social Owner Console, Gift Assist and Bot 005 command handling. Wire the completed handlers into the durable dispatcher only after each feature has focused parity tests. Keep Gateway activation false, and do not provision Cloudflare until the owner verifies a no-card Free account. In parallel, continue read-only backup/restore evidence collection for both PostgreSQL databases and the full original-media bucket.
+Port the remaining six feature handlers behind the registry, beginning with immediate interaction ACK/defer/modal behavior and transient token decryption. Test retries, FIFO ordering, duplicate side effects, and restart recovery. Keep the Gateway disabled: the one tested Engagement adapter does not provide parity or acknowledge application interactions. Do not provision Cloudflare until the owner verifies a no-card Free account. In parallel, continue read-only backup/restore evidence collection for both PostgreSQL databases and the full original-media bucket.
