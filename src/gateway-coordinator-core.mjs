@@ -459,7 +459,14 @@ export class GatewayCoordinatorCore {
       const reason = /^[A-Za-z0-9_:-]{1,96}$/.test(candidateReason)
         ? candidateReason
         : "interaction_ack_failed";
-      this.log("gateway_interaction_ack_failed", { clientId: id, eventKey, reason });
+      this.log("gateway_interaction_ack_failed", {
+        clientId: id,
+        eventKey,
+        reason,
+        routeStatus: route?.status ?? null,
+        routeHandler: Array.isArray(route?.handlers) ? route.handlers[0] ?? null : null,
+        interactionType: Number.isInteger(Number(interaction?.type)) ? Number(interaction.type) : null,
+      });
       return { acknowledged: false, reason };
     }
   }
