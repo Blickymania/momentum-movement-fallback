@@ -27,7 +27,7 @@ test("OAuth-enabled readiness fails closed unless Neon PostgreSQL and all OAuth 
   assert.ok(start >= 0 && end > start, "readiness route must exist");
   const readiness = manager.slice(start, end);
   assert.match(readiness, /if\(mcpOAuthEnabled\(\)\)/);
-  assert.ok(readiness.includes("!/\\d{15,22}$/.test"), "Discord snowflake validation must use a digit regex");
+  assert.ok(readiness.includes("!/^\\d{15,22}$/.test"), "Discord snowflake validation must use a digit regex");
   assert.match(readiness, /mcpOAuthDb/);
   assert.match(readiness, /to_regclass\('public\.mcp_oauth_clients'\)/);
   assert.match(readiness, /oauth_database_unavailable/);
