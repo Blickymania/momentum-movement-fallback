@@ -22,9 +22,9 @@ test("reports verified display state and withholds unconfirmed totals", async ()
   });
   assert.deepEqual(await handler(event()), { committed: true, receiptId: "bot005-statsstatus-" + interaction.id });
   assert.deepEqual(reads, [CHANNEL]);
-  assert.equal(edits[0].content, "**Momentum Movement — Verified Statistics**\\nLIVE display: level-50s-online\\nMember and role counts update through the independent Community Stats Sync.\\nTikTok coin and diamond totals are withheld until creator-confirmed values are available.");
+  assert.equal(edits[0].content, "**Momentum Movement — Verified Statistics**\nLIVE display: level-50s-online\nMember and role counts update through the independent Community Stats Sync.\nTikTok coin and diamond totals are withheld until creator-confirmed values are available.");
   assert.equal(Object.hasOwn(edits[0], "flags"), false);
-  assert.equal(/\\d/.test(edits[0].content), false);
+  assert.equal(/\d/.test(edits[0].content), false);
 });
 
 test("fails closed for wrong channel ID, guild, type, or unavailable response", async () => {

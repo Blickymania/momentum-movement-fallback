@@ -1,11 +1,11 @@
 const STATS_CHANNEL_ID = "1566030504635924600";
 
 function validSnowflake(value) {
-  return typeof value === "string" && /^\\d{15,22}$/.test(value);
+  return typeof value === "string" && /^\d{15,22}$/.test(value);
 }
 
 function safeChannelName(value) {
-  return String(value ?? "").replace(/[\\u0000-\\u001f\\u007f]/g, " ").replace(/@/g, "@\\u200b").trim().slice(0, 100) || "unavailable";
+  return String(value ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/@/g, "@\u200b").trim().slice(0, 100) || "unavailable";
 }
 
 export function createBot005StatsStatusHandler({
@@ -44,9 +44,9 @@ export function createBot005StatsStatusHandler({
           Number(channel?.type) !== 2) {
         throw new Error("discord_stats_channel_identity_mismatch");
       }
-      content = "**Momentum Movement — Verified Statistics**\\n" +
-        "LIVE display: " + safeChannelName(channel.name) + "\\n" +
-        "Member and role counts update through the independent Community Stats Sync.\\n" +
+      content = "**Momentum Movement — Verified Statistics**\n" +
+        "LIVE display: " + safeChannelName(channel.name) + "\n" +
+        "Member and role counts update through the independent Community Stats Sync.\n" +
         "TikTok coin and diamond totals are withheld until creator-confirmed values are available.";
     } catch {
       content = "The verified statistics display is temporarily unavailable. No values were invented.";
