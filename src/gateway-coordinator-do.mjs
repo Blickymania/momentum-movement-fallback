@@ -1,6 +1,9 @@
 import { GatewayCoordinatorCore } from "./gateway-coordinator-core.mjs";
 import { createGatewayHandlerRegistry } from "./gateway-handler-registry.mjs";
 import { createInteractionTokenVault } from "./interaction-token-vault.mjs";
+import { GatewayEventDispatcher, DurableGatewayDeliveryLedger } from "./durable-gateway-dispatcher.mjs";
+import { DurableEngagementLedger, createEngagementMessageHandler } from "./durable-engagement-ledger.mjs";
+import { createDiscordEngagementChannelResolver } from "./discord-engagement-channel-policy.mjs";
 
 const CONTROL_SECRET_MIN_LENGTH = 32;
 const DEFINITIONS_MAX_BYTES = 12 * 1024;
@@ -75,11 +78,17 @@ export class GatewayCoordinatorDurableObject {
     this.env = env;
     this.corePromise = null;
     this.tokenVault = null;
+    this.dispatchers = new Map();
+    this.engagementLedger = null;
   }
 
   async createCore() {
     const definitions = readDefinitions(this.env.GATEWAY_CLIENT_DEFINITIONS);
     const handlerRegistry = readHandlerRegistry(this.env.GATEWAY_HANDLER_MANIFEST, definitions);
+    if (handlerRegistry.manifest.livePublisher !== "none" ||
+        handlerRegistry.manifest.enabledHandlers.some((id) => id !== "discord-engagement-engine")) {
+      throw new TypeError("Gateway feature handler adapter is unavailable");
+    }
     const tokenVault = createInteractionTokenVault(this.env.GATEWAY_INTERACTION_ENCRYPTION_KEY);
     this.tokenVault = tokenVault;
     const core = new GatewayCoordinatorCore({
@@ -124,6 +133,7 @@ export class GatewayCoordinatorDurableObject {
       },
       connectSocket: async (url) => new WebSocket(url),
       scheduleAlarm: async (timestamp) => this.state.storage.setAlarm(timestamp),
+      onDispatch: async () => this.scheduleEarlierAlarm(Date.now() + 100),
       now: () => Date.now(),
       random: () => Math.random(),
       log: (event, metadata = {}) => {
@@ -135,7 +145,49 @@ export class GatewayCoordinatorDurableObject {
       },
     });
     await core.initialize();
+    this.dispatchers.clear();
+    if (handlerRegistry.manifest.enabledHandlers.includes("discord-engagement-engine")) {
+      const enabledDefinitions = definitions.filter((definition) => definition.enabled);
+      if (enabledDefinitions.length !== 1) {
+        throw new TypeError("Engagement Engine requires exactly one explicitly enabled Gateway identity");
+      }
+      const definition = enabledDefinitions[0];
+      const token = this.env[definition.tokenRef];
+      if (typeof token !== "string" || token.trim().length < 20) {
+        throw new TypeError("Engagement Engine token reference is unavailable");
+      }
+      this.engagementLedger = new DurableEngagementLedger(this.state.storage, {
+        guildId: handlerRegistry.manifest.guildId,
+        namespace: "momentum",
+      });
+      await this.engagementLedger.initialize();
+      const handler = createEngagementMessageHandler({
+        ledger: this.engagementLedger,
+        channelResolver: createDiscordEngagementChannelResolver({
+          token,
+          guildId: handlerRegistry.manifest.guildId,
+        }),
+      });
+      const deliveryLedger = new DurableGatewayDeliveryLedger(this.state.storage, {
+        namespace: "gateway-dispatch-" + definition.id,
+      });
+      this.dispatchers.set(definition.id, new GatewayEventDispatcher({
+        inbox: core.getInbox(definition.id),
+        registry: handlerRegistry,
+        ledger: deliveryLedger,
+        handlers: { "discord-engagement-engine": handler },
+      }));
+    }
     return core;
+  }
+
+  async scheduleEarlierAlarm(timestamp) {
+    const existing = await this.state.storage.getAlarm?.();
+    const next = existing === null || existing === undefined
+      ? timestamp
+      : Math.min(Number(existing), timestamp);
+    await this.state.storage.setAlarm(next);
+    return next;
   }
 
   async getCore() {
@@ -155,6 +207,18 @@ export class GatewayCoordinatorDurableObject {
     }
     const core = await this.getCore();
     await core.alarm();
+    if (core.stopped) return;
+    for (const [clientId, dispatcher] of this.dispatchers) {
+      const summary = await dispatcher.drain({ limit: 25 });
+      if (summary.status === "retry_wait" && Number.isFinite(summary.retryAt)) {
+        await this.scheduleEarlierAlarm(summary.retryAt);
+        continue;
+      }
+      if (summary.status === "ok" && summary.processed === 25) {
+        const metrics = await core.getInbox(clientId).getMetrics();
+        if (metrics.pendingEvents > 0) await this.scheduleEarlierAlarm(Date.now() + 100);
+      }
+    }
   }
 
   async fetch(request) {

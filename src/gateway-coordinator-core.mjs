@@ -146,6 +146,7 @@ export class GatewayCoordinatorCore {
     this.handlerRegistry = handlerRegistry ?? null;
     this.protectInteraction = protectInteraction ?? null;
     this.onDispatch = onDispatch ?? null;
+    this.pendingDispatchWakeups = [];
     this.fingerprintToken = fingerprintToken ?? (async (token) => {
       const cryptoImpl = globalThis.crypto;
       if (!cryptoImpl?.subtle) throw new Error("Web Crypto is required for credential isolation");
@@ -348,8 +349,10 @@ export class GatewayCoordinatorCore {
         }).catch(() => {});
       });
       eventMethod(socket, "message", (event) => {
-        void this.serialize(() => this.handleMessage(id, socket, generation, parseSocketData(event)))
-          .catch((error) => this.log("gateway_frame_failed", { clientId: id, error: error?.name || "unknown" }));
+        void this.serialize(async () => {
+          await this.handleMessage(id, socket, generation, parseSocketData(event));
+          await this.flushDispatchWakeups();
+        }).catch((error) => this.log("gateway_frame_failed", { clientId: id, error: error?.name || "unknown" }));
       });
       eventMethod(socket, "close", (event) => {
         void this.serialize(() => this.handleClose(id, socket, generation, event?.code ?? 1006))
@@ -401,6 +404,20 @@ export class GatewayCoordinatorCore {
     // The standard Discord Gateway endpoint is sufficient for protocol v10.
     // Shard/session-limit discovery can be supplied by a later REST adapter.
     return DEFAULT_GATEWAY_URL;
+  }
+
+  async flushDispatchWakeups() {
+    const notices = this.pendingDispatchWakeups.splice(0);
+    if (!this.onDispatch) return;
+    for (const notice of notices) {
+      try { await this.onDispatch(notice); }
+      catch {
+        this.log("gateway_dispatch_wakeup_failed", {
+          clientId: notice.clientId,
+          eventType: notice.eventType,
+        });
+      }
+    }
   }
 
   async handleMessage(id, socket, generation, raw) {
@@ -534,19 +551,11 @@ export class GatewayCoordinatorCore {
           try {
             const queued = await inbox.enqueueDispatch(event);
             if (queued.accepted && this.onDispatch) {
-              try {
-                await this.onDispatch(Object.freeze({
-                  clientId: id,
-                  eventKey: queued.eventKey,
-                  eventType: event.eventType,
-                }));
-              } catch {
-                // The event is already durable; the shared recovery alarm remains authoritative.
-                this.log("gateway_dispatch_wakeup_failed", {
-                  clientId: id,
-                  eventType: event.eventType,
-                });
-              }
+              this.pendingDispatchWakeups.push(Object.freeze({
+                clientId: id,
+                eventKey: queued.eventKey,
+                eventType: event.eventType,
+              }));
             }
           } catch (error) {
             if (error instanceof InboxFullError) {

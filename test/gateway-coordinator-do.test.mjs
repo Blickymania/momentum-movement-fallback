@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GatewayCoordinatorDurableObject } from "../src/gateway-coordinator-do.mjs";
+import { DurableEngagementLedger } from "../src/durable-engagement-ledger.mjs";
+import { DurableGatewayDeliveryLedger } from "../src/durable-gateway-dispatcher.mjs";
 
 const GUILD_ID = "1565048205970767992";
 const APP_ID = "1565304619838742598";
@@ -20,13 +22,7 @@ const HANDLER_MANIFEST = JSON.stringify({
   applicationId: APP_ID,
   liveChannelId: "1565048207178862763",
   livePublisher: "none",
-  enabledHandlers: [
-    "bot005",
-    "social-owner-console",
-    "fan-club-level-up",
-    "discord-engagement-engine",
-    "gift-assist",
-  ],
+  enabledHandlers: ["discord-engagement-engine"],
 });
 
 class MemoryDOStorage {
@@ -111,6 +107,15 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
     calls.push({ path: parsed.pathname, authorization: options.headers?.authorization });
     if (parsed.pathname === "/api/v10/users/@me") {
       return okJson({ id: botId, bot: true, username: "momentum-test-bot" });
+    }
+    if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID + "/roles") {
+      return okJson([{ id: GUILD_ID, permissions: "1024" }]);
+    }
+    if (parsed.pathname === "/api/v10/channels/1565643996624199760") {
+      return okJson({
+        id: "1565643996624199760", guild_id: GUILD_ID, type: 0,
+        name: "general-chat", nsfw: false, permission_overwrites: [],
+      });
     }
     if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID) {
       return okJson({ id: guildId, name: "Momentum Movement" });
@@ -224,6 +229,19 @@ test("stores interaction tokens only as authenticated AES-GCM ciphertext", async
   });
 });
 
+test("refuses to start when an unported feature adapter is enabled", async () => {
+  const manifest = JSON.stringify({
+    guildId: GUILD_ID,
+    applicationId: APP_ID,
+    livePublisher: "none",
+    enabledHandlers: ["bot005"],
+  });
+  const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifest });
+  const response = await object.fetch(control("/start", "POST"));
+  assert.equal(response.status, 503);
+  assert.equal(FakeWebSocket.instances.length, 0);
+});
+
 test("refuses to start until client definitions are configured", async () => {
   FakeWebSocket.instances = [];
   const storage = new MemoryDOStorage();
@@ -261,6 +279,49 @@ test("fails closed on a bot application identity mismatch", async () => {
     assert.equal(result.status, 503);
     assert.equal((await result.json()).status, "not_started");
     assert.equal(sockets.length, 0);
+  });
+});
+
+test("Durable Object alarm delivers MESSAGE_CREATE through the Engagement ledger before acknowledging FIFO", async () => {
+  await withRuntime({}, async ({ sockets }) => {
+    const storage = new MemoryDOStorage();
+    const object = makeObject(storage);
+    const started = await object.fetch(control("/start", "POST"));
+    assert.equal(started.status, 202);
+    const socket = sockets[0];
+    dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise;
+    await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: { session_id: "engagement-session", resume_gateway_url: "wss://resume.example" } });
+    await core.serial;
+    const messageId = "1569000000000000100";
+    const userId = "1569000000000000001";
+    dispatch(socket, { op: 0, s: 2, t: "MESSAGE_CREATE", d: {
+      id: messageId,
+      guild_id: GUILD_ID,
+      channel_id: "1565643996624199760",
+      author: { id: userId, bot: false },
+      type: 0,
+      content: "This is a meaningful contribution to our community discussions.",
+      timestamp: "2026-11-18T12:00:00.000Z",
+    }});
+    await core.serial;
+
+    const inbox = core.getInbox("bot-alpha");
+    const [queued] = await inbox.listPending();
+    assert.equal(queued.payload.id, messageId);
+    assert.ok((await storage.getAlarm()) <= Date.now() + 2_000);
+
+    await object.alarm();
+
+    assert.equal((await inbox.listPending()).length, 0);
+    const xp = new DurableEngagementLedger(storage, { guildId: GUILD_ID, namespace: "momentum" });
+    const snapshot = await xp.snapshot("life");
+    assert.deepEqual(snapshot.rows, [{ id: userId, score: 8, lifetime: 8 }]);
+    const delivery = new DurableGatewayDeliveryLedger(storage, { namespace: "gateway-dispatch-bot-alpha" });
+    const receipt = await delivery.get(queued.eventKey, "discord-engagement-engine");
+    assert.equal(receipt.status, "completed");
+    assert.equal(receipt.receiptId, "xp:" + messageId + ":" + userId);
   });
 });
 

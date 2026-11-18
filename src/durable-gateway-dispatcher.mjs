@@ -292,7 +292,7 @@ export class GatewayEventDispatcher {
       throw new RangeError("Dispatch batch must be between 1 and 100 events");
     }
     this.running = true;
-    const summary = { status: "ok", processed: 0, acknowledged: 0, ignored: 0, quarantined: 0, retried: 0, blocked: 0 };
+    const summary = { status: "ok", processed: 0, acknowledged: 0, ignored: 0, quarantined: 0, retried: 0, blocked: 0, retryAt: null };
     try {
       const events = await this.inbox.listPending(limit);
       for (const event of events) {
@@ -372,6 +372,7 @@ export class GatewayEventDispatcher {
             summary.retried += 1;
             summary.blocked += 1;
             summary.status = retry.deadLetter ? "dead_letter" : "retry_wait";
+            summary.retryAt = retry.deadLetter ? null : retry.retryAt;
             eventComplete = false;
             break;
           }
