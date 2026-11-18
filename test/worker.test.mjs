@@ -114,7 +114,7 @@ test("completes OAuth authorization and manager status through the Worker HTTP s
  const h=harness({env:{MCP_OAUTH_ENABLED:"true"},fetchImpl:async(url,options={})=>{
   const parsed=new URL(url),headers=new Headers(options.headers||{}),authorization=headers.get("authorization");
   discordCalls.push({url:parsed.toString(),method:options.method||"GET",authorization});
-  if(parsed.pathname==="/api/oauth2/token")return response({access_token:"discord-access-token"});
+  if(parsed.pathname==="/api/v10/oauth2/token")return response({access_token:"discord-access-token"});
   if(parsed.pathname==="/api/v10/users/@me"&&authorization==="Bot test-bot-token")return response({id:APP,bot:true});
   if(parsed.pathname==="/api/v10/users/@me")return response({id:"discord-user-123"});
   if(parsed.pathname==="/api/v10/users/@me/guilds")return response([{id:GUILD,owner:false,permissions:"8"}]);
