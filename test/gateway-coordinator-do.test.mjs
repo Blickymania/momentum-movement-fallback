@@ -143,6 +143,12 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
         { id: "1567000000000000003", guild_id: GUILD_ID, type: 0, name: "community-guidelines" },
       ]);
     }
+    if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID + "/scheduled-events") {
+      return okJson([
+        { id: "1567000000000000010", guild_id: GUILD_ID, status: 1, name: "Momentum check-in", scheduled_start_time: "2027-01-01T00:00:00.000Z" },
+        { id: "1567000000000000011", guild_id: "1565048205970767993", status: 1, name: "Foreign event", scheduled_start_time: "2027-01-02T00:00:00.000Z" },
+      ]);
+    }
     if (parsed.pathname === "/api/v10/channels/1566030504635924600") {
       return okJson({ id: "1566030504635924600", guild_id: GUILD_ID, type: 2, name: "live-members" });
     }
@@ -487,6 +493,39 @@ test("rules capability requires its matching flag before opening a Gateway socke
     const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: rulesManifest });
     const response = await object.fetch(control("/start", "POST"));
     assert.equal(response.status, 503);
+    assert.equal(sockets.length, 0);
+  });
+});
+
+test("isolated /events reads the authorized guild schedule and edits a deferred reply", async () => {
+  const eventsManifest = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-events"] });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const storage = new MemoryDOStorage();
+    const object = makeObject(storage, { GATEWAY_HANDLER_MANIFEST: eventsManifest, BOT005_EVENTS_ENABLED: "true" });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 202);
+    const socket = sockets[0]; dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise; await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: { session_id: "events-session", resume_gateway_url: "wss://resume.events.example" } }); await core.serial;
+    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: { id: "1569000000000000061", application_id: APP_ID,
+      guild_id: GUILD_ID, channel_id: "1565643996624199760", token: "non-production-events-interaction-token",
+      type: 2, member: { user: { id: "1569000000000000002" } }, data: { name: "events" } } }); await core.serial;
+    const inbox = core.getInbox("bot-alpha"), [queued] = await core.getInbox("bot-alpha").listPending();
+    assert.equal(queued.interactionAckState, "acknowledged"); assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-events"]);
+    assert.equal((await object.dispatchers.get("bot-alpha").drain({ limit: 1 })).status, "ok");
+    assert.equal((await inbox.listPending()).length, 0);
+    const delivery = new DurableGatewayDeliveryLedger(storage, { namespace: "gateway-dispatch-bot-alpha" });
+    assert.equal((await delivery.get(queued.eventKey, "bot005-events")).status, "completed");
+    assert.equal(calls.filter((call) => call.path === "/api/v10/guilds/" + GUILD_ID + "/scheduled-events" && call.method === "GET").length, 1);
+    assert.equal(calls.filter((call) => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 1);
+    assert.equal(JSON.stringify(calls).includes("non-production-events-interaction-token"), false);
+  });
+});
+
+test("events capability requires its matching flag before opening a Gateway socket", async () => {
+  const eventsManifest = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-events"] });
+  await withRuntime({}, async ({ sockets }) => {
+    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: eventsManifest });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 503);
     assert.equal(sockets.length, 0);
   });
 });

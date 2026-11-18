@@ -102,6 +102,15 @@ test("routes /rules only through its isolated read-only capability", () => {
   assert.equal(other.status, "disabled");
 });
 
+test("routes /events only through its isolated capability", () => {
+  const registry = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005-events"] }));
+  const route = registry.route(event("INTERACTION_CREATE", {
+    guild_id: GUILD, application_id: APP, type: 2, data: { name: "events" },
+  }));
+  assert.deepEqual(route.handlers, ["bot005-events"]);
+  assert.equal(route.routeKey, "command:events");
+});
+
 test("routes /statsstatus only through its isolated capability", () => {
   const registry = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005-statsstatus"] }));
   const route = registry.route(event("INTERACTION_CREATE", {

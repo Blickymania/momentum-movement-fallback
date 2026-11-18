@@ -44,6 +44,16 @@ test("defers only the isolated Bot 005 rules command", () => {
   });
 });
 
+test("defers only isolated Bot 005 events", () => {
+  const route = { status: "routed", handlers: ["bot005-events"] };
+  assert.deepEqual(planner({ type: 2, guild_id: GUILD, data: { name: "events" } }, route), {
+    status: "ready", response: { type: 5 },
+  });
+  assert.deepEqual(planner({ type: 2, guild_id: GUILD, data: { name: "rules" } }, route), {
+    status: "blocked", reason: "bot005_events_route_type_mismatch",
+  });
+});
+
 test("defers only isolated Bot 005 statsstatus", () => {
   const route = { status: "routed", handlers: ["bot005-statsstatus"] };
   assert.deepEqual(planner({ type: 2, guild_id: GUILD, data: { name: "statsstatus" } }, route), {
