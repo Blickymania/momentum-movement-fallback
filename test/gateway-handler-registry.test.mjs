@@ -307,6 +307,24 @@ test("routes only the exact forum confirmation component to its isolated capabil
   assert.equal(disabled.status, "disabled");
 });
 
+test("routes only /forum-admin rename through its isolated staging capability", () => {
+  const registry = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005-forum-rename"] }));
+  const route = registry.route(event("INTERACTION_CREATE", {
+    guild_id: GUILD, application_id: APP, type: 2,
+    data: { name: "forum-admin", options: [{ type: 1, name: "rename", options: [
+      { type: 3, name: "thread_id", value: "1566000000000000005" },
+      { type: 3, name: "title", value: "Updated title" },
+    ] }] },
+  }));
+  assert.deepEqual(route.handlers, ["bot005-forum-rename"]);
+  assert.equal(route.routeKey, "command:forum-admin:rename");
+  const wrongSubcommand = registry.route(event("INTERACTION_CREATE", {
+    guild_id: GUILD, application_id: APP, type: 2,
+    data: { name: "forum-admin", options: [{ type: 1, name: "thread" }] },
+  }));
+  assert.equal(wrongSubcommand.status, "disabled");
+});
+
 test("routes only /forum-admin thread through its isolated read-only capability", () => {
   const registry = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005-forum-thread"] }));
   const route = registry.route(event("INTERACTION_CREATE", {
