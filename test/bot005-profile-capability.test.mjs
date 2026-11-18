@@ -72,7 +72,7 @@ test("capability guard requires both explicit manifest registration and exact ru
   const registry = createGatewayHandlerRegistry(manifest(["bot005-profile-modal"]));
   assert.throws(() => validateGatewayFeatureCapabilities(registry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(registry, { BOT005_PROFILE_MODAL_ENABLED: "true" }), {
-    profileModalEnabled: true,
+    profileModalEnabled: true, pingEnabled: false,
   });
   const pingRegistry = createGatewayHandlerRegistry(manifest(["bot005-ping"]));
   assert.throws(() => validateGatewayFeatureCapabilities(pingRegistry, {}), /explicitly agree/);
