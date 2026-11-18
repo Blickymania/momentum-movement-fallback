@@ -90,7 +90,7 @@ test("validates changed titles and rejects values outside Discord title length",
     const f = await fixture();
     await f.handler(event(interaction({ title })));
     assert.equal(await f.store.get(INTERACTION), null);
-    assert.equal(f.calls.reads.length, title === "Old title" || title.length < 3 || title.length > 100 ? 0 : 2);
+    assert.equal(f.calls.reads.length, title.length < 3 || title.length > 100 ? 0 : 2);
   }
 });
 
