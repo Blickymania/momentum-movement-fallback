@@ -121,7 +121,7 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     if (!interaction || typeof interaction !== "object" || Array.isArray(interaction) ||
         route?.status !== "routed" || !Array.isArray(route.handlers) ||
         route.handlers.length !== 1 ||
-        !["bot005", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member"].includes(route.handlers[0])) {
+        !["bot005", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server"].includes(route.handlers[0])) {
       return blocked("bot005_route_not_verified");
     }
 
@@ -132,6 +132,7 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     const statsStatusOnly = route.handlers[0] === "bot005-statsstatus";
     const eventsOnly = route.handlers[0] === "bot005-events";
     const memberOnly = route.handlers[0] === "bot005-member";
+    const serverOnly = route.handlers[0] === "bot005-server";
     const type = Number(interaction.type);
     if (profileModalOnly && type !== 5) return blocked("bot005_profile_modal_route_type_mismatch");
     if (pingOnly && (type !== 2 || interaction.data?.name !== "ping")) {
@@ -151,6 +152,9 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     }
     if (memberOnly && (type !== 2 || interaction.data?.name !== "member")) {
       return blocked("bot005_member_route_type_mismatch");
+    }
+    if (serverOnly && (type !== 2 || !["server", "dashboard"].includes(interaction.data?.name))) {
+      return blocked("bot005_server_route_type_mismatch");
     }
     if (type === 1) return ready({ type: 1 });
 

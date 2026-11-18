@@ -15,6 +15,7 @@ const HANDLERS = Object.freeze([
   "bot005-statsstatus",
   "bot005-events",
   "bot005-member",
+  "bot005-server",
   "social-owner-console",
   "fan-club-level-up",
   "discord-engagement-engine",
@@ -139,6 +140,10 @@ function interactionRoute(config, interaction) {
       return { status: "disabled", reason: "handler_disabled", handler: owner, handlers: [] };
     }
     return { status: "routed", eventType: "INTERACTION_CREATE", handlers: [owner], routeKey: customId.split(":")[0] };
+  }
+
+  if (["server", "dashboard"].includes(data.name) && enabled(config, "bot005-server")) {
+    return { status: "routed", eventType: "INTERACTION_CREATE", handlers: ["bot005-server"], routeKey: "command:" + data.name };
   }
 
   if (data.name === "member" && enabled(config, "bot005-member")) {

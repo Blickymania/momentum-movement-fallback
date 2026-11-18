@@ -143,6 +143,9 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
         { id: "1567000000000000003", guild_id: GUILD_ID, type: 0, name: "community-guidelines" },
       ]);
     }
+    if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID + "?with_counts=true") {
+      return okJson({ id: GUILD_ID, name: "Momentum Movement", approximate_member_count: 1234 });
+    }
     if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID + "/members/1569000000000000099") {
       return okJson({ user: { id: "1569000000000000099" }, joined_at: "2021-08-15T22:30:00.000Z" });
     }
@@ -497,6 +500,36 @@ test("rules capability requires its matching flag before opening a Gateway socke
     const response = await object.fetch(control("/start", "POST"));
     assert.equal(response.status, 503);
     assert.equal(sockets.length, 0);
+  });
+});
+
+test("isolated /server and /dashboard read only verified guild counts", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-server"] });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const storage = new MemoryDOStorage(), object = makeObject(storage, { GATEWAY_HANDLER_MANIFEST: manifestValue, BOT005_SERVER_ENABLED: "true" });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 202);
+    const socket = sockets[0]; dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise; await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: { session_id: "server-session", resume_gateway_url: "wss://resume.server.example" } }); await core.serial;
+    for (const [n, name] of ["server", "dashboard"].entries()) {
+      dispatch(socket, { op: 0, s: n + 2, t: "INTERACTION_CREATE", d: { id: "156900000000000006" + (n + 3), application_id: APP_ID, guild_id: GUILD_ID,
+        channel_id: "1565643996624199760", token: "non-production-server-token-" + n, type: 2,
+        member: { user: { id: "1569000000000000002" } }, data: { name } } }); await core.serial;
+    }
+    const inbox = core.getInbox("bot-alpha"), queued = await inbox.listPending();
+    assert.equal(queued.length, 2); assert.ok(queued.every((entry) => entry.interactionAckState === "acknowledged"));
+    assert.ok(queued.every((entry) => entry.dispatchRoute.handlers[0] === "bot005-server"));
+    assert.equal((await object.dispatchers.get("bot-alpha").drain({ limit: 2 })).status, "ok");
+    assert.equal(calls.filter((call) => call.path === "/api/v10/guilds/" + GUILD_ID + "?with_counts=true" && call.method === "GET").length, 2);
+    assert.equal(calls.filter((call) => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 2);
+  });
+});
+
+test("server capability requires its matching flag before opening a Gateway socket", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-server"] });
+  await withRuntime({}, async ({ sockets }) => {
+    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifestValue });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 503); assert.equal(sockets.length, 0);
   });
 });
 
