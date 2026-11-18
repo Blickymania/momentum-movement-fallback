@@ -307,7 +307,9 @@ test("profile modal capability reaches the durable store and deferred reply thro
       handlers: ["bot005-profile-modal"],
       routeKey: "memberdata",
     });
-    await object.alarm();
+    const dispatchResult = await object.dispatchers.get("bot-alpha").drain({ limit: 1 });
+    assert.equal(dispatchResult.status, "ok", JSON.stringify(dispatchResult));
+    assert.equal(dispatchResult.acknowledged, 1);
     assert.equal((await inbox.listPending()).length, 0);
 
     const profileStore = new DurableBot005ProfileStore(storage, {
