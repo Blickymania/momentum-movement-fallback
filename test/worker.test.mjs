@@ -38,6 +38,8 @@ function harness({env={},fetchImpl}={}){
 }
 const request=(method,body,authorization)=>new Request("https://momentum.example/mcp",{method,headers:{...(authorization?{authorization}:{}),...(body!==undefined?{"content-type":"application/json"}:{})},body:body===undefined?undefined:JSON.stringify(body)});
 async function hash(value){const digest=await webcrypto.subtle.digest("SHA-256",new TextEncoder().encode(value));return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");}
+async function pkceChallenge(value){const digest=new Uint8Array(await webcrypto.subtle.digest("SHA-256",new TextEncoder().encode(value)));return btoa(String.fromCharCode(...digest)).replace(/=/g,"").replace(/\\+/g,"-").replace(/\\//g,"_");}
+const oauthRequest=(path,method="GET",body)=>new Request("https://momentum.example"+path,{method,headers:{...(body!==undefined?{"content-type":body instanceof URLSearchParams?"application/x-www-form-urlencoded":"application/json"}:{})},body:body===undefined?undefined:body instanceof URLSearchParams?body.toString():JSON.stringify(body)});
 
 test("serves process health before readiness configuration is available",async()=>{
  const healthOnly=await createMomentumManagerWorker().fetch(new Request("https://momentum.example/healthz"),{...baseEnv});
@@ -107,6 +109,40 @@ test("allows read-only OAuth scope to run a GET manager operation",async()=>{
  const result=await h.worker.fetch(request("POST",body,"Bearer "+token),h.env);
  assert.equal(result.status,200);assert.equal(JSON.parse((await result.json()).result.content[0].text).state,"connected");h.db.close();
 });
+test("completes OAuth authorization and manager status through the Worker HTTP surface",async()=>{
+ const discordCalls=[];
+ const h=harness({env:{MCP_OAUTH_ENABLED:"true"},fetchImpl:async(url,options={})=>{
+  const parsed=new URL(url),headers=new Headers(options.headers||{}),authorization=headers.get("authorization");
+  discordCalls.push({url:parsed.toString(),method:options.method||"GET",authorization});
+  if(parsed.pathname==="/api/oauth2/token")return response({access_token:"discord-access-token"});
+  if(parsed.pathname==="/api/v10/users/@me"&&authorization==="Bot test-bot-token")return response({id:APP,bot:true});
+  if(parsed.pathname==="/api/v10/users/@me")return response({id:"discord-user-123"});
+  if(parsed.pathname==="/api/v10/users/@me/guilds")return response([{id:GUILD,owner:false,permissions:"8"}]);
+  if(parsed.pathname==="/api/v10/guilds/"+GUILD)return response({id:GUILD,name:"Momentum Movement"});
+  throw new Error("Unexpected Discord URL: "+parsed);
+ }});
+ await new OAuthD1Store(h.db,{now:()=>1800000000000}).ensureSchema();
+ const redirectUri="https://client.example/oauth/callback";
+ const registration=await h.worker.fetch(oauthRequest("/register","POST",{client_name:"Worker OAuth test",redirect_uris:[redirectUri]}),h.env);
+ assert.equal(registration.status,201);const client=await registration.json();
+ const verifier="v".repeat(64),challenge=await pkceChallenge(verifier),authorize=new URL("https://momentum.example/oauth/authorize");
+ authorize.searchParams.set("client_id",client.client_id);authorize.searchParams.set("redirect_uri",redirectUri);
+ authorize.searchParams.set("response_type","code");authorize.searchParams.set("code_challenge",challenge);
+ authorize.searchParams.set("code_challenge_method","S256");authorize.searchParams.set("resource",RESOURCE);
+ authorize.searchParams.set("scope","mcp:read");authorize.searchParams.set("state","worker-client-state");
+ const start=await h.worker.fetch(new Request(authorize),h.env);assert.equal(start.status,302);
+ const state=new URL(start.headers.get("location")).searchParams.get("state");assert.ok(state);
+ const callback=await h.worker.fetch(new Request("https://momentum.example/oauth/callback?code=discord-code&state="+encodeURIComponent(state)),h.env);
+ assert.equal(callback.status,302);const redirect=new URL(callback.headers.get("location"));const code=redirect.searchParams.get("code");assert.ok(code);
+ const tokenForm=new URLSearchParams({grant_type:"authorization_code",client_id:client.client_id,code,redirect_uri:redirectUri,code_verifier:verifier,resource:RESOURCE});
+ const token=await h.worker.fetch(oauthRequest("/oauth/token","POST",tokenForm),h.env);assert.equal(token.status,200);
+ const tokens=await token.json();assert.equal(tokens.scope,"mcp:read");
+ const status=await h.worker.fetch(new Request("https://momentum.example/mcp",{method:"POST",headers:{authorization:"Bearer "+tokens.access_token,"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:901,method:"tools/call",params:{name:"discord_manager_status",arguments:{}}})}),h.env);
+ assert.equal(status.status,200);assert.equal(JSON.parse((await status.json()).result.content[0].text).state,"connected");
+ assert.equal(discordCalls.filter(x=>x.url==="https://discord.com/api/oauth2/token").length,1);
+ assert.equal(discordCalls.filter(x=>x.authorization==="Bot test-bot-token").length,2);h.db.close();
+});
+
 test("keeps OAuth disabled until explicitly enabled and schema migrated",async()=>{
  const h=harness();const result=await h.worker.fetch(new Request("https://momentum.example/oauth/health"),h.env);
  assert.equal(result.status,404);assert.equal((await result.json()).error,"oauth_not_enabled");h.db.close();
