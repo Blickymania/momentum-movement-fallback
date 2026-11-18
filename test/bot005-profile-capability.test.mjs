@@ -69,8 +69,8 @@ test("capability guard requires both explicit manifest registration and exact ru
     BOT005_PROFILE_MODAL_ENABLED: "true",
   }), /explicitly agree/);
   const fullBot005 = createGatewayHandlerRegistry(manifest(["bot005"]));
-  assert.throws(() => validateGatewayFeatureCapabilities(fullBot005, {}), /explicitly agree/);
-  assert.throws(() => validateGatewayFeatureCapabilities(fullBot005, { BOT005_PROFILE_MODAL_ENABLED: "true" }), /adapter is unavailable/);
+  assert.throws(() => validateGatewayFeatureCapabilities(fullBot005, {}), /adapter is unavailable/);
+  assert.throws(() => validateGatewayFeatureCapabilities(fullBot005, { BOT005_PROFILE_MODAL_ENABLED: "true" }), /explicitly agree/);
 });
 
 test("dispatcher delivers profile submission only to its isolated handler", async () => {
