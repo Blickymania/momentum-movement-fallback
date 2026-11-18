@@ -22,6 +22,7 @@ const HANDLERS = Object.freeze([
   "bot005-forum-inspect",
   "bot005-forum-thread",
   "bot005-forum-confirm",
+  "bot005-forum-rename",
   "social-owner-console",
   "fan-club-level-up",
   "discord-engagement-engine",
@@ -156,6 +157,10 @@ function interactionRoute(config, interaction) {
 
   if (data.name === "forum-admin" && data.options?.[0]?.name === "thread" && enabled(config, "bot005-forum-thread")) {
     return { status: "routed", eventType: "INTERACTION_CREATE", handlers: ["bot005-forum-thread"], routeKey: "command:forum-admin:thread" };
+  }
+
+  if (data.name === "forum-admin" && data.options?.[0]?.name === "rename" && enabled(config, "bot005-forum-rename")) {
+    return { status: "routed", eventType: "INTERACTION_CREATE", handlers: ["bot005-forum-rename"], routeKey: "command:forum-admin:rename" };
   }
 
   if (data.name === "forum-admin" && data.options?.[0]?.name === "inspect" && enabled(config, "bot005-forum-inspect")) {
