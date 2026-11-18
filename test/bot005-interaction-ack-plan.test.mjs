@@ -13,7 +13,7 @@ const button = (custom_id, extra = {}) => ({
 });
 
 test("selects a deferred reply for a registered Bot 005 command", () => {
-  const result = planner({ type: 2, data: { name: "announce" } }, routed);
+  const result = planner({ type: 2, guild_id: GUILD, data: { name: "announce" } }, routed);
   assert.deepEqual(result, { status: "ready", response: { type: 5 } });
 });
 
@@ -110,7 +110,7 @@ test("Bot 005 planner is consistent with the source-backed handler registry", ()
     guild_id: GUILD, application_id: APP, type: 2, data: { name: "announce" },
   } });
   assert.equal(route.handlers[0], "bot005");
-  assert.deepEqual(planner({ type: 2, data: { name: "announce" } }, route), {
+  assert.deepEqual(planner({ type: 2, guild_id: GUILD, application_id: APP, data: { name: "announce" } }, route), {
     status: "ready", response: { type: 5 },
   });
 });
