@@ -58,7 +58,7 @@ test("renames a validated active forum thread with Manage Threads and verifies b
 });
 
 test("fails closed without MANAGE_THREADS or ADMINISTRATOR", async () => {
-  for (const permissions of ["0", "17179869176", "invalid"]) {
+  for (const permissions of ["0", "16", "invalid"]) {
     const f = fixture({ permissions });
     assert.deepEqual(await f.executor(plan()), { state: "failed", code: "manage_threads_required" });
     assert.equal(f.calls.some((call) => call.method === "PATCH"), false);
