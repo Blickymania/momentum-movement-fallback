@@ -230,6 +230,65 @@ test("private milestone outbox reconciles deletion of a prior public post", asyn
   assert.equal((await setup.instance.get(USER)).birthday.post, null);
 });
 
+test("new milestone revision cannot overlap an active publisher and is reconciled after lease expiry", async () => {
+  let clock = 1_800_000_000_000;
+  const setup = store(new MemoryStorage(), fakeCipher(), { now: () => clock });
+  await setup.instance.apply(submission("birthday", {
+    date: "04-23", year: "", visibility: "public",
+  }, INTERACTION_A));
+  let releaseFirst;
+  const firstPublish = new Promise((resolve) => { releaseFirst = resolve; });
+  const remotePosts = new Map();
+  const keys = [];
+  let calls = 0;
+  const upsert = async ({ idempotencyKey, revision, visibility }) => {
+    calls += 1;
+    keys.push({ idempotencyKey, revision, visibility });
+    if (calls === 1) {
+      await firstPublish;
+      remotePosts.set(idempotencyKey, "1569000000000000009");
+      return { synchronized: true, postId: "1569000000000000009" };
+    }
+    if (visibility === "private") {
+      remotePosts.delete(idempotencyKey);
+      return { synchronized: true, postId: null };
+    }
+    throw new Error("unexpected_visibility");
+  };
+  const active = setup.instance.processMilestoneOutbox(USER, "birthday", upsert, { leaseMs: 1000 });
+  await Promise.resolve();
+  const leaseExpiry = (await setup.instance.getMilestoneOutbox(USER, "birthday")).leaseExpiresAt;
+  assert.equal((await setup.instance.processMilestoneOutbox(USER, "birthday", upsert, { leaseMs: 1000 })).busy, true);
+
+  await setup.instance.apply(submission("birthday", {
+    date: "04-23", year: "", visibility: "private",
+  }, INTERACTION_B));
+  const updated = await setup.instance.getMilestoneOutbox(USER, "birthday");
+  assert.equal(updated.status, "processing");
+  assert.equal(updated.leaseExpiresAt, leaseExpiry);
+  assert.equal(updated.payload.revision, 2);
+
+  releaseFirst();
+  const oldWorker = await active;
+  assert.deepEqual(oldWorker, { completed: false, superseded: true });
+  assert.equal((await setup.instance.get(USER)).birthday.post, null);
+  assert.equal((await setup.instance.getMilestoneOutbox(USER, "birthday")).status, "processing");
+
+  clock = leaseExpiry;
+  const repaired = await setup.instance.processMilestoneOutbox(USER, "birthday", upsert, { leaseMs: 1000 });
+  assert.equal(repaired.completed, true);
+  assert.equal(repaired.postId, null);
+  assert.equal(remotePosts.size, 0);
+  assert.equal(calls, 2);
+  assert.equal(keys[0].idempotencyKey, keys[1].idempotencyKey);
+  assert.deepEqual(keys.map(({ revision, visibility }) => ({ revision, visibility })), [
+    { revision: 1, visibility: "public" },
+    { revision: 2, visibility: "private" },
+  ]);
+  assert.equal((await setup.instance.get(USER)).birthday.post, null);
+  assert.equal((await setup.instance.getMilestoneOutbox(USER, "birthday")).status, "completed");
+});
+
 test("AES-GCM profile cipher encrypts and authenticates guild/user-bound records", async () => {
   const cipher = createBot005ProfileCipher("11".repeat(32));
   const data = { privateYear: "1988", date: "02-29" };

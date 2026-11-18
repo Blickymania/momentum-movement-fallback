@@ -238,15 +238,18 @@ export class DurableBot005ProfileStore {
           this.associatedData(userId) + ":milestone:" + kind,
         );
         const priorOutbox = await txn.get(outboxKey);
+        const retainActiveLease = priorOutbox?.status === "processing" &&
+          Number.isSafeInteger(priorOutbox.leaseExpiresAt) && priorOutbox.leaseExpiresAt > now &&
+          typeof priorOutbox.leaseId === "string";
         await txn.put(outboxKey, {
           guildId: this.guildId,
           userId,
           kind,
-          status: "pending",
+          status: retainActiveLease ? "processing" : "pending",
           revision: next.version,
           attempts: 0,
-          leaseId: null,
-          leaseExpiresAt: null,
+          leaseId: retainActiveLease ? priorOutbox.leaseId : null,
+          leaseExpiresAt: retainActiveLease ? priorOutbox.leaseExpiresAt : null,
           retryAt: null,
           payload: outboxEnvelope,
           createdAt: priorOutbox?.createdAt ?? now,
@@ -398,7 +401,8 @@ export class DurableBot005ProfileStore {
     } catch (error) {
       const failure = await this.storage.transaction(async (txn) => {
         const current = await txn.get(claim.key);
-        if (!current || current.status !== "processing" || current.leaseId !== claim.leaseId) {
+        if (!current || current.status !== "processing" || current.leaseId !== claim.leaseId ||
+            current.revision !== claim.revision) {
           return { recorded: false, superseded: true };
         }
         const code = typeof error?.code === "string" ? error.code
