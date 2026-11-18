@@ -93,3 +93,17 @@ The hosted test runner lacked npm, so package scripts were not executed through 
 ## Exact next execution step
 
 Port the remaining six feature handlers behind the registry, beginning with immediate interaction ACK/defer/modal behavior and transient token decryption. Test retries, FIFO ordering, duplicate side effects, and restart recovery. Keep the Gateway disabled: the one tested Engagement adapter does not provide parity or acknowledge application interactions. Do not provision Cloudflare until the owner verifies a no-card Free account. In parallel, continue read-only backup/restore evidence collection for both PostgreSQL databases and the full original-media bucket.
+
+
+## Recovery checkpoint — 2026-11-18 (candidate branch only)
+
+- **Project/component:** Dawn Dotta / Momentum Movement; isolated Cloudflare migration candidate, branch `infra/cloudflare-free-migration`.
+- **Completed:** owner-only Bot 005 `/forum-admin thread` read-only adapter. It verifies the selected same-guild public forum thread and parent forum, returns title/archive/lock/applied-tag metadata, and does not read thread messages or mutate Discord state. Capability flag remains default-off.
+- **Tests/verified result:** GitHub Actions run `44283770344` for head `a48f3be18772b24edc2dd5943422c0acd8b941a0` completed successfully on 2026-11-18; syntax checks and 289 tests passed. Coverage is mocked; this does not verify Cloudflare deployment or live Discord behavior.
+- **Changes implemented:** thread handler, Gateway registry/ACK routing, coordinator wiring, default-off flag, focused mocked and capability tests, README documentation.
+- **Remaining objectives:** remaining Bot 005 command handlers and interactions; OAuth archive/checksum and independent restore; Cloudflare Free/no-card account and runtime validation; runtime quotas/soak; command and Gateway parity; rollback proof; production cutover. Current production remains Railway; cutover remains 0%.
+- **Blockers:** local execution environment reports “No usable execution environment is available,” preventing local inspection, tests, and syncing this checkpoint to the Library file. No attempt was made to provision Cloudflare, access credentials, modify production, or contact Discord.
+- **Scheduled processes:** no new automation or scheduler created; candidate config has no Cron Trigger.
+- **Dependencies/user actions:** eventual Cloudflare owner sign-in to confirm Free/no-card eligibility; secure access to OAuth archive/checksum and an isolated restore destination. Neither is needed for the next source-only candidate cycle.
+- **Last verified state:** branch head `a48f3be18772b24edc2dd5943422c0acd8b941a0`; CI run `44283770344` successful; all candidate capability flags remain false.
+- **Exact next execution step:** inspect source and existing test patterns for the next recovered owner-only `/forum-admin rename` subcommand; implement it behind a separate default-off flag with strict same-guild/thread checks and precondition/postcondition verification; run hosted CI and inspect actual results. Keep Discord and production untouched.
