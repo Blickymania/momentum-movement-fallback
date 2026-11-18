@@ -245,6 +245,26 @@ test("defer-updates only an exact owner-bound forum confirmation component", () 
   assert.deepEqual(planner({ ...valid, message: { id: "1566060000000000000", author: { id: "1565200000000000001" } } }, route), { status: "blocked", reason: "bot005_forum_confirm_route_type_mismatch" });
 });
 
+test("defers only /forum-admin rename with selected thread and title", () => {
+  const route = { status: "routed", handlers: ["bot005-forum-rename"] };
+  const interaction = { type: 2, guild_id: GUILD, data: { name: "forum-admin", options: [
+    { type: 1, name: "rename", options: [
+      { type: 3, name: "thread_id", value: "1566000000000000005" },
+      { type: 3, name: "title", value: "Updated title" },
+    ] },
+  ] } };
+  assert.deepEqual(planner(interaction, route), { status: "ready", response: { type: 5 } });
+  for (const options of [
+    [{ type: 1, name: "thread" }],
+    [{ type: 1, name: "rename", options: [{ type: 3, name: "thread_id", value: "1566000000000000005" }] }],
+    [{ type: 1, name: "rename", options: [{ type: 3, name: "title", value: "Updated title" }] }],
+  ]) {
+    assert.deepEqual(planner({ ...interaction, data: { name: "forum-admin", options } }, route), {
+      status: "blocked", reason: "bot005_forum_rename_route_type_mismatch",
+    });
+  }
+});
+
 test("defers only /forum-admin thread with a selected thread ID", () => {
   const route = { status: "routed", handlers: ["bot005-forum-thread"] };
   const interaction = { type: 2, guild_id: GUILD, data: { name: "forum-admin", options: [
