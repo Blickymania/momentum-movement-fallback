@@ -134,6 +134,13 @@ test("confirmation plans survive reconstruction from the same durable storage", 
   assert.equal((await restarted.claim(ID, actor())).status, "claimed");
 });
 
+test("can discard only an unbound pending plan after message creation fails", async () => {
+  const { store } = fixture();
+  await store.create(plan());
+  assert.equal((await store.discardUnbound(ID)).status, "cancelled");
+  assert.equal((await store.claim(ID, actor())).status, "cancelled");
+});
+
 test("fails closed on corrupted persisted state", async () => {
   const key = "bot005:confirmation-plans:v1";
   const storage = new MemoryStorage({ key, value: { plans: [{ id: "bad" }] } });

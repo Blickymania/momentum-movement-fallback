@@ -191,6 +191,20 @@ export class DurableBot005ConfirmationStore {
     });
   }
 
+  async discardUnbound(id) {
+    if (!validId(id)) return { status: "invalid_id" };
+    return this.mutate((state, now) => {
+      const plan = state.plans.find((item) => item.id === id);
+      if (!plan) return { status: "not_found" };
+      if (plan.state !== "pending") return { status: plan.state };
+      if (plan.messageId !== null) return { status: "already_bound" };
+      plan.state = "cancelled";
+      plan.resultCode = "unbound_message";
+      plan.updatedAt = now;
+      return { status: "cancelled" };
+    });
+  }
+
   async get(id) {
     if (!validId(id)) return null;
     const state = await this.storage.get(this.key);

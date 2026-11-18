@@ -10,6 +10,20 @@ function validateToken(token) {
     !/[\u0000-\u0020\u007f]/.test(token);
 }
 
+function validConfirmationComponents(components) {
+  if (!Array.isArray(components)) return false;
+  if (components.length === 0) return true;
+  if (components.length !== 1) return false;
+  const row = components[0];
+  if (!row || row.type !== 1 || !Array.isArray(row.components) || row.components.length !== 2) return false;
+  const [confirm, cancel] = row.components;
+  const confirmId = /^mm005:forum-confirm:confirm:([A-Za-z0-9_-]{16,64})$/.exec(confirm?.custom_id ?? "");
+  const cancelId = /^mm005:forum-confirm:cancel:([A-Za-z0-9_-]{16,64})$/.exec(cancel?.custom_id ?? "");
+  return confirm?.type === 2 && confirm.style === 3 && confirm.label === "Confirm" &&
+    cancel?.type === 2 && cancel.style === 4 && cancel.label === "Cancel" &&
+    !!confirmId && !!cancelId && confirmId[1] === cancelId[1];
+}
+
 /**
  * Idempotently replace the deferred original interaction response.
  * No retry is performed here; dispatcher retry uses the same PATCH target.
@@ -28,7 +42,7 @@ export function createDiscordDeferredReplyEditor({
     if (!validSnowflake(applicationId) || !validateToken(token) ||
         typeof content !== "string" || content.length < 1 ||
         content.length > MAX_CONTENT_LENGTH ||
-        (components !== undefined && (!Array.isArray(components) || components.length !== 0))) {
+        (components !== undefined && !validConfirmationComponents(components))) {
       throw new TypeError("Deferred interaction reply edit is invalid");
     }
 
@@ -63,6 +77,11 @@ export function createDiscordDeferredReplyEditor({
       throw error;
     }
 
-    return { updated: true, status: result.status };
+    let messageId = null;
+    if (result.status !== 204 && typeof result.json === "function") {
+      const message = await result.json().catch(() => null);
+      if (validSnowflake(message?.id)) messageId = message.id;
+    }
+    return { updated: true, status: result.status, messageId };
   };
 }

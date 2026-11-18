@@ -26,6 +26,23 @@ test("PATCHes the deferred original reply with mention parsing disabled", async 
   assert.equal(request.options.signal.timeoutMs, 5000);
 });
 
+test("accepts only paired forum confirmation buttons and returns the resulting message ID", async () => {
+  const messageId = "1566060000000000000";
+  const components = [{ type: 1, components: [
+    { type: 2, style: 3, label: "Confirm", custom_id: "mm005:forum-confirm:confirm:confirmation_nonce_0001" },
+    { type: 2, style: 4, label: "Cancel", custom_id: "mm005:forum-confirm:cancel:confirmation_nonce_0001" },
+  ] }];
+  const edit = createDiscordDeferredReplyEditor({
+    fetchImpl: async (_url, options) => {
+      assert.deepEqual(JSON.parse(options.body).components, components);
+      return { ok: true, status: 200, json: async () => ({ id: messageId }) };
+    }, timeoutSignal: () => ({}),
+  });
+  const result = await edit({ applicationId: APP, token: TOKEN, content: "Confirm?", components });
+  assert.equal(result.messageId, messageId);
+  await assert.rejects(() => edit({ applicationId: APP, token: TOKEN, content: "Bad", components: [{ type: 1, components: [] }] }), /invalid/);
+});
+
 test("can clear confirmation components when editing a deferred component response", async () => {
   let body;
   const edit = createDiscordDeferredReplyEditor({ fetchImpl: async (_url, options) => { body = JSON.parse(options.body); return { ok: true, status: 200 }; }, timeoutSignal: () => ({}) });
