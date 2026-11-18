@@ -32,12 +32,16 @@ function validDate(value) {
 
 function validateMilestone(value, anniversary) {
   if (!value || typeof value !== "object" || Array.isArray(value) ||
-      !validDate(value.date) || typeof value.year !== "string" ||
-      (value.year !== "" && !/^(19|20)\d{2}$/.test(value.year)) ||
-      (anniversary && !/^(19|20)\d{2}$/.test(value.year)) ||
+      typeof value.date !== "string" || typeof value.year !== "string" ||
       !["private", "public"].includes(value.visibility)) return false;
-  return value.post === undefined || value.post === null ||
+  const validPost = value.post === undefined || value.post === null ||
     (typeof value.post === "string" && /^\d{15,22}$/.test(value.post));
+  if (!validPost) return false;
+  if (value.date === "" && value.year === "" && value.visibility === "private" &&
+      (value.post === undefined || value.post === null)) return true;
+  return validDate(value.date) &&
+    (value.year === "" || /^(19|20)\d{2}$/.test(value.year)) &&
+    (!anniversary || /^(19|20)\d{2}$/.test(value.year));
 }
 
 function defaultProfile(userId) {
