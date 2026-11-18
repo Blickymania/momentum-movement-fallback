@@ -70,6 +70,8 @@ export function createBot005ForumConfirmHandler({
             : result.state === "unknown"
               ? "The change outcome could not be verified. Check the current Discord state before retrying."
               : "The change was not applied. No additional action was attempted.";
+        } else if (claimed.status === "binding_mismatch") {
+          content = "This confirmation is not valid for this message or channel. No change was made.";
         } else {
           content = "This confirmation is expired or already used. No change was made.";
         }
