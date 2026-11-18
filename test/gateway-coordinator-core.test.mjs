@@ -84,7 +84,7 @@ const definitions = [
   { id: "bot-disabled", guildId: "1565304619838742500", applicationId: "1565304619838742501", intents: 1, enabled: false, tokenRef: "BOT_DISABLED_TOKEN" },
 ];
 
-function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken, clientDefinitions = definitions, handlerRegistry, protectInteraction, planInteractionAck, acknowledgeInteraction, revealInteraction, onDispatch } = {}) {
+function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken, clientDefinitions = definitions, handlerRegistry, protectInteraction, planInteractionAck, acknowledgeInteraction, revealInteraction, onDispatch, now: customNow } = {}) {
   const storage = new MemoryDOStorage();
   const sockets = [];
   const tokens = new Map([
@@ -109,7 +109,7 @@ function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, f
       alarms.push(Number(timestamp));
       await storage.setAlarm(timestamp);
     },
-    now: () => clock,
+    now: customNow ?? (() => clock),
     random,
     verifyIdentity,
     ...(fingerprintToken ? { fingerprintToken } : {}),
@@ -375,6 +375,7 @@ test("persists only protected interaction tokens when an explicit protector is c
     route: () => ({ status: "routed", handlers: ["discord-engagement-engine"] }),
   };
   const h = makeHarness({
+    now: () => Date.now(),
     handlerRegistry,
     protectInteraction: async (payload) => {
       const { token, ...safe } = payload;
