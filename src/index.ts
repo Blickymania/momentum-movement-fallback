@@ -147,7 +147,7 @@ async function managerStandardAudit(c){
   const caseReview={found:!!caseForum,correctParent:caseForum?.parent_id===staffId,typeVerified:caseForum?.type===15,
    everyoneDenied:!!caseEveryone&&(BigInt(caseEveryone.deny||"0")&1024n)!==0n,
    moderatorsAllowed:!!caseMod&&(BigInt(caseMod.allow||"0")&1024n)!==0n,
-   unexpectedViewGrants:unexpected};
+   unexpectedViewGrants:unexpected,passed:false};
   caseReview.passed=caseReview.found&&caseReview.correctParent&&caseReview.typeVerified&&caseReview.everyoneDenied&&caseReview.moderatorsAllowed&&unexpected.length===0;
   const retiredLevel50Channels=channels.filter(x=>/level[\s_-]*50.*lounge|lounge.*level[\s_-]*50/i.test(String(x.name||"").normalize("NFKC")));
   const warnings=[];
