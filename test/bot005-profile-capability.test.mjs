@@ -77,24 +77,30 @@ test("capability guard requires both explicit manifest registration and exact ru
   const registry = createGatewayHandlerRegistry(manifest(["bot005-profile-modal"]));
   assert.throws(() => validateGatewayFeatureCapabilities(registry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(registry, { BOT005_PROFILE_MODAL_ENABLED: "true" }), {
-    profileModalEnabled: true, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false,
+    profileModalEnabled: true, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false,
   });
   const pingRegistry = createGatewayHandlerRegistry(manifest(["bot005-ping"]));
   assert.throws(() => validateGatewayFeatureCapabilities(pingRegistry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(pingRegistry, { BOT005_PING_ENABLED: "true" }), {
-    profileModalEnabled: false, pingEnabled: true, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false,
+    profileModalEnabled: false, pingEnabled: true, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false,
   });
 
   const statusRegistry = createGatewayHandlerRegistry(manifest(["bot005-status"]));
   assert.throws(() => validateGatewayFeatureCapabilities(statusRegistry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(statusRegistry, { BOT005_STATUS_ENABLED: "true" }), {
-    profileModalEnabled: false, pingEnabled: false, statusEnabled: true, rulesEnabled: false, statsStatusEnabled: false,
+    profileModalEnabled: false, pingEnabled: false, statusEnabled: true, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false,
   });
 
   const statsRegistry = createGatewayHandlerRegistry(manifest(["bot005-statsstatus"]));
   assert.throws(() => validateGatewayFeatureCapabilities(statsRegistry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(statsRegistry, { BOT005_STATSSTATUS_ENABLED: "true" }), {
-    profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: true,
+    profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: true, eventsEnabled: false,
+  });
+
+  const eventsRegistry = createGatewayHandlerRegistry(manifest(["bot005-events"]));
+  assert.throws(() => validateGatewayFeatureCapabilities(eventsRegistry, {}), /explicitly agree/);
+  assert.deepEqual(validateGatewayFeatureCapabilities(eventsRegistry, { BOT005_EVENTS_ENABLED: "true" }), {
+    profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: true,
   });
 
   const defaultRegistry = createGatewayHandlerRegistry(manifest(["discord-engagement-engine"]));

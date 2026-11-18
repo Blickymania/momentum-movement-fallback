@@ -23,7 +23,8 @@ test("/events filters to authorized scheduled or active guild events and bounds 
   assert.deepEqual(reads, [GUILD]); assert.equal(replies.length, 1);
   assert.equal(replies[0].content.split("\n").length, 9);
   assert.match(replies[0].content, /Active —/);
-  assert.match(replies[0].content, /Future \\*\\*LIVE\\*\\* @​everyone/);
+  assert.ok(replies[0].content.includes(String.fromCharCode(92) + "**LIVE**"));
+  assert.ok(replies[0].content.includes("@" + String.fromCharCode(8203) + "everyone"));
   assert.doesNotMatch(replies[0].content, /Completed|Foreign|Event 9/);
   assert.equal(Object.hasOwn(replies[0], "flags"), false);
 });
