@@ -151,6 +151,85 @@ test("failed transaction commits neither the profile row nor the receipt", async
   assert.equal(storage.values.size, 0);
 });
 
+
+test("writes milestone outbox atomically and encrypts its private payload", async () => {
+  const setup = store();
+  await setup.instance.apply(submission("birthday", {
+    date: "04-23", year: "", visibility: "public",
+  }));
+  const row = [...setup.storage.values.entries()].find(([key]) => key.includes("milestone-outbox"));
+  assert.ok(row);
+  assert.equal(row[1].status, "pending");
+  assert.equal(row[1].payload.aad.endsWith(":milestone:birthday"), true);
+  assert.equal(JSON.stringify(row[1]).includes("04-23"), false);
+  const decoded = await setup.instance.getMilestoneOutbox(USER, "birthday");
+  assert.deepEqual(decoded.payload, {
+    userId: USER, kind: "birthday", date: "04-23", visibility: "public",
+    previousPostId: null, revision: 1,
+  });
+});
+
+test("milestone outbox retries through stable idempotency key and records one public post", async () => {
+  let clock = 1_800_000_000_000;
+  const setup = store(new MemoryStorage(), fakeCipher(), { now: () => clock });
+  await setup.instance.apply(submission("birthday", {
+    date: "04-23", year: "", visibility: "public",
+  }));
+  const posts = new Map();
+  let calls = 0;
+  const upsert = async ({ idempotencyKey }) => {
+    calls += 1;
+    const postId = posts.get(idempotencyKey) ?? "1569000000000000009";
+    posts.set(idempotencyKey, postId);
+    if (calls === 1) {
+      const error = new Error("timeout");
+      error.code = "timeout";
+      throw error;
+    }
+    return { synchronized: true, postId };
+  };
+  const first = await setup.instance.processMilestoneOutbox(USER, "birthday", upsert);
+  assert.equal(first.completed, false);
+  assert.equal(first.recorded, true);
+  assert.equal(first.deadLetter, false);
+  assert.equal(posts.size, 1);
+  clock = first.retryAt;
+  const second = await setup.instance.processMilestoneOutbox(USER, "birthday", upsert);
+  assert.equal(second.completed, true);
+  assert.equal(second.postId, "1569000000000000009");
+  assert.equal(second.idempotencyKey, "bot005-milestone:" + GUILD + ":" + USER + ":birthday");
+  assert.equal(calls, 2);
+  assert.equal(posts.size, 1);
+  assert.equal((await setup.instance.get(USER)).birthday.post, "1569000000000000009");
+  assert.equal((await setup.instance.getMilestoneOutbox(USER, "birthday")).status, "completed");
+});
+
+test("private milestone outbox reconciles deletion of a prior public post", async () => {
+  const setup = store();
+  await setup.instance.apply(submission("birthday", {
+    date: "04-23", year: "", visibility: "public",
+  }));
+  const posts = new Map();
+  const publicPost = await setup.instance.processMilestoneOutbox(USER, "birthday", async ({ idempotencyKey }) => {
+    const postId = "1569000000000000009";
+    posts.set(idempotencyKey, postId);
+    return { synchronized: true, postId };
+  });
+  assert.equal(publicPost.completed, true);
+  const next = submission("birthday", {
+    date: "04-23", year: "", visibility: "private",
+  }, INTERACTION_B);
+  await setup.instance.apply(next);
+  const hidden = await setup.instance.processMilestoneOutbox(USER, "birthday", async ({ idempotencyKey, previousPostId }) => {
+    assert.equal(previousPostId, "1569000000000000009");
+    posts.delete(idempotencyKey);
+    return { synchronized: true, postId: null };
+  });
+  assert.equal(hidden.completed, true);
+  assert.equal(posts.size, 0);
+  assert.equal((await setup.instance.get(USER)).birthday.post, null);
+});
+
 test("AES-GCM profile cipher encrypts and authenticates guild/user-bound records", async () => {
   const cipher = createBot005ProfileCipher("11".repeat(32));
   const data = { privateYear: "1988", date: "02-29" };

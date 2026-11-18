@@ -64,6 +64,11 @@ function receiptKey(guildId, interactionId) {
   return "bot005:profile-receipt:v1:" + guildId + ":" + interactionId;
 }
 
+function milestoneOutboxKey(guildId, userId, kind) {
+  return "bot005:milestone-outbox:v1:" + guildId + ":" + userId + ":" + kind;
+}
+
+
 /**
  * AES-256-GCM envelope for sensitive profile/milestone data at rest.
  * Keep this key separate from the interaction-token encryption key.
@@ -128,6 +133,7 @@ export class DurableBot005ProfileStore {
     applicationId,
     cipher,
     now = () => Date.now(),
+    makeLeaseId = () => globalThis.crypto.randomUUID(),
   } = {}) {
     if (!storage || typeof storage.transaction !== "function" ||
         typeof storage.get !== "function") {
@@ -137,14 +143,15 @@ export class DurableBot005ProfileStore {
       throw new TypeError("Verified guild and application IDs are required");
     }
     if (!cipher || typeof cipher.encrypt !== "function" || typeof cipher.decrypt !== "function" ||
-        typeof now !== "function") {
-      throw new TypeError("Profile encryption and clock dependencies are required");
+        typeof now !== "function" || typeof makeLeaseId !== "function") {
+      throw new TypeError("Profile encryption, clock and lease dependencies are required");
     }
     this.storage = storage;
     this.guildId = guildId;
     this.applicationId = applicationId;
     this.cipher = cipher;
     this.now = now;
+    this.makeLeaseId = makeLeaseId;
   }
 
   associatedData(userId) {
@@ -216,6 +223,38 @@ export class DurableBot005ProfileStore {
       };
       const nextEnvelope = await this.cipher.encrypt(next, this.associatedData(userId));
       await txn.put(dataKey, nextEnvelope);
+      if (kind === "birthday" || kind === "anniversary") {
+        const outboxKey = milestoneOutboxKey(this.guildId, userId, kind);
+        const outboxPayload = {
+          userId,
+          kind,
+          date: next[kind].date,
+          visibility: next[kind].visibility,
+          previousPostId: current[kind].post ?? null,
+          revision: next.version,
+        };
+        const outboxEnvelope = await this.cipher.encrypt(
+          outboxPayload,
+          this.associatedData(userId) + ":milestone:" + kind,
+        );
+        const priorOutbox = await txn.get(outboxKey);
+        await txn.put(outboxKey, {
+          guildId: this.guildId,
+          userId,
+          kind,
+          status: "pending",
+          revision: next.version,
+          attempts: 0,
+          leaseId: null,
+          leaseExpiresAt: null,
+          retryAt: null,
+          payload: outboxEnvelope,
+          createdAt: priorOutbox?.createdAt ?? now,
+          updatedAt: now,
+          lastError: null,
+          postId: null,
+        });
+      }
       await txn.put(savedReceiptKey, {
         receiptId,
         interactionId,
@@ -226,6 +265,160 @@ export class DurableBot005ProfileStore {
       });
       return { committed: true, duplicate: false, receiptId, version: next.version };
     });
+  }
+
+  async getMilestoneOutbox(userId, kind) {
+    if (!validSnowflake(userId) || !["birthday", "anniversary"].includes(kind)) {
+      throw new TypeError("Milestone outbox identity is invalid");
+    }
+    const record = await this.storage.get(milestoneOutboxKey(this.guildId, userId, kind));
+    if (record === undefined) return null;
+    const payload = await this.cipher.decrypt(
+      record.payload,
+      this.associatedData(userId) + ":milestone:" + kind,
+    );
+    return { ...record, payload };
+  }
+
+  async processMilestoneOutbox(userId, kind, upsertMilestone, {
+    leaseMs = 30_000,
+    maxAttempts = 8,
+  } = {}) {
+    if (!validSnowflake(userId) || !["birthday", "anniversary"].includes(kind) ||
+        typeof upsertMilestone !== "function" ||
+        !Number.isSafeInteger(leaseMs) || leaseMs < 1000 || leaseMs > 300_000 ||
+        !Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 100) {
+      throw new TypeError("Milestone outbox processor configuration is invalid");
+    }
+
+    const key = milestoneOutboxKey(this.guildId, userId, kind);
+    const now = this.now();
+    const claimResult = await this.storage.transaction(async (txn) => {
+      const current = await txn.get(key);
+      if (current === undefined) return { claimed: false, missing: true };
+      if (current.status === "completed" || current.status === "dead_letter") {
+        return { claimed: false, status: current.status };
+      }
+      if (current.status === "processing" && current.leaseExpiresAt > now) {
+        return { claimed: false, busy: true, retryAt: current.leaseExpiresAt };
+      }
+      if (current.status === "retry_wait" && current.retryAt > now) {
+        return { claimed: false, busy: true, retryAt: current.retryAt };
+      }
+      const attempts = Number(current.attempts || 0) + 1;
+      if (attempts > maxAttempts) {
+        await txn.put(key, {
+          ...current,
+          status: "dead_letter",
+          attempts: attempts - 1,
+          leaseId: null,
+          leaseExpiresAt: null,
+          retryAt: null,
+          updatedAt: now,
+        });
+        return { claimed: false, status: "dead_letter" };
+      }
+      const leaseId = this.makeLeaseId();
+      if (typeof leaseId !== "string" || leaseId.length < 16 || leaseId.length > 128) {
+        throw new TypeError("Milestone outbox lease must be a unique opaque token");
+      }
+      await txn.put(key, {
+        ...current,
+        status: "processing",
+        attempts,
+        leaseId,
+        leaseExpiresAt: now + leaseMs,
+        retryAt: null,
+        updatedAt: now,
+      });
+      return {
+        claimed: true,
+        claim: {
+          key, userId, kind,
+          revision: current.revision,
+          leaseId,
+          attempts,
+          idempotencyKey: "bot005-milestone:" + this.guildId + ":" + userId + ":" + kind,
+          payload: current.payload,
+        },
+      };
+    });
+    if (!claimResult.claimed) return claimResult;
+
+    const claim = claimResult.claim;
+    try {
+      const payload = await this.cipher.decrypt(
+        claim.payload,
+        this.associatedData(userId) + ":milestone:" + kind,
+      );
+      const published = await upsertMilestone(Object.freeze({
+        ...payload,
+        idempotencyKey: claim.idempotencyKey,
+      }));
+      if (published?.synchronized !== true ||
+          (payload.visibility === "public" &&
+            (typeof published.postId !== "string" || !/^\d{15,22}$/.test(published.postId))) ||
+          (payload.visibility !== "public" && published.postId !== null)) {
+        throw new Error("milestone_upsert_receipt_invalid");
+      }
+
+      const completed = await this.storage.transaction(async (txn) => {
+        const current = await txn.get(claim.key);
+        if (!current || current.status !== "processing" ||
+            current.leaseId !== claim.leaseId || current.revision !== claim.revision ||
+            current.leaseExpiresAt <= this.now()) return false;
+        const dataKey = recordKey(this.guildId, userId);
+        const envelope = await txn.get(dataKey);
+        if (envelope === undefined) return false;
+        const profile = await this.cipher.decrypt(envelope, this.associatedData(userId));
+        if (!profile || profile.userId !== userId ||
+            !validateMilestone(profile[kind], kind === "anniversary")) return false;
+        const updatedProfile = {
+          ...profile,
+          [kind]: { ...profile[kind], post: published.postId },
+          updatedAt: this.now(),
+        };
+        await txn.put(dataKey, await this.cipher.encrypt(updatedProfile, this.associatedData(userId)));
+        await txn.put(claim.key, {
+          ...current,
+          status: "completed",
+          postId: published.postId,
+          completedAt: this.now(),
+          updatedAt: this.now(),
+          leaseId: null,
+          leaseExpiresAt: null,
+          retryAt: null,
+          lastError: null,
+        });
+        return true;
+      });
+      return completed
+        ? { completed: true, postId: published.postId, idempotencyKey: claim.idempotencyKey }
+        : { completed: false, superseded: true };
+    } catch (error) {
+      const failure = await this.storage.transaction(async (txn) => {
+        const current = await txn.get(claim.key);
+        if (!current || current.status !== "processing" || current.leaseId !== claim.leaseId) {
+          return { recorded: false, superseded: true };
+        }
+        const code = typeof error?.code === "string" ? error.code
+          : typeof error?.message === "string" ? error.message : "";
+        const lastError = /^[A-Za-z0-9:_-]{1,96}$/.test(code) ? code : "milestone_upsert_failed";
+        const deadLetter = claim.attempts >= maxAttempts;
+        const retryAt = deadLetter ? null : this.now() + Math.min(60_000, 1000 * (2 ** (claim.attempts - 1)));
+        await txn.put(claim.key, {
+          ...current,
+          status: deadLetter ? "dead_letter" : "retry_wait",
+          lastError,
+          retryAt,
+          updatedAt: this.now(),
+          leaseId: null,
+          leaseExpiresAt: null,
+        });
+        return { recorded: true, deadLetter, retryAt };
+      });
+      return { completed: false, ...failure };
+    }
   }
 
   async getReceipt(interactionId) {
