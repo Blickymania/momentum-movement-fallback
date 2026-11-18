@@ -14,11 +14,80 @@ const PROFILE_MODAL_IDS = new Set([
   "profilev7:milestone:anniversary:mine",
 ]);
 
-function isModalOpeningButton(customId, interaction) {
-  return PROFILE_MODAL_IDS.has(customId) ||
-    (customId === "coach:request" && !interaction.guild_id) ||
+const PROFILE_MODAL_FIELDS = Object.freeze({
+  profile: {
+    customId: "memberdata:profile",
+    title: "Edit My Member Profile",
+    fields: [
+      ["about", "About Me", true, false, 450, "A short introduction"],
+      ["tiktok", "TikTok Username", false, false, 32, "Without @"],
+      ["instagram", "Instagram Username", false, false, 32, "Without @"],
+      ["visibility", "Profile Visibility", false, true, 7, "private or public"],
+    ],
+  },
+  birthday: {
+    customId: "memberdata:birthday",
+    title: "My Birthday",
+    fields: [
+      ["date", "Birthday (MM-DD)", false, true, 5, "04-23"],
+      ["year", "Birth Year (private)", false, false, 4, "Optional"],
+      ["visibility", "Visibility", false, true, 7, "private or public"],
+    ],
+  },
+  anniversary: {
+    customId: "memberdata:anniversary",
+    title: "My Streaming Anniversary",
+    fields: [
+      ["date", "Streaming Start Date (MM-DD)", false, true, 5, "08-15"],
+      ["year", "Streaming Start Year", false, true, 4, "2021"],
+      ["visibility", "Visibility", false, true, 7, "private or public"],
+    ],
+  },
+});
+
+const PROFILE_MODAL_KIND = new Map([
+  ["membercard:edit", "profile"],
+  ["mp26:edit", "profile"],
+  ["mompass:edit", "profile"],
+  ["mp26:date:b", "birthday"],
+  ["mompass:birthday", "birthday"],
+  ["profilev7:birthday", "birthday"],
+  ["profilev7:milestone:birthday:mine", "birthday"],
+  ["mp26:date:a", "anniversary"],
+  ["mompass:anniversary", "anniversary"],
+  ["profilev7:anniversary", "anniversary"],
+  ["profilev7:milestone:anniversary:mine", "anniversary"],
+]);
+
+function isCoachModalOpeningButton(customId, interaction) {
+  return (customId === "coach:request" && !interaction.guild_id) ||
     /^coach:staff:(clarify|schedule|note):/.test(customId) ||
     /^coach:dm:(respond|details):/.test(customId);
+}
+
+function buildProfileModalResponse(customId) {
+  const kind = PROFILE_MODAL_KIND.get(customId);
+  const definition = PROFILE_MODAL_FIELDS[kind];
+  if (!definition) return null;
+  return {
+    type: 9,
+    data: {
+      custom_id: definition.customId,
+      title: definition.title,
+      components: definition.fields.map(([fieldId, label, paragraph, required, maxLength, placeholder]) => ({
+        type: 1,
+        components: [{
+          type: 4,
+          custom_id: fieldId,
+          label,
+          style: paragraph ? 2 : 1,
+          required,
+          max_length: maxLength,
+          placeholder,
+        }],
+      })),
+    },
+  };
 }
 
 function isMultiStepCoachModal(customId) {
@@ -58,7 +127,7 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     const type = Number(interaction.type);
     if (type === 1) return ready({ type: 1 });
 
-    if (type === 2 && CORE_COMMANDS.includes(interaction.data?.name)) {
+    if (type === 2 && interaction.guild_id && CORE_COMMANDS.includes(interaction.data?.name)) {
       return ready({ type: 5 });
     }
 
@@ -68,11 +137,16 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     if (!customId) return blocked("bot005_interaction_shape_unhandled");
 
     if (type === 3) {
-      if (isModalOpeningButton(customId, interaction)) {
-        if (!buildModalResponse) return blocked("bot005_modal_builder_required");
+      if (PROFILE_MODAL_IDS.has(customId)) {
+        if (!interaction.guild_id) return blocked("bot005_profile_modal_guild_required");
+        const response = buildProfileModalResponse(customId);
+        return response ? ready(response) : blocked("bot005_modal_response_invalid");
+      }
+      if (isCoachModalOpeningButton(customId, interaction)) {
+        if (!buildModalResponse) return blocked("bot005_coach_modal_builder_required");
         let response;
         try { response = buildModalResponse(interaction); }
-        catch { return blocked("bot005_modal_builder_failed"); }
+        catch { return blocked("bot005_coach_modal_builder_failed"); }
         if (!response || response.type !== 9 || !response.data ||
             typeof response.data !== "object" || Array.isArray(response.data)) {
           return blocked("bot005_modal_response_invalid");

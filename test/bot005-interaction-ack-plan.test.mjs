@@ -23,22 +23,40 @@ test("selects a deferred component update for ordinary Bot 005 buttons", () => {
   });
 });
 
-test("requires an explicit type-9 response builder for every recovered modal-opening selector", () => {
-  const ids = [
-    "membercard:edit", "mp26:edit", "mompass:edit",
-    "mp26:date:b", "mompass:birthday", "profilev7:birthday",
-    "profilev7:milestone:birthday:mine", "mp26:date:a",
-    "mompass:anniversary", "profilev7:anniversary",
-    "profilev7:milestone:anniversary:mine",
-    "coach:staff:clarify:case1", "coach:dm:respond:case1",
-    "coach:request",
-  ];
-  for (const id of ids) {
-    const result = planner(button(id, { guild_id: id === "coach:request" ? null : GUILD }));
-    const scoped = planner(button(id, { guild_id: id === "coach:request" ? null : GUILD }), routed);
+test("builds recovered profile/birthday/anniversary modals and delegates coaching forms", () => {
+  const profile = planner(button("membercard:edit"), routed);
+  assert.equal(profile.status, "ready");
+  assert.equal(profile.response.type, 9);
+  assert.equal(profile.response.data.custom_id, "memberdata:profile");
+  assert.equal(profile.response.data.title, "Edit My Member Profile");
+  assert.deepEqual(profile.response.data.components.map(row => row.components[0].custom_id),
+    ["about", "tiktok", "instagram", "visibility"]);
+  assert.equal(profile.response.data.components[0].components[0].style, 2);
+  assert.equal(profile.response.data.components[0].components[0].max_length, 450);
+  assert.equal(profile.response.data.components[3].components[0].required, true);
+
+  const birthday = planner(button("profilev7:milestone:birthday:mine"), routed);
+  assert.equal(birthday.response.data.custom_id, "memberdata:birthday");
+  assert.deepEqual(birthday.response.data.components.map(row => row.components[0].custom_id),
+    ["date", "year", "visibility"]);
+  assert.equal(birthday.response.data.components[1].components[0].required, false);
+
+  const anniversary = planner(button("mompass:anniversary"), routed);
+  assert.equal(anniversary.response.data.custom_id, "memberdata:anniversary");
+  assert.equal(anniversary.response.data.components[1].components[0].required, true);
+
+  for (const id of ["coach:staff:clarify:case1", "coach:dm:respond:case1", "coach:request"]) {
+    const event = button(id, { guild_id: id === "coach:request" ? null : GUILD });
+    const scoped = planner(event, routed);
     assert.equal(scoped.status, "blocked", id);
-    assert.equal(scoped.reason, "bot005_modal_builder_required", id);
+    assert.equal(scoped.reason, "bot005_coach_modal_builder_required", id);
   }
+});
+
+test("blocks profile modal selectors outside guild scope", () => {
+  assert.deepEqual(planner(button("membercard:edit", { guild_id: null }), routed), {
+    status: "blocked", reason: "bot005_profile_modal_guild_required",
+  });
 });
 
 test("uses the supplied modal response and validates its type before returning it", () => {
@@ -47,13 +65,13 @@ test("uses the supplied modal response and validates its type before returning i
     data: { custom_id: "profile:form", title: "Profile", components: [{ type: 1, components: [] }], source: interaction.data.custom_id },
   });
   const plan = createBot005InteractionAckPlanner({ buildModalResponse });
-  const result = plan(button("membercard:edit"), routed);
+  const result = plan(button("coach:staff:clarify:case1"), routed);
   assert.equal(result.status, "ready");
   assert.equal(result.response.type, 9);
-  assert.equal(result.response.data.source, "membercard:edit");
+  assert.equal(result.response.data.source, "coach:staff:clarify:case1");
 
   const invalid = createBot005InteractionAckPlanner({ buildModalResponse: () => ({ type: 6 }) });
-  assert.deepEqual(invalid(button("membercard:edit"), routed), {
+  assert.deepEqual(invalid(button("coach:staff:clarify:case1"), routed), {
     status: "blocked", reason: "bot005_modal_response_invalid",
   });
 });
