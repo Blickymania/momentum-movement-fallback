@@ -2,7 +2,7 @@
 
 **Scope:** Dawn Dotta / Momentum Movement only  
 **Source inventory:** 7 existing Gateway clients  
-**Status:** selector ownership and durable delivery framework implemented and tested; original feature-handler adapters are not yet ported or wired to the coordinator. Gateway activation remains disabled.
+**Status:** selector ownership and durable delivery are implemented. The Engagement Engine `MESSAGE_CREATE` adapter is wired to the Durable Object alarm and tested with mocked storage/Discord REST. The other six feature handlers and immediate interaction ACK/modal paths are incomplete. Gateway activation remains disabled.
 
 ## Why this map exists
 
@@ -79,17 +79,33 @@ Discord interaction payloads contain a short-lived webhook bearer token. It must
 - The 32-byte key is supplied only through the secret `GATEWAY_INTERACTION_ENCRYPTION_KEY` (64 hexadecimal characters). It is not committed.
 - The core fails closed and closes the Gateway if it cannot protect the interaction token. The DO refuses startup if the encryption key is absent or invalid.
 - The vault tests verify round-trip decrypt, unique nonces, context binding, tamper rejection and no plaintext token in the stored payload.
-- Handler adapters still need to be implemented so the initial Discord interaction is acknowledged within Discord's deadline and any later webhook-token use decrypts only in transient memory. The standalone dispatcher is not yet wired to the DO or supplied feature-handler adapters.
+- The DO currently drains only the explicitly enabled Engagement Engine message adapter. The recovered source inventory shows interaction handlers use different defer-reply, defer-update, and modal-response paths; a generic defer would break some flows. Route-specific initial ACK plans and transient token use remain unimplemented. Keep Gateway activation disabled.
 
 ## Implemented files and current limitation
 
 - `src/gateway-handler-registry.mjs`: validated manifest, strict selectors, guild/application scoping, exact collision rules and single-LIVE-publisher mode.
 - `src/durable-gateway-dispatcher.mjs`: durable per-handler leases, retry policy, idempotency contract, receipt tracking, FIFO acknowledgement and quarantine.
 - `src/interaction-token-vault.mjs`: AES-256-GCM interaction-token protection.
-- `src/gateway-coordinator-core.mjs`: registry-aware ingress filtering and encrypted interaction payload persistence.
-- `src/gateway-coordinator-do.mjs`: refuses startup without matching client definitions, handler manifest and token-encryption secret.
+- `src/gateway-coordinator-core.mjs`: registry-aware ingress filtering, encrypted interaction payload persistence and post-frame dispatch wakeups.
+- `src/gateway-coordinator-do.mjs`: matching-identity checks, shared-alarm dispatcher drain and the first Engagement Engine handler. Unsupported handler IDs fail closed.
 
-**Not yet complete:** the actual seven feature-handler implementations have not all been ported to Workers/DO adapters. The dispatcher is currently a tested standalone module; it is not wired into the DO alarm/interaction path. A live Gateway must not be activated until handler adapters are ported, their idempotency receipts are durable, interaction acknowledgement is immediate, and every feature family passes parity tests.
+## Recovered interaction ACK inventory
+
+Read-only counts from recovered source snapshots show different acknowledgement patterns. Counts are source occurrences, not unique user flows. Bot 005 is a recovered snapshot and is not verified identical to the current encoded production service.
+
+| Source snapshot | Defer reply | Defer update | Modal response paths | Modal-submit branches |
+|---|---:|---:|---:|---:|
+| Bot 005 | 3 | 7 | 0 SDK calls; 3 raw type-9 form branches | 2 |
+| Social Owner Console | 0 | 9 | 3 | 3 |
+| Fan Club | 2 | 5 | 3 | 4 |
+| Gift Assist | 3 | 7 | 3 | 3 |
+| LIVE NOW v2 | 3 | 6 | 4 | 4 |
+| LIVE & Events Listener | 1 | 0 | 0 | 0 |
+| Engagement Engine | 0 | 2 | 0 | 0 |
+
+A generic component defer is unsafe: some selectors open modals, while modal submissions and commands use separate response paths. The next adapter must select an owner-specific initial response before dispatch, validate that exactly one response is sent, and keep token decryption transient. Keep Gateway activation disabled until those paths and actual source identity are verified.
+
+**Not yet complete:** six feature-handler adapters, route-specific immediate interaction acknowledgements, actual production Bot 005 identity/source verification, and live deadline/parity tests. The message-only Engagement adapter does not establish feature parity. Do not activate a live Gateway until all applicable handlers are ported and tested.
 
 
 ## First feature-handler port: Discord Engagement Engine message awards
@@ -104,4 +120,4 @@ The scoring is copied from the recovered source: 5 base XP, +3 for first qualify
 
 Focused tests: 18/18 passed (ledger scoring/dedupe/concurrency/period snapshots and Discord channel-policy checks).
 
-**Still not integrated:** this message-award adapter is not yet injected into the DO's dispatcher handler map. The original public/staff dashboard sync, `ddxp:` button interactions, ephemeral/private DM delivery and immediate component acknowledgement still need a portable adapter. Until those are ported and wired, the full Engagement Engine feature is not parity-complete and the Gateway remains disabled.
+**Integrated in candidate source:** the Durable Object injects this message-award adapter only when the manifest enables it, and the dispatcher acknowledges the inbox event only after the XP receipt commits. The original public/staff dashboard sync, `ddxp:` button interactions, ephemeral/private DM delivery and immediate component acknowledgement remain unported. The Engagement Engine is only partially parity-complete and the Gateway remains disabled.
