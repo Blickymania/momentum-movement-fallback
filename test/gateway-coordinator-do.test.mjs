@@ -175,7 +175,7 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
       return new Response(null, { status: 204 });
     }
     if (parsed.pathname.startsWith("/api/v10/webhooks/") && parsed.pathname.endsWith("/messages/@original")) {
-      return new Response(null, { status: 204 });
+      return okJson({ id: "1566060000000000000" }, 200);
     }
     return okJson({ error: "not_found" }, 404);
   };
@@ -993,6 +993,98 @@ test("owner-only /forum-admin thread reads only the selected thread and its foru
     assert.equal(calls.filter(call => call.path === "/api/v10/channels/1566000000000000001" && call.method === "GET").length, 1);
     assert.equal(calls.filter(call => call.path.includes("/channels") && call.method !== "GET").length, 0);
     assert.equal(JSON.stringify(calls).includes("non-production-forum-thread-token"), false);
+  });
+});
+
+test("owner-only /forum-admin rename stages a bound plan and confirmation remains a no-op", async () => {
+  const storage = new MemoryDOStorage();
+  const planId = "1569000000000000107";
+  const messageId = "1566060000000000000";
+  const store = new DurableBot005ConfirmationStore(storage, {
+    key: "bot005:forum-confirmations:bot-alpha",
+  });
+  const manifestValue = JSON.stringify({
+    guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none",
+    enabledHandlers: ["bot005-forum-rename", "bot005-forum-confirm"],
+  });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const object = makeObject(storage, {
+      GATEWAY_HANDLER_MANIFEST: manifestValue,
+      BOT005_FORUM_RENAME_ENABLED: "true",
+      BOT005_FORUM_CONFIRM_ENABLED: "true",
+    });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 202);
+    const socket = sockets[0];
+    dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise; await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: {
+      session_id: "forum-rename-session", resume_gateway_url: "wss://resume.forum-rename.example",
+    }});
+    await core.serial;
+    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+      id: planId, application_id: APP_ID, guild_id: GUILD_ID,
+      channel_id: "1565643251783049237", token: "non-production-forum-rename-token",
+      type: 2, member: { user: { id: "1565200000000000001" } },
+      data: { name: "forum-admin", options: [{ type: 1, name: "rename", options: [
+        { type: 3, name: "thread_id", value: "1566000000000000005" },
+        { type: 3, name: "title", value: "Updated Momentum title" },
+      ] }] },
+    }});
+    await core.serial;
+    let inbox = core.getInbox("bot-alpha"), [queued] = await inbox.listPending();
+    assert.equal(queued.interactionAckState, "acknowledged");
+    assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-forum-rename"]);
+    assert.equal((await object.dispatchers.get("bot-alpha").drain({ limit: 1 })).status, "ok");
+    let plan = await store.get(planId);
+    assert.equal(plan.state, "pending");
+    assert.equal(plan.messageId, messageId);
+    assert.equal(plan.payload.title, "Updated Momentum title");
+    assert.equal(calls.filter(call => call.path === "/api/v10/guilds/" + GUILD_ID && call.method === "GET").length, 1);
+    assert.equal(calls.filter(call => call.path === "/api/v10/channels/1566000000000000005" && call.method === "GET").length, 1);
+    assert.equal(calls.filter(call => call.path === "/api/v10/channels/1566000000000000001" && call.method === "GET").length, 1);
+    assert.equal(calls.filter(call => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 1);
+
+    dispatch(socket, { op: 0, s: 3, t: "INTERACTION_CREATE", d: {
+      id: "1569000000000000108", application_id: APP_ID, guild_id: GUILD_ID,
+      channel_id: "1565643251783049237", token: "non-production-forum-confirm-token",
+      type: 3, member: { user: { id: "1565200000000000001" } },
+      message: { id: messageId, author: { id: APP_ID } },
+      data: { custom_id: "mm005:forum-confirm:confirm:" + planId },
+    }});
+    await core.serial;
+    [queued] = await inbox.listPending();
+    assert.equal(queued.interactionAckState, "acknowledged");
+    assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-forum-confirm"]);
+    assert.equal((await object.dispatchers.get("bot-alpha").drain({ limit: 1 })).status, "ok");
+    plan = await store.get(planId);
+    assert.equal(plan.state, "failed");
+    assert.equal(plan.resultCode, "executor_unavailable");
+    assert.equal(calls.filter(call => call.path.includes("/channels") && call.method !== "GET").length, 0);
+    assert.equal(calls.filter(call => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 2);
+    assert.equal(JSON.stringify([...storage.values]).includes("non-production-forum-rename-token"), false);
+    assert.equal(JSON.stringify([...storage.values]).includes("non-production-forum-confirm-token"), false);
+  });
+});
+
+test("forum rename requires both matching default-off flags before opening a Gateway socket", async () => {
+  const renameOnly = JSON.stringify({
+    guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none",
+    enabledHandlers: ["bot005-forum-rename"],
+  });
+  const paired = JSON.stringify({
+    guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none",
+    enabledHandlers: ["bot005-forum-rename", "bot005-forum-confirm"],
+  });
+  await withRuntime({}, async ({ sockets }) => {
+    const missingRenameFlag = makeObject(new MemoryDOStorage(), {
+      GATEWAY_HANDLER_MANIFEST: paired, BOT005_FORUM_CONFIRM_ENABLED: "true",
+    });
+    assert.equal((await missingRenameFlag.fetch(control("/start", "POST"))).status, 503);
+    const missingConfirmPair = makeObject(new MemoryDOStorage(), {
+      GATEWAY_HANDLER_MANIFEST: renameOnly, BOT005_FORUM_RENAME_ENABLED: "true",
+    });
+    assert.equal((await missingConfirmPair.fetch(control("/start", "POST"))).status, 503);
+    assert.equal(sockets.length, 0);
   });
 });
 
