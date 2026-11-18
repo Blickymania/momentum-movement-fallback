@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { GatewayCoordinatorDurableObject } from "../src/gateway-coordinator-do.mjs";
 import { DurableEngagementLedger } from "../src/durable-engagement-ledger.mjs";
 import { DurableGatewayDeliveryLedger } from "../src/durable-gateway-dispatcher.mjs";
+import { DurableBot005ProfileStore, createBot005ProfileCipher } from "../src/durable-bot005-profile-store.mjs";
 
 const GUILD_ID = "1565048205970767992";
 const APP_ID = "1565304619838742598";
@@ -104,7 +105,12 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
   globalThis.WebSocket = FakeWebSocket;
   globalThis.fetch = async (url, options = {}) => {
     const parsed = new URL(url);
-    calls.push({ path: parsed.pathname, authorization: options.headers?.authorization });
+    const safePath = parsed.pathname.startsWith("/api/v10/interactions/")
+      ? "/api/v10/interactions/:id/:token/callback"
+      : parsed.pathname.startsWith("/api/v10/webhooks/")
+        ? "/api/v10/webhooks/:application/:token/messages/@original"
+        : parsed.pathname;
+    calls.push({ path: safePath, method: options.method, authorization: options.headers?.authorization });
     if (parsed.pathname === "/api/v10/users/@me") {
       return okJson({ id: botId, bot: true, username: "momentum-test-bot" });
     }
@@ -119,6 +125,12 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
     }
     if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID) {
       return okJson({ id: guildId, name: "Momentum Movement" });
+    }
+    if (parsed.pathname.startsWith("/api/v10/interactions/") && parsed.pathname.endsWith("/callback")) {
+      return new Response(null, { status: 204 });
+    }
+    if (parsed.pathname.startsWith("/api/v10/webhooks/") && parsed.pathname.endsWith("/messages/@original")) {
+      return new Response(null, { status: 204 });
     }
     return okJson({ error: "not_found" }, 404);
   };
@@ -241,6 +253,100 @@ test("refuses to start when an unported feature adapter is enabled", async () =>
   const response = await object.fetch(control("/start", "POST"));
   assert.equal(response.status, 503);
   assert.equal(FakeWebSocket.instances.length, 0);
+});
+
+test("profile modal capability reaches the durable store and deferred reply through mocked Gateway delivery", async () => {
+  const profileManifest = JSON.stringify({
+    guildId: GUILD_ID,
+    applicationId: APP_ID,
+    livePublisher: "none",
+    enabledHandlers: ["bot005-profile-modal"],
+  });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const storage = new MemoryDOStorage();
+    const object = makeObject(storage, {
+      GATEWAY_HANDLER_MANIFEST: profileManifest,
+      BOT005_PROFILE_MODAL_ENABLED: "true",
+      BOT005_PROFILE_ENCRYPTION_KEY: "11".repeat(32),
+    });
+    const started = await object.fetch(control("/start", "POST"));
+    assert.equal(started.status, 202);
+    const socket = sockets[0];
+    dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise;
+    await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: {
+      session_id: "profile-session", resume_gateway_url: "wss://resume.profile.example",
+    }});
+    await core.serial;
+    const memberId = "1569000000000000002";
+    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+      id: "1569000000000000011",
+      application_id: APP_ID,
+      guild_id: GUILD_ID,
+      channel_id: "1565643996624199760",
+      token: "non-production-test-interaction-token",
+      type: 5,
+      member: { user: { id: memberId } },
+      data: {
+        custom_id: "memberdata:birthday",
+        components: [
+          { type: 1, components: [{ type: 4, custom_id: "date", value: "02-29" }] },
+          { type: 1, components: [{ type: 4, custom_id: "year", value: "" }] },
+          { type: 1, components: [{ type: 4, custom_id: "visibility", value: "private" }] },
+        ],
+      },
+    }});
+    await core.serial;
+    const inbox = core.getInbox("bot-alpha");
+    const [queued] = await inbox.listPending();
+    assert.equal(queued.interactionAckState, "acknowledged");
+    await object.alarm();
+    assert.equal((await inbox.listPending()).length, 0);
+
+    const profileStore = new DurableBot005ProfileStore(storage, {
+      guildId: GUILD_ID,
+      applicationId: APP_ID,
+      cipher: createBot005ProfileCipher("11".repeat(32)),
+    });
+    const saved = await profileStore.get(memberId);
+    assert.deepEqual(saved.birthday, { date: "02-29", year: "", visibility: "private", post: null });
+    const outbox = await profileStore.getMilestoneOutbox(memberId, "birthday");
+    assert.equal(outbox.status, "pending");
+    const delivery = new DurableGatewayDeliveryLedger(storage, { namespace: "gateway-dispatch-bot-alpha" });
+    assert.equal((await delivery.get(queued.eventKey, "bot005-profile-modal")).status, "completed");
+    assert.equal(calls.filter((call) => call.path === "/api/v10/interactions/:id/:token/callback" && call.method === "POST").length, 1);
+    assert.equal(calls.filter((call) => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 1);
+    assert.equal(JSON.stringify(calls).includes("non-production-test-interaction-token"), false);
+  });
+});
+
+test("profile modal capability without the runtime flag or encryption key opens no socket", async () => {
+  const profileManifest = JSON.stringify({
+    guildId: GUILD_ID,
+    applicationId: APP_ID,
+    livePublisher: "none",
+    enabledHandlers: ["bot005-profile-modal"],
+  });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const noFlag = makeObject(new MemoryDOStorage(), {
+      GATEWAY_HANDLER_MANIFEST: profileManifest,
+      BOT005_PROFILE_ENCRYPTION_KEY: "11".repeat(32),
+    });
+    const missingFlag = await noFlag.fetch(control("/start", "POST"));
+    assert.equal(missingFlag.status, 503);
+    assert.equal(sockets.length, 0);
+    assert.equal(calls.length, 0);
+
+    const missingKey = makeObject(new MemoryDOStorage(), {
+      GATEWAY_HANDLER_MANIFEST: profileManifest,
+      BOT005_PROFILE_MODAL_ENABLED: "true",
+    });
+    const rejected = await missingKey.fetch(control("/start", "POST"));
+    assert.equal(rejected.status, 503);
+    assert.equal(sockets.length, 0);
+    assert.equal(calls.length, 0);
+  });
 });
 
 test("refuses to start until client definitions are configured", async () => {
