@@ -103,19 +103,22 @@ export class OAuthD1Store {
   }
 
   async health() {
-    const names = [
-      "mcp_oauth_clients",
-      "mcp_oauth_login_requests",
-      "mcp_oauth_authorization_codes",
-      "mcp_oauth_access_tokens",
-      "mcp_oauth_refresh_tokens",
-    ];
-    const rowsResult = await this.db.prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name IN (?, ?, ?, ?, ?)",
-    ).bind(...names).all();
-    const found = new Set(rows(rowsResult).map((row) => row.name));
-    const tables = Object.fromEntries(names.map((name) => [name, found.has(name)]));
-    return { ready: Object.values(tables).every(Boolean), tables };
+    const requiredColumns = {
+      mcp_oauth_clients: ["client_id", "client_name", "redirect_uris", "created_at"],
+      mcp_oauth_login_requests: ["state_hash", "client_id", "redirect_uri", "client_state", "code_challenge", "scope", "resource", "created_at", "expires_at", "consumed_at", "consume_nonce"],
+      mcp_oauth_authorization_codes: ["code_hash", "client_id", "redirect_uri", "code_challenge", "user_id", "guild_id", "scope", "resource", "created_at", "expires_at", "consumed_at", "consume_nonce"],
+      mcp_oauth_access_tokens: ["token_hash", "client_id", "user_id", "guild_id", "scope", "resource", "created_at", "expires_at", "revoked_at"],
+      mcp_oauth_refresh_tokens: ["token_hash", "client_id", "user_id", "guild_id", "scope", "resource", "created_at", "expires_at", "revoked_at", "replaced_by", "consume_nonce"],
+    };
+    const checks = await Promise.all(Object.entries(requiredColumns).map(async ([name, required]) => {
+      const result = await this.db.prepare(`PRAGMA table_info("${name}")`).all();
+      const found = new Set(rows(result).map((row) => String(row.name ?? "")));
+      return [name, { exists: found.size > 0, missingColumns: required.filter((column) => !found.has(column)) }];
+    }));
+    const tables = Object.fromEntries(checks.map(([name, check]) => [name, check.exists]));
+    const missingColumns = Object.fromEntries(checks.map(([name, check]) => [name, check.missingColumns]));
+    const ready = Object.values(tables).every(Boolean) && Object.values(missingColumns).every((missing) => missing.length === 0);
+    return { ready, tables, missingColumns };
   }
 
   async registerClient({ clientId, clientName, redirectUris }) {

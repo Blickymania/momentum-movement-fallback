@@ -82,6 +82,17 @@ const baseCode = {
   refreshTokenHash: "refresh-token-hash",
 };
 
+test("rejects an existing OAuth table with an incomplete schema", async () => {
+  const { db, store } = makeStore();
+  await store.ensureSchema();
+  db.raw.exec("DROP TABLE mcp_oauth_clients; CREATE TABLE mcp_oauth_clients (client_id TEXT PRIMARY KEY)");
+  const health = await store.health();
+  assert.equal(health.tables.mcp_oauth_clients, true);
+  assert.deepEqual(health.missingColumns.mcp_oauth_clients, ["client_name", "redirect_uris", "created_at"]);
+  assert.equal(health.ready, false);
+  db.close();
+});
+
 test("creates the five OAuth tables and expiry indexes", async () => {
   const { db, store } = makeStore();
   const health = await store.ensureSchema();
