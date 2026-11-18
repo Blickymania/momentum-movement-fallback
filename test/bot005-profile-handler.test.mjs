@@ -106,7 +106,10 @@ test("rejects mismatched guild/application and malformed modal without writes", 
   await assert.rejects(() => handle(event({ application_id: "1565304619838742599" })), /identity_mismatch/);
   await assert.rejects(() => handle(event({
     ...interaction(),
-    data: { custom_id: "memberdata:unknown", components: [] },
+    data: {
+      custom_id: "memberdata:unknown",
+      components: [{ type: 1, components: [{ type: 4, custom_id: "x", value: "y" }] }],
+    },
   })), /selector_unhandled/);
   assert.equal(writes, 0);
 });
