@@ -105,6 +105,7 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
   const oldFetch = globalThis.fetch;
   const oldWebSocket = globalThis.WebSocket;
   const calls = [];
+  let forumRenameThreadName = "Momentum thread";
   FakeWebSocket.instances = [];
   globalThis.WebSocket = FakeWebSocket;
   globalThis.fetch = async (url, options = {}) => {
@@ -158,10 +159,21 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
         { id: "1567000000000000011", guild_id: "1565048205970767993", status: 1, name: "Foreign event", scheduled_start_time: "2027-01-02T00:00:00.000Z" },
       ]);
     }
+    if (parsed.pathname === "/api/v10/channels/1566000000000000005" && options.method === "PATCH") {
+      const body = JSON.parse(options.body ?? "{}");
+      if (Object.keys(body).length !== 1 || typeof body.name !== "string") return okJson({ error: "invalid_patch" }, 400);
+      forumRenameThreadName = body.name;
+      return okJson({ id: "1566000000000000005", guild_id: GUILD_ID, parent_id: "1566000000000000001", type: 11,
+        name: forumRenameThreadName, applied_tags: ["1566000000000000002"],
+        thread_metadata: { archived: false, locked: false, archive_timestamp: "2026-11-01T00:00:00.000Z" } });
+    }
     if (parsed.pathname === "/api/v10/channels/1566000000000000005") {
       return okJson({ id: "1566000000000000005", guild_id: GUILD_ID, parent_id: "1566000000000000001", type: 11,
-        name: "Momentum thread", applied_tags: ["1566000000000000002"],
+        name: forumRenameThreadName, applied_tags: ["1566000000000000002"],
         thread_metadata: { archived: false, locked: false, archive_timestamp: "2026-11-01T00:00:00.000Z" } });
+    }
+    if (parsed.pathname === "/api/v10/channels/1566000000000000001/permissions/" + APP_ID && options.method === "GET") {
+      return okJson({ permissions: "17179869184" });
     }
     if (parsed.pathname === "/api/v10/channels/1566000000000000001") {
       return okJson({ id: "1566000000000000001", guild_id: GUILD_ID, type: 15, name: "community-forum", available_tags: [
@@ -1133,6 +1145,64 @@ test("owner-bound forum confirmation follows exact ACK and durable dispatch with
     assert.equal(calls.filter(call => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 2);
     assert.equal(JSON.stringify([...storage.values]).includes("non-production-forum-confirm-token-one"), false);
     assert.equal(JSON.stringify([...storage.values]).includes("non-production-forum-confirm-token-two"), false);
+  });
+});
+
+test("owner confirmation executes one guarded thread rename and verifies the postcondition", async () => {
+  const storage = new MemoryDOStorage();
+  const planId = "1569000000000000111";
+  const messageId = "1566060000000000000";
+  const store = new DurableBot005ConfirmationStore(storage, {
+    key: "bot005:forum-confirmations:bot-alpha",
+  });
+  await store.create({
+    id: planId, kind: "forum-rename", actorId: "1565200000000000001", guildId: GUILD_ID,
+    channelId: "1565643251783049237", expiresAt: Date.now() + 120_000,
+    payload: {
+      threadId: "1566000000000000005", forumId: "1566000000000000001",
+      before: "Momentum thread", title: "Renamed Momentum thread",
+    },
+  });
+  await store.bindMessage(planId, messageId);
+  const manifestValue = JSON.stringify({
+    guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none",
+    enabledHandlers: ["bot005-forum-confirm", "bot005-forum-rename"],
+  });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const object = makeObject(storage, {
+      GATEWAY_HANDLER_MANIFEST: manifestValue,
+      BOT005_FORUM_CONFIRM_ENABLED: "true",
+      BOT005_FORUM_RENAME_ENABLED: "true",
+      BOT005_FORUM_RENAME_EXECUTOR_ENABLED: "true",
+    });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 202);
+    const socket = sockets[0];
+    dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise; await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: {
+      session_id: "forum-rename-executor-session",
+      resume_gateway_url: "wss://resume.forum-rename-executor.example",
+    }});
+    await core.serial;
+    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+      id: "1569000000000000112", application_id: APP_ID, guild_id: GUILD_ID,
+      channel_id: "1565643251783049237", token: "non-production-forum-rename-executor-token",
+      type: 3, member: { user: { id: "1565200000000000001" } },
+      message: { id: messageId, author: { id: APP_ID } },
+      data: { custom_id: "mm005:forum-confirm:confirm:" + planId },
+    }});
+    await core.serial;
+    const inbox = core.getInbox("bot-alpha"), [queued] = await inbox.listPending();
+    assert.equal(queued.interactionAckState, "acknowledged");
+    assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-forum-confirm"]);
+    assert.equal((await object.dispatchers.get("bot-alpha").drain({ limit: 1 })).status, "ok");
+    const finished = await store.get(planId);
+    assert.equal(finished.state, "completed");
+    assert.equal(finished.resultCode, "rename_verified");
+    assert.equal(calls.filter(call => call.path === "/api/v10/channels/1566000000000000001/permissions/" + APP_ID && call.method === "GET").length, 1);
+    assert.equal(calls.filter(call => call.path === "/api/v10/channels/1566000000000000005" && call.method === "PATCH").length, 1);
+    assert.ok(calls.filter(call => call.path === "/api/v10/channels/1566000000000000005" && call.method === "GET").length >= 2);
+    assert.equal(JSON.stringify([...storage.values]).includes("non-production-forum-rename-executor-token"), false);
   });
 });
 
