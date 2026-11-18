@@ -38,7 +38,7 @@ function harness({env={},fetchImpl}={}){
 }
 const request=(method,body,authorization)=>new Request("https://momentum.example/mcp",{method,headers:{...(authorization?{authorization}:{}),...(body!==undefined?{"content-type":"application/json"}:{})},body:body===undefined?undefined:JSON.stringify(body)});
 async function hash(value){const digest=await webcrypto.subtle.digest("SHA-256",new TextEncoder().encode(value));return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");}
-async function pkceChallenge(value){const digest=new Uint8Array(await webcrypto.subtle.digest("SHA-256",new TextEncoder().encode(value)));return btoa(String.fromCharCode(...digest)).replace(/=/g,"").replace(/\\+/g,"-").replace(/\\//g,"_");}
+async function pkceChallenge(value){const digest=new Uint8Array(await webcrypto.subtle.digest("SHA-256",new TextEncoder().encode(value)));return btoa(String.fromCharCode(...digest)).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");}
 const oauthRequest=(path,method="GET",body)=>new Request("https://momentum.example"+path,{method,headers:{...(body!==undefined?{"content-type":body instanceof URLSearchParams?"application/x-www-form-urlencoded":"application/json"}:{})},body:body===undefined?undefined:body instanceof URLSearchParams?body.toString():JSON.stringify(body)});
 
 test("serves process health before readiness configuration is available",async()=>{
