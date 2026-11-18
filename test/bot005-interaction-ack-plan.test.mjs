@@ -205,3 +205,16 @@ test("Bot 005 planner is consistent with the source-backed handler registry", ()
     status: "ready", response: { type: 5 },
   });
 });
+
+
+test("defers only the isolated owner-only forum diagnosis subcommand", () => {
+  const route = { status: "routed", handlers: ["bot005-forum-diagnose"] };
+  const diagnose = { type: 2, guild_id: GUILD, data: { name: "forum-admin", options: [{ type: 1, name: "diagnose" }] } };
+  assert.deepEqual(planner(diagnose, route), { status: "ready", response: { type: 5 } });
+  assert.deepEqual(planner({ ...diagnose, data: { name: "forum-admin", options: [{ type: 1, name: "inspect" }] } }, route), {
+    status: "blocked", reason: "bot005_forum_diagnose_route_type_mismatch",
+  });
+  assert.deepEqual(planner({ ...diagnose, data: { name: "forum-admin" } }, route), {
+    status: "blocked", reason: "bot005_forum_diagnose_route_type_mismatch",
+  });
+});
