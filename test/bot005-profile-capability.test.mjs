@@ -38,6 +38,22 @@ class MemoryStorage {
   }
 }
 
+test("forum rename executor requires both rename and confirmation capabilities", () => {
+  const registry = createGatewayHandlerRegistry(manifest(["bot005-forum-rename", "bot005-forum-confirm"]));
+  assert.equal(validateGatewayFeatureCapabilities(registry, {
+    BOT005_FORUM_RENAME_ENABLED: "true", BOT005_FORUM_CONFIRM_ENABLED: "true",
+  }).forumRenameExecutorEnabled, false);
+  assert.equal(validateGatewayFeatureCapabilities(registry, {
+    BOT005_FORUM_RENAME_ENABLED: "true",
+    BOT005_FORUM_CONFIRM_ENABLED: "true",
+    BOT005_FORUM_RENAME_EXECUTOR_ENABLED: "true",
+  }).forumRenameExecutorEnabled, true);
+  assert.throws(() => validateGatewayFeatureCapabilities(registry, {
+    BOT005_FORUM_RENAME_ENABLED: "true",
+    BOT005_FORUM_RENAME_EXECUTOR_ENABLED: "true",
+  }), /explicitly agree/);
+});
+
 test("forum confirmation capability requires its matching default-off flag", () => {
   const registry = createGatewayHandlerRegistry(manifest(["bot005-forum-confirm"]));
   assert.throws(() => validateGatewayFeatureCapabilities(registry, {}), /explicitly agree/);
@@ -83,7 +99,7 @@ test("capability guard requires both explicit manifest registration and exact ru
   const baseline = {
     profileModalEnabled: false, pingEnabled: false, statusEnabled: false,
     rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false,
-    memberEnabled: false, serverEnabled: false, helpEnabled: false, tiktokEnabled: false, forumDiagnoseEnabled: false, forumInspectEnabled: false, forumThreadEnabled: false, forumConfirmEnabled: false, forumRenameEnabled: false,
+    memberEnabled: false, serverEnabled: false, helpEnabled: false, tiktokEnabled: false, forumDiagnoseEnabled: false, forumInspectEnabled: false, forumThreadEnabled: false, forumConfirmEnabled: false, forumRenameEnabled: false, forumRenameExecutorEnabled: false,
   };
   const verify = (handler, flag, activeKey) => {
     const registry = createGatewayHandlerRegistry(manifest([handler]));
