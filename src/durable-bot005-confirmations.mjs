@@ -4,13 +4,14 @@ const DEFAULT_MAX_TTL_MS = 120_000;
 const DEFAULT_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 function validSnowflake(value) {
-  return typeof value === "string" && /^\\d{15,22}$/.test(value);
+  return typeof value === "string" && /^\d{15,22}$/.test(value);
 }
 function validId(value) {
   return typeof value === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(value);
 }
 function safePayload(value, depth = 0) {
-  if (depth > 6 || value === null || typeof value === "string" ||
+  if (depth > 6) return false;
+  if (value === null || typeof value === "string" ||
       typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) return true;
   if (Array.isArray(value)) return value.length <= 64 && value.every((item) => safePayload(item, depth + 1));
   if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return false;
