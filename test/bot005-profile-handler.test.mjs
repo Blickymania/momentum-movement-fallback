@@ -30,7 +30,7 @@ function event(payload, overrides = {}) {
   return {
     eventType: "INTERACTION_CREATE",
     guildId: GUILD,
-    payload: { ...payload, application_id: APP },
+    payload: { application_id: APP, ...payload },
     ...overrides,
   };
 }
