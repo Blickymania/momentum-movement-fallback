@@ -83,7 +83,7 @@ const definitions = [
   { id: "bot-disabled", guildId: "1565304619838742500", applicationId: "1565304619838742501", intents: 1, enabled: false, tokenRef: "BOT_DISABLED_TOKEN" },
 ];
 
-function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken, clientDefinitions = definitions, handlerRegistry, protectInteraction } = {}) {
+function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, fingerprintToken, clientDefinitions = definitions, handlerRegistry, protectInteraction, onDispatch } = {}) {
   const storage = new MemoryDOStorage();
   const sockets = [];
   const tokens = new Map([
@@ -114,6 +114,7 @@ function makeHarness({ random = () => 0.25, verifyIdentity = async () => true, f
     ...(fingerprintToken ? { fingerprintToken } : {}),
     ...(handlerRegistry ? { handlerRegistry } : {}),
     ...(protectInteraction ? { protectInteraction } : {}),
+    ...(onDispatch ? { onDispatch } : {}),
     log: (event, metadata) => logs.push({ event, metadata }),
   });
   let clock = 1_800_000_000_000;
@@ -301,7 +302,8 @@ test("HELLO sends the right Identify per client and schedules one alarm using he
 });
 
 test("READY session and subsequent dispatch events persist into isolated per-client inboxes", async () => {
-  const h = makeHarness();
+  const wakeups = [];
+  const h = makeHarness({ onDispatch: (notice) => wakeups.push(notice) });
   await h.core.initialize();
   await h.core.start();
   const [alpha, beta] = h.sockets;
@@ -323,6 +325,11 @@ test("READY session and subsequent dispatch events persist into isolated per-cli
   assert.equal((await betaInbox.getState()).sequence, 51);
   assert.deepEqual((await alphaInbox.listPending()).map((item) => item.payload.id), ["alpha-message"]);
   assert.deepEqual((await betaInbox.listPending()).map((item) => item.payload.id), ["beta-message"]);
+  assert.deepEqual(wakeups.map(({ clientId, eventType }) => ({ clientId, eventType })), [
+    { clientId: "bot-alpha", eventType: "MESSAGE_CREATE" },
+    { clientId: "bot-beta", eventType: "MESSAGE_CREATE" },
+  ]);
+  assert.ok(wakeups.every((notice) => typeof notice.eventKey === "string" && notice.eventKey.length > 0));
   assert.equal(alpha.sent[0].op, 2);
   assert.equal(beta.sent[0].op, 2);
 });

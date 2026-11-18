@@ -117,6 +117,7 @@ export class GatewayCoordinatorCore {
     fingerprintToken,
     handlerRegistry,
     protectInteraction,
+    onDispatch,
     log = () => {},
   } = {}) {
     if (!storage || typeof storage.get !== "function" ||
@@ -129,6 +130,7 @@ export class GatewayCoordinatorCore {
         (fingerprintToken !== undefined && typeof fingerprintToken !== "function") ||
         (handlerRegistry !== undefined && typeof handlerRegistry.route !== "function") ||
         (protectInteraction !== undefined && typeof protectInteraction !== "function") ||
+        (onDispatch !== undefined && typeof onDispatch !== "function") ||
         typeof log !== "function") {
       throw new TypeError("Gateway coordinator dependencies are incomplete");
     }
@@ -143,6 +145,7 @@ export class GatewayCoordinatorCore {
     this.verifyIdentity = verifyIdentity;
     this.handlerRegistry = handlerRegistry ?? null;
     this.protectInteraction = protectInteraction ?? null;
+    this.onDispatch = onDispatch ?? null;
     this.fingerprintToken = fingerprintToken ?? (async (token) => {
       const cryptoImpl = globalThis.crypto;
       if (!cryptoImpl?.subtle) throw new Error("Web Crypto is required for credential isolation");
@@ -529,7 +532,22 @@ export class GatewayCoordinatorCore {
             }
           }
           try {
-            await inbox.enqueueDispatch(event);
+            const queued = await inbox.enqueueDispatch(event);
+            if (queued.accepted && this.onDispatch) {
+              try {
+                await this.onDispatch(Object.freeze({
+                  clientId: id,
+                  eventKey: queued.eventKey,
+                  eventType: event.eventType,
+                }));
+              } catch {
+                // The event is already durable; the shared recovery alarm remains authoritative.
+                this.log("gateway_dispatch_wakeup_failed", {
+                  clientId: id,
+                  eventType: event.eventType,
+                });
+              }
+            }
           } catch (error) {
             if (error instanceof InboxFullError) {
               state.status = "queue_full";
