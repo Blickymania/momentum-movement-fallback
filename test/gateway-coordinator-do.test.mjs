@@ -143,7 +143,10 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
         { id: "1567000000000000003", guild_id: GUILD_ID, type: 0, name: "community-guidelines" },
       ]);
     }
-    if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID + "/members/1569000000000000099") {\n      return okJson({ user: { id: "1569000000000000099" }, joined_at: "2021-08-15T22:30:00.000Z" });\n    }\n    if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID + "/scheduled-events") {
+    if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID + "/members/1569000000000000099") {
+      return okJson({ user: { id: "1569000000000000099" }, joined_at: "2021-08-15T22:30:00.000Z" });
+    }
+    if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID + "/scheduled-events") {
       return okJson([
         { id: "1567000000000000010", guild_id: GUILD_ID, status: 1, name: "Momentum check-in", scheduled_start_time: "2027-01-01T00:00:00.000Z" },
         { id: "1567000000000000011", guild_id: "1565048205970767993", status: 1, name: "Foreign event", scheduled_start_time: "2027-01-02T00:00:00.000Z" },
@@ -497,7 +500,38 @@ test("rules capability requires its matching flag before opening a Gateway socke
   });
 });
 
-test("isolated /member reads only the selected guild member and edits a deferred reply", async () => {\n  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-member"] });\n  await withRuntime({}, async ({ calls, sockets }) => {\n    const storage = new MemoryDOStorage(), object = makeObject(storage, { GATEWAY_HANDLER_MANIFEST: manifestValue, BOT005_MEMBER_ENABLED: "true" });\n    assert.equal((await object.fetch(control("/start", "POST"))).status, 202);\n    const socket = sockets[0]; dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });\n    const core = await object.corePromise; await core.serial;\n    dispatch(socket, { op: 0, s: 1, t: "READY", d: { session_id: "member-session", resume_gateway_url: "wss://resume.member.example" } }); await core.serial;\n    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: { id: "1569000000000000062", application_id: APP_ID, guild_id: GUILD_ID,\n      channel_id: "1565643996624199760", token: "non-production-member-interaction-token", type: 2,\n      member: { user: { id: "1569000000000000002" } }, data: { name: "member", options: [{ name: "user", type: 6, value: "1569000000000000099" }],\n        resolved: { users: { "1569000000000000099": { id: "1569000000000000099", username: "Safe_User", bot: false } } } } } }); await core.serial;\n    const [queued] = await core.getInbox("bot-alpha").listPending();\n    assert.equal(queued.interactionAckState, "acknowledged"); assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-member"]);\n    assert.equal((await object.dispatchers.get("bot-alpha").drain({ limit: 1 })).status, "ok");\n    const delivery = new DurableGatewayDeliveryLedger(storage, { namespace: "gateway-dispatch-bot-alpha" });\n    assert.equal((await delivery.get(queued.eventKey, "bot005-member")).status, "completed");\n    assert.equal(calls.filter((call) => call.path === "/api/v10/guilds/" + GUILD_ID + "/members/1569000000000000099" && call.method === "GET").length, 1);\n    assert.equal(calls.filter((call) => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 1);\n    assert.equal(JSON.stringify(calls).includes("non-production-member-interaction-token"), false);\n  });\n});\n\ntest("member capability requires its matching flag before opening a Gateway socket", async () => {\n  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-member"] });\n  await withRuntime({}, async ({ sockets }) => {\n    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifestValue });\n    assert.equal((await object.fetch(control("/start", "POST"))).status, 503); assert.equal(sockets.length, 0);\n  });\n});\n\ntest("isolated /events reads the authorized guild schedule and edits a deferred reply", async () => {
+test("isolated /member reads only the selected guild member and edits a deferred reply", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-member"] });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const storage = new MemoryDOStorage(), object = makeObject(storage, { GATEWAY_HANDLER_MANIFEST: manifestValue, BOT005_MEMBER_ENABLED: "true" });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 202);
+    const socket = sockets[0]; dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise; await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: { session_id: "member-session", resume_gateway_url: "wss://resume.member.example" } }); await core.serial;
+    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: { id: "1569000000000000062", application_id: APP_ID, guild_id: GUILD_ID,
+      channel_id: "1565643996624199760", token: "non-production-member-interaction-token", type: 2,
+      member: { user: { id: "1569000000000000002" } }, data: { name: "member", options: [{ name: "user", type: 6, value: "1569000000000000099" }],
+        resolved: { users: { "1569000000000000099": { id: "1569000000000000099", username: "Safe_User", bot: false } } } } } }); await core.serial;
+    const [queued] = await core.getInbox("bot-alpha").listPending();
+    assert.equal(queued.interactionAckState, "acknowledged"); assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-member"]);
+    assert.equal((await object.dispatchers.get("bot-alpha").drain({ limit: 1 })).status, "ok");
+    const delivery = new DurableGatewayDeliveryLedger(storage, { namespace: "gateway-dispatch-bot-alpha" });
+    assert.equal((await delivery.get(queued.eventKey, "bot005-member")).status, "completed");
+    assert.equal(calls.filter((call) => call.path === "/api/v10/guilds/" + GUILD_ID + "/members/1569000000000000099" && call.method === "GET").length, 1);
+    assert.equal(calls.filter((call) => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 1);
+    assert.equal(JSON.stringify(calls).includes("non-production-member-interaction-token"), false);
+  });
+});
+
+test("member capability requires its matching flag before opening a Gateway socket", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-member"] });
+  await withRuntime({}, async ({ sockets }) => {
+    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifestValue });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 503); assert.equal(sockets.length, 0);
+  });
+});
+
+test("isolated /events reads the authorized guild schedule and edits a deferred reply", async () => {
   const eventsManifest = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-events"] });
   await withRuntime({}, async ({ calls, sockets }) => {
     const storage = new MemoryDOStorage();

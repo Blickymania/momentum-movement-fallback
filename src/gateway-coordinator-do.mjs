@@ -91,7 +91,8 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
   const memberFlagEnabled = env.BOT005_MEMBER_ENABLED === "true";
   if (declaresProfileModal !== profileFlagEnabled || declaresPing !== pingFlagEnabled ||
       declaresStatus !== statusFlagEnabled || declaresRules !== rulesFlagEnabled ||
-      declaresStatsStatus !== statsStatusFlagEnabled || declaresEvents !== eventsFlagEnabled ||\n      declaresMember !== memberFlagEnabled) {
+      declaresStatsStatus !== statsStatusFlagEnabled || declaresEvents !== eventsFlagEnabled ||
+      declaresMember !== memberFlagEnabled) {
     throw new TypeError("Bot 005 isolated capability manifest and runtime flags must explicitly agree");
   }
   if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member"].includes(id))) {
@@ -103,7 +104,8 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
     statusEnabled: declaresStatus,
     rulesEnabled: declaresRules,
     statsStatusEnabled: declaresStatsStatus,
-    eventsEnabled: declaresEvents,\n    memberEnabled: declaresMember,
+    eventsEnabled: declaresEvents,
+    memberEnabled: declaresMember,
   });
 }
 
@@ -260,7 +262,24 @@ export class GatewayCoordinatorDurableObject {
           applicationId: handlerRegistry.manifest.applicationId,
         });
       }
-      if (capabilities.memberEnabled) {\n        handlers["bot005-member"] = createBot005MemberHandler({\n          revealInteraction: (payload) => tokenVault.decryptPayload(payload),\n          editDeferredReply: createDiscordDeferredReplyEditor(),\n          getGuildMember: async (guildId, userId) => {\n            const response = await fetch("https://discord.com/api/v10/guilds/" + guildId + "/members/" + userId, {\n              method: "GET",\n              headers: { authorization: "Bot " + token, "user-agent": "DiscordManager/1.0" },\n              signal: AbortSignal.timeout(12_000),\n            });\n            if (!response.ok) return null;\n            return response.json();\n          },\n          guildId: handlerRegistry.manifest.guildId,\n          applicationId: handlerRegistry.manifest.applicationId,\n        });\n      }\n      if (capabilities.eventsEnabled) {
+      if (capabilities.memberEnabled) {
+        handlers["bot005-member"] = createBot005MemberHandler({
+          revealInteraction: (payload) => tokenVault.decryptPayload(payload),
+          editDeferredReply: createDiscordDeferredReplyEditor(),
+          getGuildMember: async (guildId, userId) => {
+            const response = await fetch("https://discord.com/api/v10/guilds/" + guildId + "/members/" + userId, {
+              method: "GET",
+              headers: { authorization: "Bot " + token, "user-agent": "DiscordManager/1.0" },
+              signal: AbortSignal.timeout(12_000),
+            });
+            if (!response.ok) return null;
+            return response.json();
+          },
+          guildId: handlerRegistry.manifest.guildId,
+          applicationId: handlerRegistry.manifest.applicationId,
+        });
+      }
+      if (capabilities.eventsEnabled) {
         handlers["bot005-events"] = createBot005EventsHandler({
           revealInteraction: (payload) => tokenVault.decryptPayload(payload),
           editDeferredReply: createDiscordDeferredReplyEditor(),

@@ -103,7 +103,13 @@ test("capability guard requires both explicit manifest registration and exact ru
     profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: true,
   });
 
-  const memberRegistry = createGatewayHandlerRegistry(manifest(["bot005-member"]));\n  assert.throws(() => validateGatewayFeatureCapabilities(memberRegistry, {}), /explicitly agree/);\n  assert.deepEqual(validateGatewayFeatureCapabilities(memberRegistry, { BOT005_MEMBER_ENABLED: "true" }), {\n    profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false, memberEnabled: false, memberEnabled: true,\n  });\n\n  const defaultRegistry = createGatewayHandlerRegistry(manifest(["discord-engagement-engine"]));
+  const memberRegistry = createGatewayHandlerRegistry(manifest(["bot005-member"]));
+  assert.throws(() => validateGatewayFeatureCapabilities(memberRegistry, {}), /explicitly agree/);
+  assert.deepEqual(validateGatewayFeatureCapabilities(memberRegistry, { BOT005_MEMBER_ENABLED: "true" }), {
+    profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false, memberEnabled: true,
+  });
+
+  const defaultRegistry = createGatewayHandlerRegistry(manifest(["discord-engagement-engine"]));
   assert.deepEqual(validateGatewayFeatureCapabilities(defaultRegistry, {}), { profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false });
   assert.throws(() => validateGatewayFeatureCapabilities(defaultRegistry, {
     BOT005_PROFILE_MODAL_ENABLED: "true",
