@@ -9,6 +9,7 @@ import { createBot005StatusHandler } from "./bot005-status-handler.mjs";
 import { createBot005RulesHandler } from "./bot005-rules-handler.mjs";
 import { createBot005StatsStatusHandler } from "./bot005-statsstatus-handler.mjs";
 import { createBot005EventsHandler } from "./bot005-events-handler.mjs";
+import { createBot005MemberHandler } from "./bot005-member-handler.mjs";
 import { DurableBot005ProfileStore, createBot005ProfileCipher } from "./durable-bot005-profile-store.mjs";
 import { createDiscordDeferredReplyEditor } from "./discord-deferred-reply.mjs";
 import { GatewayEventDispatcher, DurableGatewayDeliveryLedger } from "./durable-gateway-dispatcher.mjs";
@@ -86,12 +87,14 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
   const statsStatusFlagEnabled = env.BOT005_STATSSTATUS_ENABLED === "true";
   const declaresEvents = enabled.includes("bot005-events");
   const eventsFlagEnabled = env.BOT005_EVENTS_ENABLED === "true";
+  const declaresMember = enabled.includes("bot005-member");
+  const memberFlagEnabled = env.BOT005_MEMBER_ENABLED === "true";
   if (declaresProfileModal !== profileFlagEnabled || declaresPing !== pingFlagEnabled ||
       declaresStatus !== statusFlagEnabled || declaresRules !== rulesFlagEnabled ||
-      declaresStatsStatus !== statsStatusFlagEnabled || declaresEvents !== eventsFlagEnabled) {
+      declaresStatsStatus !== statsStatusFlagEnabled || declaresEvents !== eventsFlagEnabled ||\n      declaresMember !== memberFlagEnabled) {
     throw new TypeError("Bot 005 isolated capability manifest and runtime flags must explicitly agree");
   }
-  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events"].includes(id))) {
+  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member"].includes(id))) {
     throw new TypeError("Gateway feature handler adapter is unavailable");
   }
   return Object.freeze({
@@ -100,7 +103,7 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
     statusEnabled: declaresStatus,
     rulesEnabled: declaresRules,
     statsStatusEnabled: declaresStatsStatus,
-    eventsEnabled: declaresEvents,
+    eventsEnabled: declaresEvents,\n    memberEnabled: declaresMember,
   });
 }
 
@@ -257,7 +260,7 @@ export class GatewayCoordinatorDurableObject {
           applicationId: handlerRegistry.manifest.applicationId,
         });
       }
-      if (capabilities.eventsEnabled) {
+      if (capabilities.memberEnabled) {\n        handlers["bot005-member"] = createBot005MemberHandler({\n          revealInteraction: (payload) => tokenVault.decryptPayload(payload),\n          editDeferredReply: createDiscordDeferredReplyEditor(),\n          getGuildMember: async (guildId, userId) => {\n            const response = await fetch("https://discord.com/api/v10/guilds/" + guildId + "/members/" + userId, {\n              method: "GET",\n              headers: { authorization: "Bot " + token, "user-agent": "DiscordManager/1.0" },\n              signal: AbortSignal.timeout(12_000),\n            });\n            if (!response.ok) return null;\n            return response.json();\n          },\n          guildId: handlerRegistry.manifest.guildId,\n          applicationId: handlerRegistry.manifest.applicationId,\n        });\n      }\n      if (capabilities.eventsEnabled) {
         handlers["bot005-events"] = createBot005EventsHandler({
           revealInteraction: (payload) => tokenVault.decryptPayload(payload),
           editDeferredReply: createDiscordDeferredReplyEditor(),

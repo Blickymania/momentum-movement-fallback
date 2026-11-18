@@ -16,6 +16,7 @@ BOT005_STATUS_ENABLED = "false"
 BOT005_RULES_ENABLED = "false"
 BOT005_STATSSTATUS_ENABLED = "false"
 BOT005_EVENTS_ENABLED = "false"
+BOT005_MEMBER_ENABLED = "false"
 
 [[durable_objects.bindings]]
 name = "GATEWAY_COORDINATOR"
@@ -44,8 +45,8 @@ migrations_dir = "migrations"
 # "bot005-ping" requires BOT005_PING_ENABLED=true; "bot005-status" requires
 # BOT005_STATUS_ENABLED=true; "bot005-rules" requires BOT005_RULES_ENABLED=true.
 # "bot005-statsstatus" requires BOT005_STATSSTATUS_ENABLED=true; "bot005-events" requires
-# BOT005_EVENTS_ENABLED=true.
-# Keep all six flags disabled until the complete
+# BOT005_EVENTS_ENABLED=true; "bot005-member" requires BOT005_MEMBER_ENABLED=true.
+# Keep all seven flags disabled until the complete
 # feature and restore gates pass. Do not enable general "bot005" while only
 # these isolated features are available.
 #
