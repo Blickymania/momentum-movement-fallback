@@ -279,3 +279,19 @@ test("routes only /forum-admin diagnose through the isolated read-only capabilit
   }));
   assert.equal(missingSubcommand.status, "disabled");
 });
+
+
+test("routes only /forum-admin inspect through its isolated read-only capability", () => {
+  const registry = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005-forum-inspect"] }));
+  const route = registry.route(event("INTERACTION_CREATE", {
+    guild_id: GUILD, application_id: APP, type: 2,
+    data: { name: "forum-admin", options: [{ type: 1, name: "inspect", options: [{ type: 7, name: "forum", value: "1566000000000000001" }] }] },
+  }));
+  assert.deepEqual(route.handlers, ["bot005-forum-inspect"]);
+  assert.equal(route.routeKey, "command:forum-admin:inspect");
+  const wrongSubcommand = registry.route(event("INTERACTION_CREATE", {
+    guild_id: GUILD, application_id: APP, type: 2,
+    data: { name: "forum-admin", options: [{ type: 1, name: "diagnose" }] },
+  }));
+  assert.equal(wrongSubcommand.status, "disabled");
+});

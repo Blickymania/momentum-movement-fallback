@@ -121,7 +121,7 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     if (!interaction || typeof interaction !== "object" || Array.isArray(interaction) ||
         route?.status !== "routed" || !Array.isArray(route.handlers) ||
         route.handlers.length !== 1 ||
-        !["bot005", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server", "bot005-help", "bot005-tiktok", "bot005-forum-diagnose"].includes(route.handlers[0])) {
+        !["bot005", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server", "bot005-help", "bot005-tiktok", "bot005-forum-diagnose", "bot005-forum-inspect"].includes(route.handlers[0])) {
       return blocked("bot005_route_not_verified");
     }
 
@@ -136,6 +136,7 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     const helpOnly = route.handlers[0] === "bot005-help";
     const tiktokOnly = route.handlers[0] === "bot005-tiktok";
     const forumDiagnoseOnly = route.handlers[0] === "bot005-forum-diagnose";
+    const forumInspectOnly = route.handlers[0] === "bot005-forum-inspect";
     const type = Number(interaction.type);
     if (profileModalOnly && type !== 5) return blocked("bot005_profile_modal_route_type_mismatch");
     if (pingOnly && (type !== 2 || interaction.data?.name !== "ping")) {
@@ -168,6 +169,12 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     if (forumDiagnoseOnly && (type !== 2 || interaction.data?.name !== "forum-admin" ||
         interaction.data?.options?.[0]?.name !== "diagnose")) {
       return blocked("bot005_forum_diagnose_route_type_mismatch");
+    }
+    const inspectOptions = interaction.data?.options?.[0]?.options;
+    const selectedForum = Array.isArray(inspectOptions) ? inspectOptions.find((option) => option?.name === "forum") : null;
+    if (forumInspectOnly && (type !== 2 || interaction.data?.name !== "forum-admin" ||
+        interaction.data?.options?.[0]?.name !== "inspect" || typeof selectedForum?.value !== "string")) {
+      return blocked("bot005_forum_inspect_route_type_mismatch");
     }
     if (type === 1) return ready({ type: 1 });
 

@@ -218,3 +218,20 @@ test("defers only the isolated owner-only forum diagnosis subcommand", () => {
     status: "blocked", reason: "bot005_forum_diagnose_route_type_mismatch",
   });
 });
+
+
+test("defers only /forum-admin inspect with its selected forum option", () => {
+  const route = { status: "routed", handlers: ["bot005-forum-inspect"] };
+  const interaction = { type: 2, guild_id: GUILD, data: { name: "forum-admin", options: [
+    { type: 1, name: "inspect", options: [{ type: 7, name: "forum", value: "1566000000000000001" }] },
+  ] } };
+  assert.deepEqual(planner(interaction, route), { status: "ready", response: { type: 5 } });
+  assert.deepEqual(planner({ ...interaction, data: { name: "forum-admin", options: [{ type: 1, name: "diagnose" }] } }, route), {
+    status: "blocked", reason: "bot005_forum_inspect_route_type_mismatch",
+  });
+  assert.deepEqual(planner({ ...interaction, data: { name: "forum-admin", options: [
+    { type: 1, name: "inspect", options: [] },
+  ] } }, route), {
+    status: "blocked", reason: "bot005_forum_inspect_route_type_mismatch",
+  });
+});

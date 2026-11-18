@@ -129,7 +129,7 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
       });
     }
     if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID) {
-      return okJson({ id: guildId, name: "Momentum Movement" });
+      return okJson({ id: guildId, owner_id: "1565200000000000001", name: "Momentum Movement" });
     }
     if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID + "/channels") {
       return okJson([
@@ -156,6 +156,11 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
         { id: "1567000000000000010", guild_id: GUILD_ID, status: 1, name: "Momentum check-in", scheduled_start_time: "2027-01-01T00:00:00.000Z" },
         { id: "1567000000000000011", guild_id: "1565048205970767993", status: 1, name: "Foreign event", scheduled_start_time: "2027-01-02T00:00:00.000Z" },
       ]);
+    }
+    if (parsed.pathname === "/api/v10/channels/1566000000000000001") {
+      return okJson({ id: "1566000000000000001", guild_id: GUILD_ID, type: 15, name: "community-forum", available_tags: [
+        { id: "1566000000000000002", name: "General", moderated: false },
+      ] });
     }
     if (parsed.pathname === "/api/v10/channels/1566030504635924600") {
       return okJson({ id: "1566030504635924600", guild_id: GUILD_ID, type: 2, name: "live-members" });
@@ -877,5 +882,44 @@ test("alarm recovers the coordinator after object re-instantiation using durable
     const resumedPending = await secondCore.getInbox("bot-alpha").listPending();
     assert.equal(resumedPending.length, 1);
     assert.equal(resumedPending[0].payload.id, "persisted-event");
+  });
+});
+
+
+test("owner-only /forum-admin inspect follows exact ACK, selected-channel GET and durable dispatch", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-forum-inspect"] });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const object = makeObject(new MemoryDOStorage(), {
+      GATEWAY_HANDLER_MANIFEST: manifestValue, BOT005_FORUM_INSPECT_ENABLED: "true",
+    });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 202);
+    const socket = sockets[0]; dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise; await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: { session_id: "forum-inspect-session", resume_gateway_url: "wss://resume.forum-inspect.example" } }); await core.serial;
+    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+      id: "1569000000000000101", application_id: APP_ID, guild_id: GUILD_ID,
+      channel_id: "1565643996624199760", token: "non-production-forum-inspect-token", type: 2,
+      member: { user: { id: "1565200000000000001" }, permissions: "0" },
+      data: { name: "forum-admin", options: [{ type: 1, name: "inspect", options: [
+        { type: 7, name: "forum", value: "1566000000000000001" },
+      ] }] },
+    } }); await core.serial;
+    const inbox = core.getInbox("bot-alpha"), [queued] = await inbox.listPending();
+    assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-forum-inspect"]);
+    assert.equal(queued.interactionAckState, "acknowledged");
+    assert.equal((await object.dispatchers.get("bot-alpha").drain({ limit: 1 })).status, "ok");
+    assert.equal(calls.filter(call => call.path === "/api/v10/channels/1566000000000000001" && call.method === "GET").length, 1);
+    assert.equal(calls.filter(call => call.path === "/api/v10/channels/1566000000000000001" && call.method !== "GET").length, 0);
+    assert.equal(calls.filter(call => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 1);
+    assert.equal(JSON.stringify(calls).includes("non-production-forum-inspect-token"), false);
+  });
+});
+
+test("forum inspect capability requires its matching flag before opening a Gateway socket", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-forum-inspect"] });
+  await withRuntime({}, async ({ sockets }) => {
+    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifestValue });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 503);
+    assert.equal(sockets.length, 0);
   });
 });
