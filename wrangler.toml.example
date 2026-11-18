@@ -37,10 +37,11 @@ migrations_dir = "migrations"
 # GATEWAY_HANDLER_MANIFEST = JSON with the same guild/application IDs,
 # liveChannelId, one livePublisher ("none", "live-events-listener", or
 # "live-now-v2"), and the explicit enabledHandlers array. The isolated
-# "bot005-profile-modal" adapter is accepted only when the matching secret-safe
-# BOT005_PROFILE_MODAL_ENABLED or BOT005_PING_ENABLED variable is exactly "true"; keep all disabled
-# until the complete feature and restore gates pass. Do not enable general
-# "bot005" while only these isolated features are available.
+# "bot005-profile-modal" requires BOT005_PROFILE_MODAL_ENABLED=true;
+# "bot005-ping" requires BOT005_PING_ENABLED=true; "bot005-status" requires
+# BOT005_STATUS_ENABLED=true. Keep all three flags disabled until the complete
+# feature and restore gates pass. Do not enable general "bot005" while only
+# these isolated features are available.
 #
 # Required secrets for isolated Gateway/OAuth tests (secret bindings only):
 # DISCORD_BOT_TOKEN (one per verified tokenRef name),
