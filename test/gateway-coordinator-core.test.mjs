@@ -375,7 +375,6 @@ test("persists only protected interaction tokens when an explicit protector is c
     route: () => ({ status: "routed", handlers: ["discord-engagement-engine"] }),
   };
   const h = makeHarness({
-    now: () => Date.now(),
     handlerRegistry,
     protectInteraction: async (payload) => {
       const { token, ...safe } = payload;
@@ -653,6 +652,7 @@ test("sends the source-backed Bot 005 modal ACK once before dispatch wakeup", as
       : { status: "ignored", reason: "not_interaction" },
   };
   const h = makeHarness({
+    now: () => Date.now(),
     handlerRegistry,
     protectInteraction: async (payload) => {
       const { token, ...safe } = payload;
