@@ -100,7 +100,7 @@ test("capability guard requires both explicit manifest registration and exact ru
   const eventsRegistry = createGatewayHandlerRegistry(manifest(["bot005-events"]));
   assert.throws(() => validateGatewayFeatureCapabilities(eventsRegistry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(eventsRegistry, { BOT005_EVENTS_ENABLED: "true" }), {
-    profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: true, memberEnabled: false,
+    profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: true, memberEnabled: false, serverEnabled: false,
   });
 
   const memberRegistry = createGatewayHandlerRegistry(manifest(["bot005-member"]));
