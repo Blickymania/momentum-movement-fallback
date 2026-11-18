@@ -4,6 +4,7 @@ import { createInteractionTokenVault } from "./interaction-token-vault.mjs";
 import { createBot005InteractionAckPlanner } from "./bot005-interaction-ack-plan.mjs";
 import { createDiscordInteractionAcknowledger } from "./discord-interaction-ack.mjs";
 import { createBot005ProfileModalHandler } from "./bot005-profile-handler.mjs";
+import { createBot005PingHandler } from "./bot005-ping-handler.mjs";
 import { DurableBot005ProfileStore, createBot005ProfileCipher } from "./durable-bot005-profile-store.mjs";
 import { createDiscordDeferredReplyEditor } from "./discord-deferred-reply.mjs";
 import { GatewayEventDispatcher, DurableGatewayDeliveryLedger } from "./durable-gateway-dispatcher.mjs";
@@ -71,13 +72,15 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
   if (!Array.isArray(enabled)) throw new TypeError("Gateway handler manifest is invalid");
   const declaresProfileModal = enabled.includes("bot005-profile-modal");
   const profileFlagEnabled = env.BOT005_PROFILE_MODAL_ENABLED === "true";
-  if (declaresProfileModal !== profileFlagEnabled) {
-    throw new TypeError("Bot 005 profile modal manifest and capability flag must explicitly agree");
+  const declaresPing = enabled.includes("bot005-ping");
+  const pingFlagEnabled = env.BOT005_PING_ENABLED === "true";
+  if (declaresProfileModal !== profileFlagEnabled || declaresPing !== pingFlagEnabled) {
+    throw new TypeError("Bot 005 isolated capability manifest and runtime flags must explicitly agree");
   }
-  if (enabled.some((id) => id !== "discord-engagement-engine" && id !== "bot005-profile-modal")) {
+  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping"].includes(id))) {
     throw new TypeError("Gateway feature handler adapter is unavailable");
   }
-  return Object.freeze({ profileModalEnabled: declaresProfileModal });
+  return Object.freeze({ profileModalEnabled: declaresProfileModal, pingEnabled: declaresPing });
 }
 
 /**
@@ -194,6 +197,14 @@ export class GatewayCoordinatorDurableObject {
             token,
             guildId: handlerRegistry.manifest.guildId,
           }),
+        });
+      }
+      if (capabilities.pingEnabled) {
+        handlers["bot005-ping"] = createBot005PingHandler({
+          revealInteraction: (payload) => tokenVault.decryptPayload(payload),
+          editDeferredReply: createDiscordDeferredReplyEditor(),
+          guildId: handlerRegistry.manifest.guildId,
+          applicationId: handlerRegistry.manifest.applicationId,
         });
       }
       if (capabilities.profileModalEnabled) {

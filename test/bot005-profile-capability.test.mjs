@@ -50,6 +50,17 @@ test("profile modal capability routes only the three supported type-5 forms", ()
   } });
   assert.equal(command.status, "disabled");
   assert.equal(command.handler, "bot005");
+  const pingRegistry = createGatewayHandlerRegistry(manifest(["bot005-ping"]));
+  const ping = pingRegistry.route({ eventType: "INTERACTION_CREATE", payload: {
+    guild_id: GUILD, application_id: APP, type: 2, data: { name: "ping" },
+  }});
+  assert.equal(ping.status, "routed");
+  assert.deepEqual(ping.handlers, ["bot005-ping"]);
+  const otherCommand = pingRegistry.route({ eventType: "INTERACTION_CREATE", payload: {
+    guild_id: GUILD, application_id: APP, type: 2, data: { name: "ban" },
+  }});
+  assert.equal(otherCommand.status, "disabled");
+  assert.equal(otherCommand.handler, "bot005");
   const wrongType = registry.route({ eventType: "INTERACTION_CREATE", payload: {
     ...profileSubmission(), type: 3,
   } });
@@ -63,6 +74,12 @@ test("capability guard requires both explicit manifest registration and exact ru
   assert.deepEqual(validateGatewayFeatureCapabilities(registry, { BOT005_PROFILE_MODAL_ENABLED: "true" }), {
     profileModalEnabled: true,
   });
+  const pingRegistry = createGatewayHandlerRegistry(manifest(["bot005-ping"]));
+  assert.throws(() => validateGatewayFeatureCapabilities(pingRegistry, {}), /explicitly agree/);
+  assert.deepEqual(validateGatewayFeatureCapabilities(pingRegistry, { BOT005_PING_ENABLED: "true" }), {
+    profileModalEnabled: false, pingEnabled: true,
+  });
+
   const defaultRegistry = createGatewayHandlerRegistry(manifest(["discord-engagement-engine"]));
   assert.deepEqual(validateGatewayFeatureCapabilities(defaultRegistry, {}), { profileModalEnabled: false });
   assert.throws(() => validateGatewayFeatureCapabilities(defaultRegistry, {

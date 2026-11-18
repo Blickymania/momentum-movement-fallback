@@ -11,6 +11,7 @@ APPLICATION_ID = "1565304619838742598"
 MCP_OAUTH_ENABLED = "false"
 GATEWAY_COORDINATOR_ENABLED = "false"
 BOT005_PROFILE_MODAL_ENABLED = "false"
+BOT005_PING_ENABLED = "false"
 
 [[durable_objects.bindings]]
 name = "GATEWAY_COORDINATOR"
@@ -36,14 +37,14 @@ migrations_dir = "migrations"
 # liveChannelId, one livePublisher ("none", "live-events-listener", or
 # "live-now-v2"), and the explicit enabledHandlers array. The isolated
 # "bot005-profile-modal" adapter is accepted only when the matching secret-safe
-# BOT005_PROFILE_MODAL_ENABLED variable is exactly "true"; keep both disabled
+# BOT005_PROFILE_MODAL_ENABLED or BOT005_PING_ENABLED variable is exactly "true"; keep all disabled
 # until the complete feature and restore gates pass. Do not enable general
-# "bot005" while only profile modal handling is available.
+# "bot005" while only these isolated features are available.
 #
 # Required secrets for isolated Gateway/OAuth tests (secret bindings only):
 # DISCORD_BOT_TOKEN (one per verified tokenRef name),
 # GATEWAY_INTERACTION_ENCRYPTION_KEY (64 hex chars / exactly 32 random bytes),
-# BOT005_PROFILE_ENCRYPTION_KEY (64 hex chars / exactly 32 random bytes, separate from the interaction key),
+# BOT005_PROFILE_ENCRYPTION_KEY (64 hex chars / exactly 32 random bytes, separate from the interaction key; profile feature only),
 # MCP_INTERNAL_BEARER_TOKEN (at least 32 characters),
 # DISCORD_OAUTH_CLIENT_ID and DISCORD_OAUTH_CLIENT_SECRET.
 #

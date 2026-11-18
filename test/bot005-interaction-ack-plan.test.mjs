@@ -12,6 +12,16 @@ const button = (custom_id, extra = {}) => ({
   type: 3, guild_id: GUILD, data: { custom_id }, ...extra,
 });
 
+test("defers only the isolated Bot 005 ping command", () => {
+  const pingRoute = { status: "routed", handlers: ["bot005-ping"] };
+  assert.deepEqual(planner({ type: 2, guild_id: GUILD, data: { name: "ping" } }, pingRoute), {
+    status: "ready", response: { type: 5 },
+  });
+  assert.deepEqual(planner({ type: 2, guild_id: GUILD, data: { name: "ban" } }, pingRoute), {
+    status: "blocked", reason: "bot005_ping_route_type_mismatch",
+  });
+});
+
 test("selects a deferred reply for a registered Bot 005 command", () => {
   const result = planner({ type: 2, guild_id: GUILD, data: { name: "announce" } }, routed);
   assert.deepEqual(result, { status: "ready", response: { type: 5 } });

@@ -5,6 +5,7 @@ import { DurableEngagementLedger } from "../src/durable-engagement-ledger.mjs";
 import { DurableGatewayDeliveryLedger } from "../src/durable-gateway-dispatcher.mjs";
 import { DurableBot005ProfileStore, createBot005ProfileCipher } from "../src/durable-bot005-profile-store.mjs";
 import { parseBot005ProfileModal } from "../src/bot005-profile-modal.mjs";
+import { createBot005PingHandler } from "../src/bot005-ping-handler.mjs";
 
 const GUILD_ID = "1565048205970767992";
 const APP_ID = "1565304619838742598";
@@ -332,6 +333,47 @@ test("profile modal capability reaches the durable store and deferred reply thro
     assert.equal(calls.filter((call) => call.path === "/api/v10/interactions/:id/:token/callback" && call.method === "POST").length, 1);
     assert.equal(calls.filter((call) => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 1);
     assert.equal(JSON.stringify(calls).includes("non-production-test-interaction-token"), false);
+  });
+});
+
+test("isolated /ping command ACKs and edits one public deferred response through the Durable Object", async () => {
+  const pingManifest = JSON.stringify({
+    guildId: GUILD_ID,
+    applicationId: APP_ID,
+    livePublisher: "none",
+    enabledHandlers: ["bot005-ping"],
+  });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const storage = new MemoryDOStorage();
+    const object = makeObject(storage, { GATEWAY_HANDLER_MANIFEST: pingManifest, BOT005_PING_ENABLED: "true" });
+    const started = await object.fetch(control("/start", "POST"));
+    assert.equal(started.status, 202);
+    const socket = sockets[0];
+    dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise;
+    await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: {
+      session_id: "ping-session", resume_gateway_url: "wss://resume.ping.example",
+    }});
+    await core.serial;
+    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+      id: "1569000000000000021", application_id: APP_ID, guild_id: GUILD_ID,
+      channel_id: "1565643996624199760", token: "non-production-ping-interaction-token",
+      type: 2, member: { user: { id: "1569000000000000002" } }, data: { name: "ping" },
+    }});
+    await core.serial;
+    const inbox = core.getInbox("bot-alpha");
+    const [queued] = await inbox.listPending();
+    assert.equal(queued.interactionAckState, "acknowledged");
+    assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-ping"]);
+    const result = await object.dispatchers.get("bot-alpha").drain({ limit: 1 });
+    assert.equal(result.status, "ok", JSON.stringify(result));
+    assert.equal((await inbox.listPending()).length, 0);
+    const delivery = new DurableGatewayDeliveryLedger(storage, { namespace: "gateway-dispatch-bot-alpha" });
+    assert.equal((await delivery.get(queued.eventKey, "bot005-ping")).status, "completed");
+    assert.equal(calls.filter((call) => call.path === "/api/v10/interactions/:id/:token/callback" && call.method === "POST").length, 1);
+    assert.equal(calls.filter((call) => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 1);
+    assert.equal(JSON.stringify(calls).includes("non-production-ping-interaction-token"), false);
   });
 });
 
