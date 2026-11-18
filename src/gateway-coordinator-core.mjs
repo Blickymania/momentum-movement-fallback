@@ -454,7 +454,11 @@ export class GatewayCoordinatorCore {
     } catch (error) {
       try { await inbox.setInteractionAckState(eventKey, "failed"); }
       catch { this.log("gateway_interaction_ack_outcome_persist_failed", { clientId: id, eventKey }); }
-      const reason = typeof error?.code === "string" ? error.code : "interaction_ack_failed";
+      const candidateReason = typeof error?.code === "string" ? error.code
+        : typeof error?.message === "string" ? error.message : "";
+      const reason = /^[A-Za-z0-9_:-]{1,96}$/.test(candidateReason)
+        ? candidateReason
+        : "interaction_ack_failed";
       this.log("gateway_interaction_ack_failed", { clientId: id, eventKey, reason });
       return { acknowledged: false, reason };
     }
