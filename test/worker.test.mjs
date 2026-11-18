@@ -139,7 +139,7 @@ test("completes OAuth authorization and manager status through the Worker HTTP s
  const tokens=await token.json();assert.equal(tokens.scope,"mcp:read");
  const status=await h.worker.fetch(new Request("https://momentum.example/mcp",{method:"POST",headers:{authorization:"Bearer "+tokens.access_token,"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:901,method:"tools/call",params:{name:"discord_manager_status",arguments:{}}})}),h.env);
  assert.equal(status.status,200);assert.equal(JSON.parse((await status.json()).result.content[0].text).state,"connected");
- assert.equal(discordCalls.filter(x=>x.url==="https://discord.com/api/oauth2/token").length,1);
+ assert.equal(discordCalls.filter(x=>x.url==="https://discord.com/api/v10/oauth2/token").length,1);
  assert.equal(discordCalls.filter(x=>x.authorization==="Bot test-bot-token").length,2);h.db.close();
 });
 
