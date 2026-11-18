@@ -11,6 +11,7 @@ const HANDLERS = Object.freeze([
   "bot005-profile-modal",
   "bot005-ping",
   "bot005-status",
+  "bot005-rules",
   "social-owner-console",
   "fan-club-level-up",
   "discord-engagement-engine",
@@ -135,6 +136,10 @@ function interactionRoute(config, interaction) {
       return { status: "disabled", reason: "handler_disabled", handler: owner, handlers: [] };
     }
     return { status: "routed", eventType: "INTERACTION_CREATE", handlers: [owner], routeKey: customId.split(":")[0] };
+  }
+
+  if (data.name === "rules" && enabled(config, "bot005-rules")) {
+    return { status: "routed", eventType: "INTERACTION_CREATE", handlers: ["bot005-rules"], routeKey: "command:rules" };
   }
 
   if (data.name === "ping" && enabled(config, "bot005-ping")) {

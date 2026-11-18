@@ -6,6 +6,7 @@ import { createDiscordInteractionAcknowledger } from "./discord-interaction-ack.
 import { createBot005ProfileModalHandler } from "./bot005-profile-handler.mjs";
 import { createBot005PingHandler } from "./bot005-ping-handler.mjs";
 import { createBot005StatusHandler } from "./bot005-status-handler.mjs";
+import { createBot005RulesHandler } from "./bot005-rules-handler.mjs";
 import { DurableBot005ProfileStore, createBot005ProfileCipher } from "./durable-bot005-profile-store.mjs";
 import { createDiscordDeferredReplyEditor } from "./discord-deferred-reply.mjs";
 import { GatewayEventDispatcher, DurableGatewayDeliveryLedger } from "./durable-gateway-dispatcher.mjs";
@@ -77,17 +78,20 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
   const pingFlagEnabled = env.BOT005_PING_ENABLED === "true";
   const declaresStatus = enabled.includes("bot005-status");
   const statusFlagEnabled = env.BOT005_STATUS_ENABLED === "true";
+  const declaresRules = enabled.includes("bot005-rules");
+  const rulesFlagEnabled = env.BOT005_RULES_ENABLED === "true";
   if (declaresProfileModal !== profileFlagEnabled || declaresPing !== pingFlagEnabled ||
-      declaresStatus !== statusFlagEnabled) {
+      declaresStatus !== statusFlagEnabled || declaresRules !== rulesFlagEnabled) {
     throw new TypeError("Bot 005 isolated capability manifest and runtime flags must explicitly agree");
   }
-  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status"].includes(id))) {
+  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules"].includes(id))) {
     throw new TypeError("Gateway feature handler adapter is unavailable");
   }
   return Object.freeze({
     profileModalEnabled: declaresProfileModal,
     pingEnabled: declaresPing,
     statusEnabled: declaresStatus,
+    rulesEnabled: declaresRules,
   });
 }
 
@@ -221,6 +225,25 @@ export class GatewayCoordinatorDurableObject {
           revealInteraction: (payload) => tokenVault.decryptPayload(payload),
           editDeferredReply: createDiscordDeferredReplyEditor(),
           getStatus: () => core.snapshot(),
+          guildId: handlerRegistry.manifest.guildId,
+          applicationId: handlerRegistry.manifest.applicationId,
+        });
+      }
+      if (capabilities.rulesEnabled) {
+        handlers["bot005-rules"] = createBot005RulesHandler({
+          revealInteraction: (payload) => tokenVault.decryptPayload(payload),
+          editDeferredReply: createDiscordDeferredReplyEditor(),
+          getGuildChannels: async (guildId) => {
+            const response = await fetch("https://discord.com/api/v10/guilds/" + guildId + "/channels", {
+              method: "GET",
+              headers: { authorization: "Bot " + token, "user-agent": "DiscordManager/1.0" },
+              signal: AbortSignal.timeout(12_000),
+            });
+            if (!response.ok) throw new Error("discord_rules_channel_read_failed");
+            const channels = await response.json();
+            if (!Array.isArray(channels)) throw new Error("discord_rules_channel_response_invalid");
+            return channels;
+          },
           guildId: handlerRegistry.manifest.guildId,
           applicationId: handlerRegistry.manifest.applicationId,
         });

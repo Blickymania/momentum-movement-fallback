@@ -13,6 +13,7 @@ GATEWAY_COORDINATOR_ENABLED = "false"
 BOT005_PROFILE_MODAL_ENABLED = "false"
 BOT005_PING_ENABLED = "false"
 BOT005_STATUS_ENABLED = "false"
+BOT005_RULES_ENABLED = "false"
 
 [[durable_objects.bindings]]
 name = "GATEWAY_COORDINATOR"
@@ -39,7 +40,8 @@ migrations_dir = "migrations"
 # "live-now-v2"), and the explicit enabledHandlers array. The isolated
 # "bot005-profile-modal" requires BOT005_PROFILE_MODAL_ENABLED=true;
 # "bot005-ping" requires BOT005_PING_ENABLED=true; "bot005-status" requires
-# BOT005_STATUS_ENABLED=true. Keep all three flags disabled until the complete
+# BOT005_STATUS_ENABLED=true; "bot005-rules" requires BOT005_RULES_ENABLED=true.
+# Keep all four flags disabled until the complete
 # feature and restore gates pass. Do not enable general "bot005" while only
 # these isolated features are available.
 #

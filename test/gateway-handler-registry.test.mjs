@@ -89,6 +89,19 @@ test("resolves the mompass collision using exact birthday and anniversary book m
   assert.deepEqual(memberPassport.handlers, ["bot005"]);
 });
 
+test("routes /rules only through its isolated read-only capability", () => {
+  const registry = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005-rules"] }));
+  const route = registry.route(event("INTERACTION_CREATE", {
+    guild_id: GUILD, application_id: APP, type: 2, data: { name: "rules" },
+  }));
+  assert.deepEqual(route.handlers, ["bot005-rules"]);
+  assert.equal(route.routeKey, "command:rules");
+  const other = registry.route(event("INTERACTION_CREATE", {
+    guild_id: GUILD, application_id: APP, type: 2, data: { name: "ban" },
+  }));
+  assert.equal(other.status, "disabled");
+});
+
 test("routes the exact 36-command Bot 005 registry and ignores arbitrary commands", () => {
   const registry = createGatewayHandlerRegistry(manifest());
   // Compared with the recovered Momentum Movement Bot 005 snapshot on codex/dawn-failover-repairs.
