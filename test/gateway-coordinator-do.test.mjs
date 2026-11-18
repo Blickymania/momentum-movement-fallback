@@ -112,7 +112,9 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
       ? "/api/v10/interactions/:id/:token/callback"
       : parsed.pathname.startsWith("/api/v10/webhooks/")
         ? "/api/v10/webhooks/:application/:token/messages/@original"
-        : parsed.pathname;
+        : parsed.pathname === "/api/v10/guilds/" + GUILD_ID && parsed.searchParams.get("with_counts") === "true"
+          ? parsed.pathname + parsed.search
+          : parsed.pathname;
     calls.push({ path: safePath, method: options.method, authorization: options.headers?.authorization });
     if (parsed.pathname === "/api/v10/users/@me") {
       return okJson({ id: botId, bot: true, username: "momentum-test-bot" });
@@ -143,7 +145,7 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
         { id: "1567000000000000003", guild_id: GUILD_ID, type: 0, name: "community-guidelines" },
       ]);
     }
-    if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID + "?with_counts=true") {
+    if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID && parsed.searchParams.get("with_counts") === "true") {
       return okJson({ id: GUILD_ID, name: "Momentum Movement", approximate_member_count: 1234 });
     }
     if (parsed.pathname === "/api/v10/guilds/" + GUILD_ID + "/members/1569000000000000099") {

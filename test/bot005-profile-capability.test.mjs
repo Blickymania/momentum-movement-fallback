@@ -112,11 +112,11 @@ test("capability guard requires both explicit manifest registration and exact ru
   const serverRegistry = createGatewayHandlerRegistry(manifest(["bot005-server"]));
   assert.throws(() => validateGatewayFeatureCapabilities(serverRegistry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(serverRegistry, { BOT005_SERVER_ENABLED: "true" }), {
-    profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false, memberEnabled: false, serverEnabled: false, serverEnabled: true,
+    profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false, memberEnabled: false, serverEnabled: true,
   });
 
   const defaultRegistry = createGatewayHandlerRegistry(manifest(["discord-engagement-engine"]));
-  assert.deepEqual(validateGatewayFeatureCapabilities(defaultRegistry, {}), { profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false, memberEnabled: false });
+  assert.deepEqual(validateGatewayFeatureCapabilities(defaultRegistry, {}), { profileModalEnabled: false, pingEnabled: false, statusEnabled: false, rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false, memberEnabled: false, serverEnabled: false });
   assert.throws(() => validateGatewayFeatureCapabilities(defaultRegistry, {
     BOT005_PROFILE_MODAL_ENABLED: "true",
   }), /explicitly agree/);
