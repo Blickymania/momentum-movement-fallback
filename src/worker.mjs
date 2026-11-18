@@ -34,6 +34,10 @@ export function createMomentumManagerWorker({fetchImpl=fetch,cryptoImpl=globalTh
   return {
     async fetch(request,env) {
       if(!env||typeof env!=="object")return json({error:"Worker environment is unavailable"},503);
+      const url=new URL(request.url);
+      if(url.pathname==="/healthz"&&request.method==="GET") {
+        return json({status:"ok",manager:NAME,runtime:"workers"});
+      }
       if(env.AUTHORIZED_GUILD_ID!==GUILD_ID||env.APPLICATION_ID!==APPLICATION_ID) {
         return json({status:"not_ready",reason:"identity_configuration_mismatch"},503);
       }
@@ -46,13 +50,8 @@ export function createMomentumManagerWorker({fetchImpl=fetch,cryptoImpl=globalTh
         const bytes=new Uint8Array(length);cryptoImpl.getRandomValues(bytes);return bytes;
       }});
       const manager=createManagerCore({env,fetchImpl,now:()=>new Date(now()).toISOString(),timeoutSignal});
-      const url=new URL(request.url);
       const oauthResponse=await oauth.dispatch(request);
       if(oauthResponse)return oauthResponse;
-
-      if(url.pathname==="/healthz"&&request.method==="GET") {
-        return json({status:"ok",manager:NAME,runtime:"workers"});
-      }
 
       if(url.pathname==="/readyz"&&request.method==="GET") {
         try {

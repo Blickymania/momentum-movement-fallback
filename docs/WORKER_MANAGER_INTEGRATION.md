@@ -14,8 +14,8 @@
 
 ## HTTP surface
 
-- GET /healthz: process-only health, no credentials or Discord requests.
-- GET /readyz: verifies D1 schema readiness when OAuth enabled and Discord bot/guild identity.
+- GET /healthz: process-only liveness, before identity and D1 configuration gates; it makes no credentials or Discord requests.
+- GET /readyz: checks deployment identity, D1 connectivity, D1 OAuth schema readiness when OAuth is enabled, and Discord bot/guild identity.
 - POST /mcp: MCP/JSON-RPC endpoint supporting server/discover, initialize, notifications/initialized, tools/list, and tools/call.
 - OAuth metadata and routes are delegated to src/oauth-routes.mjs when MCP_OAUTH_ENABLED=true.
 

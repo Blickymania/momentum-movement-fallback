@@ -39,12 +39,16 @@ function harness({env={},fetchImpl}={}){
 const request=(method,body,authorization)=>new Request("https://momentum.example/mcp",{method,headers:{...(authorization?{authorization}:{}),...(body!==undefined?{"content-type":"application/json"}:{})},body:body===undefined?undefined:JSON.stringify(body)});
 async function hash(value){const digest=await webcrypto.subtle.digest("SHA-256",new TextEncoder().encode(value));return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");}
 
-test("rejects missing, incorrect, or mismatched deployment identity before serving",async()=>{
- const noDb=await createMomentumManagerWorker().fetch(new Request("https://momentum.example/healthz"),{...baseEnv});
+test("serves process health before readiness configuration is available",async()=>{
+ const healthOnly=await createMomentumManagerWorker().fetch(new Request("https://momentum.example/healthz"),{...baseEnv});
+ assert.equal(healthOnly.status,200);assert.equal((await healthOnly.json()).status,"ok");
+ const noDb=await createMomentumManagerWorker().fetch(new Request("https://momentum.example/readyz"),{...baseEnv});
  assert.equal(noDb.status,503);assert.equal((await noDb.json()).reason,"d1_binding_missing");
  const h=harness({env:{AUTHORIZED_GUILD_ID:"999999999999999999"}});
- const result=await h.worker.fetch(new Request("https://momentum.example/healthz"),h.env);
- assert.equal(result.status,503);assert.equal((await result.json()).reason,"identity_configuration_mismatch");h.db.close();
+ const health=await h.worker.fetch(new Request("https://momentum.example/healthz"),h.env);
+ assert.equal(health.status,200);assert.equal((await health.json()).status,"ok");
+ const ready=await h.worker.fetch(new Request("https://momentum.example/readyz"),h.env);
+ assert.equal(ready.status,503);assert.equal((await ready.json()).reason,"identity_configuration_mismatch");h.db.close();
 });
 test("serves health and readiness with D1 schema and verified Discord identity",async()=>{
  const h=harness();await new OAuthD1Store(h.db).ensureSchema();
