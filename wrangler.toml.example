@@ -26,6 +26,7 @@ BOT005_FORUM_INSPECT_ENABLED = "false"
 BOT005_FORUM_THREAD_ENABLED = "false"
 BOT005_FORUM_CONFIRM_ENABLED = "false"
 BOT005_FORUM_RENAME_ENABLED = "false"
+BOT005_FORUM_RENAME_EXECUTOR_ENABLED = "false"
 
 [[durable_objects.bindings]]
 name = "GATEWAY_COORDINATOR"
@@ -63,8 +64,9 @@ migrations_dir = "migrations"
 # BOT005_FORUM_INSPECT_ENABLED=true.
 # The owner-only read-only "bot005-forum-thread" handler requires
 # BOT005_FORUM_THREAD_ENABLED=true.
-# Owner rename staging requires both BOT005_FORUM_RENAME_ENABLED and
-# BOT005_FORUM_CONFIRM_ENABLED; its confirmation executor remains unavailable.
+# Owner rename staging requires BOT005_FORUM_RENAME_ENABLED and
+# BOT005_FORUM_CONFIRM_ENABLED. Actual rename execution has the separate
+# BOT005_FORUM_RENAME_EXECUTOR_ENABLED flag, which remains false by default.
 # Set SOCIAL_TIKTOK_URL only to the official HTTPS profile URL; it is not a secret.
 # Keep all Bot 005 capability flags disabled until the complete
 # feature and restore gates pass. Do not enable general "bot005" while only
