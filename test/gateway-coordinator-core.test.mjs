@@ -686,7 +686,7 @@ test("sends the source-backed Bot 005 modal ACK once before dispatch wakeup", as
   }});
   await h.flush();
   const inbox = h.core.getInbox("bot-alpha");
-  assert.equal((await inbox.listPending())[0].interactionAckState, "acknowledged");
+  assert.equal((await inbox.listPending())[0].interactionAckState, "acknowledged", JSON.stringify(h.logs));
   assert.deepEqual(order, ["ack", "dispatch-wakeup"]);
   frame(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
     id: "1569000000000000001",
