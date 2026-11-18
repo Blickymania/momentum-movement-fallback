@@ -1,7 +1,7 @@
 # Momentum Movement OAuth adapter — design and verification
 
 **Scope:** Dawn Dotta / Momentum Movement only.  
-**Status:** D1 persistence adapter, OAuth route handlers, and Worker wiring are implemented and covered by local SQLite/HTTP tests with mocked Discord responses. Cloudflare D1 runtime, the complete flow through the Worker endpoint, and production-data migration remain unverified.
+**Status:** D1 persistence adapter, OAuth route handlers, and Worker wiring are implemented. The candidate tests cover Worker-level registration, Discord admin callback, PKCE token exchange, and authenticated manager status with SQLite and mocked Discord responses. Real Cloudflare D1 runtime and production-data migration remain unverified.
 
 ## Existing OAuth behavior to preserve
 
@@ -51,7 +51,7 @@ The same conditional-claim + nonce-matched insert pattern is used for code redem
 
 Local Node SQLite adapter harness uses Node's built-in SQLite API to exercise the same SQL and transactional behavior without Cloudflare credentials.
 
-**Latest candidate CI:** 218 tests passed, 0 failed. Adapter/schema checks use Node SQLite; Discord OAuth endpoints are mocked.
+**Latest candidate CI:** 219 tests passed, 0 failed. Adapter/schema checks use Node SQLite; Discord OAuth endpoints are mocked.
 
 Tests cover:
 
@@ -66,12 +66,12 @@ Tests cover:
 - Refresh-token rotation and previous-token rejection.
 - Refresh client/resource binding.
 - Unknown-token revocation.
+- Worker-level registration, admin callback, PKCE token exchange, and manager-status authentication using the D1-compatible SQLite harness.
 
-This is local SQLite verification only. It does not prove Cloudflare D1 deployment behavior, network behavior, account quotas, or end-to-end Discord OAuth. The D1 database binding has not been created.
+This is local SQLite verification with mocked Discord endpoints. It does not prove Cloudflare D1 deployment behavior, live Discord OAuth, account quotas, or production data migration. The D1 database binding has not been created.
 
 ## Remaining integration work
 
-- Add a Worker HTTP integration test that exercises the complete OAuth code flow through `createMomentumManagerWorker`; current route tests call the OAuth router directly, while Worker tests cover its authentication and scope boundary.
 - Verify Cloudflare's D1 runtime and no-card account eligibility before provisioning a database; no D1 binding or database exists yet.
 - Apply the versioned Wrangler migration to an isolated D1 database and verify schema health, transactions, row counts, checksums, and backup/restore behavior before any data migration.
 - Recover the OAuth backup archive and checksum, establish verified source/target coverage, and rehearse restore; no production OAuth data has been copied.
