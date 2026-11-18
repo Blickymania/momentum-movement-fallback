@@ -69,6 +69,7 @@ test("capability guard requires both explicit manifest registration and exact ru
     BOT005_PROFILE_MODAL_ENABLED: "true",
   }), /explicitly agree/);
   const fullBot005 = createGatewayHandlerRegistry(manifest(["bot005"]));
+  assert.throws(() => validateGatewayFeatureCapabilities(fullBot005, {}), /explicitly agree/);
   assert.throws(() => validateGatewayFeatureCapabilities(fullBot005, { BOT005_PROFILE_MODAL_ENABLED: "true" }), /adapter is unavailable/);
 });
 
@@ -130,5 +131,5 @@ test("disabled profile modal path is blocked without invoking any handler", asyn
   const result = await dispatcher.drain({ limit: 1 });
   assert.equal(result.status, "blocked");
   assert.equal(handlerCalls, 0);
-  assert.equal(ledger.get("gateway:event-5", "bot005-profile-modal").then, undefined);
+  assert.equal(await ledger.get("gateway:event-5", "bot005-profile-modal"), null);
 });
