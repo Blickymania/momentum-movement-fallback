@@ -121,7 +121,7 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     if (!interaction || typeof interaction !== "object" || Array.isArray(interaction) ||
         route?.status !== "routed" || !Array.isArray(route.handlers) ||
         route.handlers.length !== 1 ||
-        !["bot005", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules"].includes(route.handlers[0])) {
+        !["bot005", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus"].includes(route.handlers[0])) {
       return blocked("bot005_route_not_verified");
     }
 
@@ -129,6 +129,7 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     const pingOnly = route.handlers[0] === "bot005-ping";
     const statusOnly = route.handlers[0] === "bot005-status";
     const rulesOnly = route.handlers[0] === "bot005-rules";
+    const statsStatusOnly = route.handlers[0] === "bot005-statsstatus";
     const type = Number(interaction.type);
     if (profileModalOnly && type !== 5) return blocked("bot005_profile_modal_route_type_mismatch");
     if (pingOnly && (type !== 2 || interaction.data?.name !== "ping")) {
@@ -139,6 +140,9 @@ export function createBot005InteractionAckPlanner({ buildModalResponse, buildMul
     }
     if (rulesOnly && (type !== 2 || interaction.data?.name !== "rules")) {
       return blocked("bot005_rules_route_type_mismatch");
+    }
+    if (statsStatusOnly && (type !== 2 || interaction.data?.name !== "statsstatus")) {
+      return blocked("bot005_statsstatus_route_type_mismatch");
     }
     if (type === 1) return ready({ type: 1 });
 

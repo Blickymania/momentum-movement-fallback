@@ -7,6 +7,7 @@ import { createBot005ProfileModalHandler } from "./bot005-profile-handler.mjs";
 import { createBot005PingHandler } from "./bot005-ping-handler.mjs";
 import { createBot005StatusHandler } from "./bot005-status-handler.mjs";
 import { createBot005RulesHandler } from "./bot005-rules-handler.mjs";
+import { createBot005StatsStatusHandler } from "./bot005-statsstatus-handler.mjs";
 import { DurableBot005ProfileStore, createBot005ProfileCipher } from "./durable-bot005-profile-store.mjs";
 import { createDiscordDeferredReplyEditor } from "./discord-deferred-reply.mjs";
 import { GatewayEventDispatcher, DurableGatewayDeliveryLedger } from "./durable-gateway-dispatcher.mjs";
@@ -80,11 +81,13 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
   const statusFlagEnabled = env.BOT005_STATUS_ENABLED === "true";
   const declaresRules = enabled.includes("bot005-rules");
   const rulesFlagEnabled = env.BOT005_RULES_ENABLED === "true";
+  const declaresStatsStatus = enabled.includes("bot005-statsstatus");
+  const statsStatusFlagEnabled = env.BOT005_STATSSTATUS_ENABLED === "true";
   if (declaresProfileModal !== profileFlagEnabled || declaresPing !== pingFlagEnabled ||
-      declaresStatus !== statusFlagEnabled || declaresRules !== rulesFlagEnabled) {
+      declaresStatus !== statusFlagEnabled || declaresRules !== rulesFlagEnabled || declaresStatsStatus !== statsStatusFlagEnabled) {
     throw new TypeError("Bot 005 isolated capability manifest and runtime flags must explicitly agree");
   }
-  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules"].includes(id))) {
+  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus"].includes(id))) {
     throw new TypeError("Gateway feature handler adapter is unavailable");
   }
   return Object.freeze({
@@ -92,6 +95,7 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
     pingEnabled: declaresPing,
     statusEnabled: declaresStatus,
     rulesEnabled: declaresRules,
+    statsStatusEnabled: declaresStatsStatus,
   });
 }
 
@@ -243,6 +247,23 @@ export class GatewayCoordinatorDurableObject {
             const channels = await response.json();
             if (!Array.isArray(channels)) throw new Error("discord_rules_channel_response_invalid");
             return channels;
+          },
+          guildId: handlerRegistry.manifest.guildId,
+          applicationId: handlerRegistry.manifest.applicationId,
+        });
+      }
+      if (capabilities.statsStatusEnabled) {
+        handlers["bot005-statsstatus"] = createBot005StatsStatusHandler({
+          revealInteraction: (payload) => tokenVault.decryptPayload(payload),
+          editDeferredReply: createDiscordDeferredReplyEditor(),
+          getStatsChannel: async (channelId) => {
+            const response = await fetch("https://discord.com/api/v10/channels/" + channelId, {
+              method: "GET",
+              headers: { authorization: "Bot " + token, "user-agent": "DiscordManager/1.0" },
+              signal: AbortSignal.timeout(12_000),
+            });
+            if (!response.ok) throw new Error("discord_stats_channel_read_failed");
+            return response.json();
           },
           guildId: handlerRegistry.manifest.guildId,
           applicationId: handlerRegistry.manifest.applicationId,

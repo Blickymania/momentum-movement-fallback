@@ -143,6 +143,9 @@ async function withRuntime({ botId = APP_ID, guildId = GUILD_ID } = {}, callback
         { id: "1567000000000000003", guild_id: GUILD_ID, type: 0, name: "community-guidelines" },
       ]);
     }
+    if (parsed.pathname === "/api/v10/channels/1566030504635924600") {
+      return okJson({ id: "1566030504635924600", guild_id: GUILD_ID, type: 2, name: "live-members" });
+    }
     if (parsed.pathname.startsWith("/api/v10/interactions/") && parsed.pathname.endsWith("/callback")) {
       return new Response(null, { status: 204 });
     }
@@ -482,6 +485,61 @@ test("rules capability requires its matching flag before opening a Gateway socke
   });
   await withRuntime({}, async ({ sockets }) => {
     const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: rulesManifest });
+    const response = await object.fetch(control("/start", "POST"));
+    assert.equal(response.status, 503);
+    assert.equal(sockets.length, 0);
+  });
+});
+
+test("isolated /statsstatus reads the exact verified display channel and returns a public deferred reply", async () => {
+  const statsManifest = JSON.stringify({
+    guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none",
+    enabledHandlers: ["bot005-statsstatus"],
+  });
+  await withRuntime({}, async ({ calls, sockets }) => {
+    const storage = new MemoryDOStorage();
+    const object = makeObject(storage, {
+      GATEWAY_HANDLER_MANIFEST: statsManifest,
+      BOT005_STATSSTATUS_ENABLED: "true",
+    });
+    const started = await object.fetch(control("/start", "POST"));
+    assert.equal(started.status, 202);
+    const socket = sockets[0];
+    dispatch(socket, { op: 10, d: { heartbeat_interval: 30000 } });
+    const core = await object.corePromise;
+    await core.serial;
+    dispatch(socket, { op: 0, s: 1, t: "READY", d: {
+      session_id: "stats-session", resume_gateway_url: "wss://resume.stats.example",
+    }});
+    await core.serial;
+    dispatch(socket, { op: 0, s: 2, t: "INTERACTION_CREATE", d: {
+      id: "1569000000000000051", application_id: APP_ID, guild_id: GUILD_ID,
+      channel_id: "1565643996624199760", token: "non-production-stats-interaction-token",
+      type: 2, member: { user: { id: "1569000000000000002" } }, data: { name: "statsstatus" },
+    }});
+    await core.serial;
+    const inbox = core.getInbox("bot-alpha");
+    const [queued] = await inbox.listPending();
+    assert.equal(queued.interactionAckState, "acknowledged");
+    assert.deepEqual(queued.dispatchRoute.handlers, ["bot005-statsstatus"]);
+    const result = await object.dispatchers.get("bot-alpha").drain({ limit: 1 });
+    assert.equal(result.status, "ok", JSON.stringify(result));
+    assert.equal((await inbox.listPending()).length, 0);
+    const delivery = new DurableGatewayDeliveryLedger(storage, { namespace: "gateway-dispatch-bot-alpha" });
+    assert.equal((await delivery.get(queued.eventKey, "bot005-statsstatus")).status, "completed");
+    assert.equal(calls.filter((call) => call.path === "/api/v10/channels/1566030504635924600" && call.method === "GET").length, 1);
+    assert.equal(calls.filter((call) => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 1);
+    assert.equal(JSON.stringify(calls).includes("non-production-stats-interaction-token"), false);
+  });
+});
+
+test("statsstatus capability requires its matching flag before opening a Gateway socket", async () => {
+  const statsManifest = JSON.stringify({
+    guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none",
+    enabledHandlers: ["bot005-statsstatus"],
+  });
+  await withRuntime({}, async ({ sockets }) => {
+    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: statsManifest });
     const response = await object.fetch(control("/start", "POST"));
     assert.equal(response.status, 503);
     assert.equal(sockets.length, 0);
