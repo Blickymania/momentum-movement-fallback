@@ -210,6 +210,7 @@ export class DurableGatewayInbox {
       }
       const record = {
         eventKey: event.key,
+        interactionAckState: event.eventType === "INTERACTION_CREATE" ? "pending" : null,
         guildId: event.guildId,
         sessionId: event.sessionId,
         sequence: event.sequence,
@@ -264,6 +265,32 @@ export class DurableGatewayInbox {
       (a.queueOrder ?? Number.MAX_SAFE_INTEGER) - (b.queueOrder ?? Number.MAX_SAFE_INTEGER) ||
       a.receivedAt - b.receivedAt || a.sequence - b.sequence
     ).slice(0, limit);
+  }
+
+  async setInteractionAckState(eventKey, nextState) {
+    if (typeof eventKey !== "string" || eventKey.length < 1 || eventKey.length > 512 ||
+        !["acknowledged", "failed"].includes(nextState)) {
+      throw new TypeError("Interaction acknowledgement update is invalid");
+    }
+    const key = eventStorageKey(this.eventPrefix, eventKey);
+    return this.storage.transaction(async (txn) => {
+      const record = await txn.get(key);
+      if (record === undefined || record.eventType !== "INTERACTION_CREATE") {
+        return { updated: false, reason: "interaction_event_missing" };
+      }
+      if (record.interactionAckState === nextState) {
+        return { updated: false, idempotent: true, state: nextState };
+      }
+      if (record.interactionAckState !== "pending") {
+        return { updated: false, reason: "interaction_ack_transition_invalid" };
+      }
+      await txn.put(key, {
+        ...record,
+        interactionAckState: nextState,
+        interactionAckUpdatedAt: Date.now(),
+      });
+      return { updated: true, state: nextState };
+    });
   }
 
   async acknowledge(eventKeys) {

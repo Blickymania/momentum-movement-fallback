@@ -63,6 +63,7 @@ function gatewayEvent(sequence, eventType = "INTERACTION_CREATE", payload = {}) 
     sequence,
     eventType,
     payload,
+    interactionAckState: eventType === "INTERACTION_CREATE" ? "acknowledged" : null,
     payloadBytes: 64,
     queueOrder: sequence,
     receivedAt: clock,
@@ -270,4 +271,40 @@ test("preserves FIFO by blocking later events behind an incomplete earlier event
   const rest = await dispatcher.drain();
   assert.equal(rest.acknowledged, 1);
   assert.equal(inbox.events.length, 0);
+});
+
+
+test("blocks unacknowledged interactions before routing and quarantines failed callbacks", async () => {
+  clock = 1_800_000_000_000;
+  const pendingEvent = gatewayEvent(30);
+  pendingEvent.interactionAckState = "pending";
+  const pendingInbox = new FakeInbox([pendingEvent]);
+  const pendingLedger = makeLedger().ledger;
+  let routeCalls = 0;
+  let handlerCalls = 0;
+  const pendingDispatcher = makeDispatcher({
+    inbox: pendingInbox, ledger: pendingLedger,
+    registry: { route: () => { routeCalls += 1; return { status: "routed", handlers: ["handler-a"] }; } },
+    handlers: { "handler-a": async () => { handlerCalls += 1; return { committed: true, receiptId: "r1" }; } },
+  });
+  const pending = await pendingDispatcher.drain();
+  assert.equal(pending.status, "awaiting_interaction_ack");
+  assert.equal(pending.blocked, 1);
+  assert.equal(pendingInbox.acks.length, 0);
+  assert.equal(routeCalls, 0);
+  assert.equal(handlerCalls, 0);
+
+  const failedEvent = gatewayEvent(31);
+  failedEvent.interactionAckState = "failed";
+  const failedInbox = new FakeInbox([failedEvent]);
+  const failedLedger = makeLedger().ledger;
+  const failedDispatcher = makeDispatcher({
+    inbox: failedInbox, ledger: failedLedger,
+    registry: { route: () => { throw new Error("failed interactions must not route"); } },
+    handlers: {},
+  });
+  const failed = await failedDispatcher.drain();
+  assert.equal(failed.quarantined, 1);
+  assert.equal(failed.acknowledged, 1);
+  assert.equal(failedInbox.events.length, 0);
 });

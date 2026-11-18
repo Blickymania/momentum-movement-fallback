@@ -296,6 +296,23 @@ export class GatewayEventDispatcher {
     try {
       const events = await this.inbox.listPending(limit);
       for (const event of events) {
+        if (event.eventType === "INTERACTION_CREATE" &&
+            event.interactionAckState !== "acknowledged") {
+          if (event.interactionAckState === "failed") {
+            await this.ledger.recordDisposition(event.eventKey, "quarantined", {
+              status: "blocked",
+              reason: "interaction_callback_failed",
+            });
+            const ack = await this.inbox.acknowledge([event.eventKey]);
+            summary.acknowledged += ack.acknowledged;
+            summary.quarantined += 1;
+            summary.processed += 1;
+            continue;
+          }
+          summary.blocked += 1;
+          summary.status = "awaiting_interaction_ack";
+          break;
+        }
         const route = this.registry.route(event);
         if (route.status === "ignored") {
           await this.ledger.recordDisposition(event.eventKey, "ignored", route);

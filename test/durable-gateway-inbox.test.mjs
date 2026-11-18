@@ -298,3 +298,24 @@ test("paginates the bounded inbox before sorting and returns oldest events first
   assert.equal(firstFiveHundred.length, 500);
   assert.equal(firstFiveHundred[499].sequence, 510);
 });
+
+
+test("interaction ACK outcome is durable, idempotent, and cannot be reversed", async () => {
+  const inbox = makeInbox();
+  await inbox.initialize();
+  await inbox.saveReadySession(sessionA);
+  const inserted = await inbox.enqueueDispatch({
+    guildId: "guild", sessionId: "session-a", sequence: 11,
+    eventType: "INTERACTION_CREATE", payload: { id: "interaction-1" },
+  });
+  assert.equal((await inbox.listPending())[0].interactionAckState, "pending");
+  assert.deepEqual(await inbox.setInteractionAckState(inserted.eventKey, "acknowledged"), {
+    updated: true, state: "acknowledged",
+  });
+  assert.deepEqual(await inbox.setInteractionAckState(inserted.eventKey, "acknowledged"), {
+    updated: false, idempotent: true, state: "acknowledged",
+  });
+  assert.deepEqual(await inbox.setInteractionAckState(inserted.eventKey, "failed"), {
+    updated: false, reason: "interaction_ack_transition_invalid",
+  });
+});
