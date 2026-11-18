@@ -13,6 +13,7 @@ import { createBot005MemberHandler } from "./bot005-member-handler.mjs";
 import { createBot005ServerHandler } from "./bot005-server-handler.mjs";
 import { createBot005HelpHandler } from "./bot005-help-handler.mjs";
 import { createBot005TikTokHandler } from "./bot005-tiktok-handler.mjs";
+import { createBot005ForumDiagnoseHandler } from "./bot005-forum-diagnose-handler.mjs";
 import { DurableBot005ProfileStore, createBot005ProfileCipher } from "./durable-bot005-profile-store.mjs";
 import { createDiscordDeferredReplyEditor } from "./discord-deferred-reply.mjs";
 import { GatewayEventDispatcher, DurableGatewayDeliveryLedger } from "./durable-gateway-dispatcher.mjs";
@@ -98,13 +99,16 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
   const helpFlagEnabled = env.BOT005_HELP_ENABLED === "true";
   const declaresTikTok = enabled.includes("bot005-tiktok");
   const tiktokFlagEnabled = env.BOT005_TIKTOK_ENABLED === "true";
+  const declaresForumDiagnose = enabled.includes("bot005-forum-diagnose");
+  const forumDiagnoseFlagEnabled = env.BOT005_FORUM_DIAGNOSE_ENABLED === "true";
   if (declaresProfileModal !== profileFlagEnabled || declaresPing !== pingFlagEnabled ||
       declaresStatus !== statusFlagEnabled || declaresRules !== rulesFlagEnabled ||
       declaresStatsStatus !== statsStatusFlagEnabled || declaresEvents !== eventsFlagEnabled ||
-      declaresMember !== memberFlagEnabled || declaresServer !== serverFlagEnabled || declaresHelp !== helpFlagEnabled || declaresTikTok !== tiktokFlagEnabled) {
+      declaresMember !== memberFlagEnabled || declaresServer !== serverFlagEnabled || declaresHelp !== helpFlagEnabled || declaresTikTok !== tiktokFlagEnabled ||
+      declaresForumDiagnose !== forumDiagnoseFlagEnabled) {
     throw new TypeError("Bot 005 isolated capability manifest and runtime flags must explicitly agree");
   }
-  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server", "bot005-help", "bot005-tiktok"].includes(id))) {
+  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server", "bot005-help", "bot005-tiktok", "bot005-forum-diagnose"].includes(id))) {
     throw new TypeError("Gateway feature handler adapter is unavailable");
   }
   return Object.freeze({
@@ -118,6 +122,7 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
     serverEnabled: declaresServer,
     helpEnabled: declaresHelp,
     tiktokEnabled: declaresTikTok,
+    forumDiagnoseEnabled: declaresForumDiagnose,
   });
 }
 
@@ -287,6 +292,33 @@ export class GatewayCoordinatorDurableObject {
         handlers["bot005-help"] = createBot005HelpHandler({
           revealInteraction: (payload) => tokenVault.decryptPayload(payload),
           editDeferredReply: createDiscordDeferredReplyEditor(),
+          guildId: handlerRegistry.manifest.guildId,
+          applicationId: handlerRegistry.manifest.applicationId,
+        });
+      }
+      if (capabilities.forumDiagnoseEnabled) {
+        handlers["bot005-forum-diagnose"] = createBot005ForumDiagnoseHandler({
+          revealInteraction: (payload) => tokenVault.decryptPayload(payload),
+          editDeferredReply: createDiscordDeferredReplyEditor(),
+          getGuildOwnerId: async (guildId) => {
+            const response = await fetch("https://discord.com/api/v10/guilds/" + guildId, {
+              method: "GET", headers: { authorization: "Bot " + token, "user-agent": "DiscordManager/1.0" },
+              signal: AbortSignal.timeout(12_000),
+            });
+            if (!response.ok) throw new Error("discord_forum_diagnose_guild_read_failed");
+            const guild = await response.json();
+            return guild?.id === guildId ? guild.owner_id : null;
+          },
+          getGuildChannels: async (guildId) => {
+            const response = await fetch("https://discord.com/api/v10/guilds/" + guildId + "/channels", {
+              method: "GET", headers: { authorization: "Bot " + token, "user-agent": "DiscordManager/1.0" },
+              signal: AbortSignal.timeout(12_000),
+            });
+            if (!response.ok) throw new Error("discord_forum_diagnose_channels_read_failed");
+            const channels = await response.json();
+            if (!Array.isArray(channels)) throw new Error("discord_forum_diagnose_channels_invalid");
+            return channels;
+          },
           guildId: handlerRegistry.manifest.guildId,
           applicationId: handlerRegistry.manifest.applicationId,
         });

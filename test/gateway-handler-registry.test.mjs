@@ -259,3 +259,23 @@ test("rejects malformed Gateway events instead of guessing their owner", () => {
   assert.throws(() => registry.route(null), /must be an object/);
   assert.throws(() => registry.route({ eventType: "MESSAGE_CREATE", payload: null }), /missing its type or payload/);
 });
+
+
+test("routes only /forum-admin diagnose through the isolated read-only capability", () => {
+  const registry = createGatewayHandlerRegistry(manifest({ enabledHandlers: ["bot005-forum-diagnose"] }));
+  const route = registry.route(event("INTERACTION_CREATE", {
+    guild_id: GUILD, application_id: APP, type: 2,
+    data: { name: "forum-admin", options: [{ type: 1, name: "diagnose" }] },
+  }));
+  assert.deepEqual(route.handlers, ["bot005-forum-diagnose"]);
+  assert.equal(route.routeKey, "command:forum-admin:diagnose");
+  const otherSubcommand = registry.route(event("INTERACTION_CREATE", {
+    guild_id: GUILD, application_id: APP, type: 2,
+    data: { name: "forum-admin", options: [{ type: 1, name: "rename" }] },
+  }));
+  assert.equal(otherSubcommand.status, "disabled");
+  const missingSubcommand = registry.route(event("INTERACTION_CREATE", {
+    guild_id: GUILD, application_id: APP, type: 2, data: { name: "forum-admin" },
+  }));
+  assert.equal(missingSubcommand.status, "disabled");
+});

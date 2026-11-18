@@ -77,7 +77,7 @@ test("capability guard requires both explicit manifest registration and exact ru
   const baseline = {
     profileModalEnabled: false, pingEnabled: false, statusEnabled: false,
     rulesEnabled: false, statsStatusEnabled: false, eventsEnabled: false,
-    memberEnabled: false, serverEnabled: false, helpEnabled: false, tiktokEnabled: false,
+    memberEnabled: false, serverEnabled: false, helpEnabled: false, tiktokEnabled: false, forumDiagnoseEnabled: false,
   };
   const verify = (handler, flag, activeKey) => {
     const registry = createGatewayHandlerRegistry(manifest([handler]));
@@ -96,6 +96,7 @@ test("capability guard requires both explicit manifest registration and exact ru
   verify("bot005-server", "BOT005_SERVER_ENABLED", "serverEnabled");
   verify("bot005-help", "BOT005_HELP_ENABLED", "helpEnabled");
   verify("bot005-tiktok", "BOT005_TIKTOK_ENABLED", "tiktokEnabled");
+  verify("bot005-forum-diagnose", "BOT005_FORUM_DIAGNOSE_ENABLED", "forumDiagnoseEnabled");
 
   const defaultRegistry = createGatewayHandlerRegistry(manifest(["discord-engagement-engine"]));
   assert.deepEqual(validateGatewayFeatureCapabilities(defaultRegistry, {}), baseline);
