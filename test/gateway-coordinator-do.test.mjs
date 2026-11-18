@@ -4,6 +4,7 @@ import { GatewayCoordinatorDurableObject } from "../src/gateway-coordinator-do.m
 import { DurableEngagementLedger } from "../src/durable-engagement-ledger.mjs";
 import { DurableGatewayDeliveryLedger } from "../src/durable-gateway-dispatcher.mjs";
 import { DurableBot005ProfileStore, createBot005ProfileCipher } from "../src/durable-bot005-profile-store.mjs";
+import { parseBot005ProfileModal } from "../src/bot005-profile-modal.mjs";
 
 const GUILD_ID = "1565048205970767992";
 const APP_ID = "1565304619838742598";
@@ -307,6 +308,15 @@ test("profile modal capability reaches the durable store and deferred reply thro
       handlers: ["bot005-profile-modal"],
       routeKey: "memberdata",
     });
+    const profileStore = new DurableBot005ProfileStore(storage, {
+      guildId: GUILD_ID,
+      applicationId: APP_ID,
+      cipher: createBot005ProfileCipher("11".repeat(32)),
+    });
+    const decryptedInteraction = await object.tokenVault.decryptPayload(queued.payload);
+    const parsedSubmission = parseBot005ProfileModal(decryptedInteraction, { guildId: GUILD_ID, applicationId: APP_ID });
+    assert.equal(parsedSubmission.status, "ready", JSON.stringify(parsedSubmission));
+    assert.equal(profileStore.validateSubmission(parsedSubmission), true);
     const dispatchResult = await object.dispatchers.get("bot-alpha").drain({ limit: 1 });
     const deliveryLedger = new DurableGatewayDeliveryLedger(storage, { namespace: "gateway-dispatch-bot-alpha" });
     const failedDelivery = await deliveryLedger.get(queued.eventKey, "bot005-profile-modal");
@@ -314,11 +324,6 @@ test("profile modal capability reaches the durable store and deferred reply thro
     assert.equal(dispatchResult.acknowledged, 1);
     assert.equal((await inbox.listPending()).length, 0);
 
-    const profileStore = new DurableBot005ProfileStore(storage, {
-      guildId: GUILD_ID,
-      applicationId: APP_ID,
-      cipher: createBot005ProfileCipher("11".repeat(32)),
-    });
     const saved = await profileStore.get(memberId);
     assert.deepEqual(saved.birthday, { date: "02-29", year: "", visibility: "private", post: null });
     const outbox = await profileStore.getMilestoneOutbox(memberId, "birthday");
