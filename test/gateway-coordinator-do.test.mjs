@@ -505,7 +505,15 @@ test("rules capability requires its matching flag before opening a Gateway socke
   });
 });
 
-test("tiktok capability requires its matching flag before opening a Gateway socket", async () => {\n  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-tiktok"] });\n  await withRuntime({}, async ({ sockets }) => {\n    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifestValue });\n    assert.equal((await object.fetch(control("/start", "POST"))).status, 503); assert.equal(sockets.length, 0);\n  });\n});\n\ntest("/help responds through its isolated default-off handler", async () => {
+test("tiktok capability requires its matching flag before opening a Gateway socket", async () => {
+  const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-tiktok"] });
+  await withRuntime({}, async ({ sockets }) => {
+    const object = makeObject(new MemoryDOStorage(), { GATEWAY_HANDLER_MANIFEST: manifestValue });
+    assert.equal((await object.fetch(control("/start", "POST"))).status, 503); assert.equal(sockets.length, 0);
+  });
+});
+
+test("/help responds through its isolated default-off handler", async () => {
   const manifestValue = JSON.stringify({ guildId: GUILD_ID, applicationId: APP_ID, livePublisher: "none", enabledHandlers: ["bot005-help"] });
   await withRuntime({}, async ({ calls, sockets }) => {
     const storage = new MemoryDOStorage(), object = makeObject(storage, { GATEWAY_HANDLER_MANIFEST: manifestValue, BOT005_HELP_ENABLED: "true" });
