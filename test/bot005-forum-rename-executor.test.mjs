@@ -58,11 +58,13 @@ test("renames a validated active forum thread with Manage Threads and verifies b
 });
 
 test("fails closed without MANAGE_THREADS or ADMINISTRATOR", async () => {
-  for (const permissions of ["0", "17179869183", "invalid"]) {
+  for (const permissions of ["0", "17179869176", "invalid"]) {
     const f = fixture({ permissions });
     assert.deepEqual(await f.executor(plan()), { state: "failed", code: "manage_threads_required" });
     assert.equal(f.calls.some((call) => call.method === "PATCH"), false);
   }
+  const admin = fixture({ permissions: "8" });
+  assert.deepEqual(await admin.executor(plan()), { state: "completed", code: "rename_verified" });
 });
 
 test("rejects stale, archived, cross-guild, wrong-type and wrong-parent targets before writing", async () => {
@@ -101,8 +103,10 @@ test("an uncertain PATCH is resolved by a fresh GET and is never retried", async
 });
 
 test("postcondition mismatch and unavailable readback remain unknown without another write", async () => {
-  const mismatched = fixture({ patch: async () => ({ ok: true, status: 200 }) });
-  mismatched.setThread(threadRecord({ name: "Unexpected concurrent title" }));
+  const mismatched = fixture({ patch: async ({ setThread }) => {
+    setThread(threadRecord({ name: "Unexpected concurrent title" }));
+    return { ok: true, status: 200 };
+  } });
   assert.deepEqual(await mismatched.executor(plan()), { state: "unknown", code: "rename_postcondition_mismatch" });
   assert.equal(mismatched.calls.filter((call) => call.method === "PATCH").length, 1);
 });
