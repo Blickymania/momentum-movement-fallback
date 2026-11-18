@@ -24,7 +24,7 @@ This branch contains recovered Railway sources and a no-card Cloudflare Free mig
 - `wrangler.toml.example` — SQLite Durable Object binding and migration; placeholder D1 database ID; OAuth and Gateway flags false; no Cron Trigger.
 - `recovered/railway/` — source snapshots and existing backup scripts.
 
-**Important implementation boundary:** the coordinator and durable dispatcher are now wired together for one Engagement Engine `MESSAGE_CREATE` adapter. The adapter is constructed only when explicitly enabled in the handler manifest, and unsupported handler IDs fail closed. A mocked Durable Object test verifies scoring receipt completion before FIFO inbox acknowledgement. The remaining six original feature handlers and all immediate interaction ACK/defer/modal behavior are incomplete; this does not establish feature parity or live Discord behavior. Keep the Gateway disabled until interaction acknowledgement and all required handlers are implemented and tested.
+**Important implementation boundary:** the coordinator and durable dispatcher are wired for one Engagement Engine `MESSAGE_CREATE` adapter, plus isolated Bot 005 adapters for `/ping`, `/bot-status`, `/botstatus`, `/rules`, and profile/birthday/anniversary modal submissions. Four of the 36 recovered slash-command names are implemented (11.1%); the profile forms are separate modal interactions. These narrow capabilities have separate default-off flags and mocked integration coverage. The other 32 command names, remaining components, and other Gateway clients are not fully ported. This does not establish feature parity or live Discord behavior. Keep the Gateway disabled until all required handlers, restore gates, and runtime/quota checks pass.
 
 ## Tests and development
 
@@ -38,7 +38,7 @@ npm run test:gateway
 npm run test:worker
 ```
 
-Latest complete repository regression: **159 tests passed, 0 failed, 0 skipped** across 11 test files. All 11 source modules and 11 test files passed Node `--check`. These tests use local SQLite/D1-compatible wrappers, fake Durable Object storage, fake WebSockets and mocked Discord REST. They do not prove a real Cloudflare deployment, real D1/DO service behavior, live Discord OAuth, live interactions, a 24-hour socket lifecycle or production cutover. The hosted runner has Node but not npm; commands were executed directly with `node --test` and `node --check`.
+Latest hosted candidate CI: **226 tests passed, 0 failed** on the migration branch (run `44271463890`). Syntax checks also passed. Tests use local SQLite/D1-compatible wrappers, fake Durable Object storage, fake WebSockets and mocked Discord REST/OAuth endpoints. They do not prove a real Cloudflare deployment, real D1/DO service behavior, live Discord OAuth, live interactions, a 24-hour socket lifecycle or production cutover.
 
 ## No-card and production safety gates
 
@@ -55,8 +55,8 @@ Latest complete repository regression: **159 tests passed, 0 failed, 0 skipped**
 
 ## Remaining objectives
 
-1. Port each of the seven feature handlers behind the registry, beginning with durable idempotent receipts and the appropriate interaction ACK/defer/modal behavior.
-2. Complete and test immediate interaction ACK/defer/modal handling, then port the remaining feature handlers and verify retries, FIFO acknowledgement, idempotency and restart recovery. Keep Gateway activation disabled until these gates pass.
+1. Port the remaining Bot 005 commands/components and recovered Gateway client handlers one capability at a time, with exact source-backed routing, permissions, interaction ACK behavior, durable receipts and mocked integration coverage.
+2. Verify retries, FIFO acknowledgement, idempotency and restart recovery for each supported feature. Keep Gateway activation disabled until remaining handlers, restore gates and runtime checks pass.
 3. Verify actual bot/token identities, runtime flags and privileged intents using a secure non-disclosing check; keep distinct identities isolated.
 4. Obtain owner Cloudflare sign-in and verify a no-card Free plan. Deploy only isolated test D1/DO resources after that.
 5. Run a 24-hour Gateway lifecycle and quota soak; verify heartbeat/ACK, restart/resume, eviction/recreation, queues and quota exhaustion.
