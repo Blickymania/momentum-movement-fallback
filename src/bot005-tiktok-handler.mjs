@@ -5,7 +5,7 @@ function trustedTikTokUrl(value) {
   try {
     const url = new URL(String(value ?? ""));
     if (url.protocol !== "https:" || !["tiktok.com", "www.tiktok.com"].includes(url.hostname) ||
-        url.username || url.password || url.search || url.hash || !/^\/@[A-Za-z0-9._-]+\/?$/.test(url.pathname)) return null;
+        url.username || url.password || url.hash || !/^\/@[A-Za-z0-9._-]+\/?$/.test(url.pathname)) return null;
     return url.origin + url.pathname.replace(/\/$/, "");
   } catch { return null; }
 }
