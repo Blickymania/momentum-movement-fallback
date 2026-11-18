@@ -230,6 +230,7 @@ test("stores interaction tokens only as authenticated AES-GCM ciphertext", async
 });
 
 test("refuses to start when an unported feature adapter is enabled", async () => {
+  FakeWebSocket.instances = [];
   const manifest = JSON.stringify({
     guildId: GUILD_ID,
     applicationId: APP_ID,
@@ -362,7 +363,13 @@ test("stop is durable across Durable Object re-instantiation", async () => {
 test("alarm recovers the coordinator after object re-instantiation using durable state", async () => {
   await withRuntime({}, async ({ sockets }) => {
     const storage = new MemoryDOStorage();
-    const first = makeObject(storage);
+    const noFeatureManifest = JSON.stringify({
+      guildId: GUILD_ID,
+      applicationId: APP_ID,
+      livePublisher: "none",
+      enabledHandlers: [],
+    });
+    const first = makeObject(storage, { GATEWAY_HANDLER_MANIFEST: noFeatureManifest });
     await first.fetch(control("/start", "POST"));
     const initial = sockets[0];
     const firstCore = await first.corePromise;
@@ -382,9 +389,9 @@ test("alarm recovers the coordinator after object re-instantiation using durable
     assert.equal(firstPending[0].payload.id, "persisted-event");
 
     // Simulate object eviction with no graceful close callback. The next alarm
-    // must rebuild the core, resume from the last committed cursor, and retain
-    // the unacknowledged feature event.
-    const second = makeObject(storage);
+    // rebuilds the core and resumes from the last committed cursor. This case
+    // leaves feature dispatch disabled so it can verify durable inbox recovery.
+    const second = makeObject(storage, { GATEWAY_HANDLER_MANIFEST: noFeatureManifest });
     await second.alarm();
     assert.equal(sockets.length, 2);
     const resumed = sockets[1];
