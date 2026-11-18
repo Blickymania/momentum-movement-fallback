@@ -61,6 +61,11 @@ test("profile modal capability routes only the three supported type-5 forms", ()
   }});
   assert.equal(otherCommand.status, "disabled");
   assert.equal(otherCommand.handler, "bot005");
+  const statusRegistry = createGatewayHandlerRegistry(manifest(["bot005-status"]));
+  const botStatus = statusRegistry.route({ eventType: "INTERACTION_CREATE", payload: {
+    guild_id: GUILD, application_id: APP, type: 2, data: { name: "bot-status" },
+  }});
+  assert.deepEqual(botStatus.handlers, ["bot005-status"]);
   const wrongType = registry.route({ eventType: "INTERACTION_CREATE", payload: {
     ...profileSubmission(), type: 3,
   } });
@@ -72,16 +77,22 @@ test("capability guard requires both explicit manifest registration and exact ru
   const registry = createGatewayHandlerRegistry(manifest(["bot005-profile-modal"]));
   assert.throws(() => validateGatewayFeatureCapabilities(registry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(registry, { BOT005_PROFILE_MODAL_ENABLED: "true" }), {
-    profileModalEnabled: true, pingEnabled: false,
+    profileModalEnabled: true, pingEnabled: false, statusEnabled: false,
   });
   const pingRegistry = createGatewayHandlerRegistry(manifest(["bot005-ping"]));
   assert.throws(() => validateGatewayFeatureCapabilities(pingRegistry, {}), /explicitly agree/);
   assert.deepEqual(validateGatewayFeatureCapabilities(pingRegistry, { BOT005_PING_ENABLED: "true" }), {
-    profileModalEnabled: false, pingEnabled: true,
+    profileModalEnabled: false, pingEnabled: true, statusEnabled: false,
+  });
+
+  const statusRegistry = createGatewayHandlerRegistry(manifest(["bot005-status"]));
+  assert.throws(() => validateGatewayFeatureCapabilities(statusRegistry, {}), /explicitly agree/);
+  assert.deepEqual(validateGatewayFeatureCapabilities(statusRegistry, { BOT005_STATUS_ENABLED: "true" }), {
+    profileModalEnabled: false, pingEnabled: false, statusEnabled: true,
   });
 
   const defaultRegistry = createGatewayHandlerRegistry(manifest(["discord-engagement-engine"]));
-  assert.deepEqual(validateGatewayFeatureCapabilities(defaultRegistry, {}), { profileModalEnabled: false, pingEnabled: false });
+  assert.deepEqual(validateGatewayFeatureCapabilities(defaultRegistry, {}), { profileModalEnabled: false, pingEnabled: false, statusEnabled: false });
   assert.throws(() => validateGatewayFeatureCapabilities(defaultRegistry, {
     BOT005_PROFILE_MODAL_ENABLED: "true",
   }), /explicitly agree/);

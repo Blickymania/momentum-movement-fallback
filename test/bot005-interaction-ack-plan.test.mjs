@@ -22,6 +22,18 @@ test("defers only the isolated Bot 005 ping command", () => {
   });
 });
 
+test("defers only candidate Bot 005 status aliases through their isolated route", () => {
+  const statusRoute = { status: "routed", handlers: ["bot005-status"] };
+  for (const name of ["bot-status", "botstatus"]) {
+    assert.deepEqual(planner({ type: 2, guild_id: GUILD, data: { name } }, statusRoute), {
+      status: "ready", response: { type: 5 },
+    });
+  }
+  assert.deepEqual(planner({ type: 2, guild_id: GUILD, data: { name: "ban" } }, statusRoute), {
+    status: "blocked", reason: "bot005_status_route_type_mismatch",
+  });
+});
+
 test("selects a deferred reply for a registered Bot 005 command", () => {
   const result = planner({ type: 2, guild_id: GUILD, data: { name: "announce" } }, routed);
   assert.deepEqual(result, { status: "ready", response: { type: 5 } });

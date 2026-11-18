@@ -12,6 +12,7 @@ MCP_OAUTH_ENABLED = "false"
 GATEWAY_COORDINATOR_ENABLED = "false"
 BOT005_PROFILE_MODAL_ENABLED = "false"
 BOT005_PING_ENABLED = "false"
+BOT005_STATUS_ENABLED = "false"
 
 [[durable_objects.bindings]]
 name = "GATEWAY_COORDINATOR"

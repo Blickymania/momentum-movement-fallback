@@ -10,6 +10,7 @@ const HANDLERS = Object.freeze([
   "bot005",
   "bot005-profile-modal",
   "bot005-ping",
+  "bot005-status",
   "social-owner-console",
   "fan-club-level-up",
   "discord-engagement-engine",
@@ -138,6 +139,10 @@ function interactionRoute(config, interaction) {
 
   if (data.name === "ping" && enabled(config, "bot005-ping")) {
     return { status: "routed", eventType: "INTERACTION_CREATE", handlers: ["bot005-ping"], routeKey: "command:ping" };
+  }
+
+  if (["bot-status", "botstatus"].includes(data.name) && enabled(config, "bot005-status")) {
+    return { status: "routed", eventType: "INTERACTION_CREATE", handlers: ["bot005-status"], routeKey: "command:" + data.name };
   }
 
   if (typeof data.name === "string" && CORE_COMMANDS.includes(data.name)) {

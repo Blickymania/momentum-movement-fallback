@@ -5,6 +5,7 @@ import { createBot005InteractionAckPlanner } from "./bot005-interaction-ack-plan
 import { createDiscordInteractionAcknowledger } from "./discord-interaction-ack.mjs";
 import { createBot005ProfileModalHandler } from "./bot005-profile-handler.mjs";
 import { createBot005PingHandler } from "./bot005-ping-handler.mjs";
+import { createBot005StatusHandler } from "./bot005-status-handler.mjs";
 import { DurableBot005ProfileStore, createBot005ProfileCipher } from "./durable-bot005-profile-store.mjs";
 import { createDiscordDeferredReplyEditor } from "./discord-deferred-reply.mjs";
 import { GatewayEventDispatcher, DurableGatewayDeliveryLedger } from "./durable-gateway-dispatcher.mjs";
@@ -74,13 +75,20 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
   const profileFlagEnabled = env.BOT005_PROFILE_MODAL_ENABLED === "true";
   const declaresPing = enabled.includes("bot005-ping");
   const pingFlagEnabled = env.BOT005_PING_ENABLED === "true";
-  if (declaresProfileModal !== profileFlagEnabled || declaresPing !== pingFlagEnabled) {
+  const declaresStatus = enabled.includes("bot005-status");
+  const statusFlagEnabled = env.BOT005_STATUS_ENABLED === "true";
+  if (declaresProfileModal !== profileFlagEnabled || declaresPing !== pingFlagEnabled ||
+      declaresStatus !== statusFlagEnabled) {
     throw new TypeError("Bot 005 isolated capability manifest and runtime flags must explicitly agree");
   }
-  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping"].includes(id))) {
+  if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status"].includes(id))) {
     throw new TypeError("Gateway feature handler adapter is unavailable");
   }
-  return Object.freeze({ profileModalEnabled: declaresProfileModal, pingEnabled: declaresPing });
+  return Object.freeze({
+    profileModalEnabled: declaresProfileModal,
+    pingEnabled: declaresPing,
+    statusEnabled: declaresStatus,
+  });
 }
 
 /**
@@ -203,6 +211,16 @@ export class GatewayCoordinatorDurableObject {
         handlers["bot005-ping"] = createBot005PingHandler({
           revealInteraction: (payload) => tokenVault.decryptPayload(payload),
           editDeferredReply: createDiscordDeferredReplyEditor(),
+          guildId: handlerRegistry.manifest.guildId,
+          applicationId: handlerRegistry.manifest.applicationId,
+        });
+      }
+
+      if (capabilities.statusEnabled) {
+        handlers["bot005-status"] = createBot005StatusHandler({
+          revealInteraction: (payload) => tokenVault.decryptPayload(payload),
+          editDeferredReply: createDiscordDeferredReplyEditor(),
+          getStatus: () => core.snapshot(),
           guildId: handlerRegistry.manifest.guildId,
           applicationId: handlerRegistry.manifest.applicationId,
         });
