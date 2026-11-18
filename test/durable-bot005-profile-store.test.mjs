@@ -237,7 +237,9 @@ test("new milestone revision cannot overlap an active publisher and is reconcile
     date: "04-23", year: "", visibility: "public",
   }, INTERACTION_A));
   let releaseFirst;
+  let notifyStarted;
   const firstPublish = new Promise((resolve) => { releaseFirst = resolve; });
+  const enteredPublisher = new Promise((resolve) => { notifyStarted = resolve; });
   const remotePosts = new Map();
   const keys = [];
   let calls = 0;
@@ -245,6 +247,7 @@ test("new milestone revision cannot overlap an active publisher and is reconcile
     calls += 1;
     keys.push({ idempotencyKey, revision, visibility });
     if (calls === 1) {
+      notifyStarted();
       await firstPublish;
       remotePosts.set(idempotencyKey, "1569000000000000009");
       return { synchronized: true, postId: "1569000000000000009" };
@@ -256,7 +259,7 @@ test("new milestone revision cannot overlap an active publisher and is reconcile
     throw new Error("unexpected_visibility");
   };
   const active = setup.instance.processMilestoneOutbox(USER, "birthday", upsert, { leaseMs: 1000 });
-  await Promise.resolve();
+  await enteredPublisher;
   const leaseExpiry = (await setup.instance.getMilestoneOutbox(USER, "birthday")).leaseExpiresAt;
   assert.equal((await setup.instance.processMilestoneOutbox(USER, "birthday", upsert, { leaseMs: 1000 })).busy, true);
 
