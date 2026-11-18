@@ -274,7 +274,7 @@ function cwRuntime(config){
  async function interaction(i){ if(CUTOVER&&String(i.data?.custom_id||"").startsWith("cw:live:"))return;
   const id=i.data?.custom_id||'';if(i.guild_id!==guildId||![3,5].includes(i.type)||!id.startsWith('cw:'))return false;
   const [,kind,action,owner,expires]=id.split(':');if(!['live','event'].includes(kind)||i.channel_id!==channels[kind])return false;
-  if(!(BigInt(i.member?.permissions||'0')&(2048n|8n)))return callback(i,6);
+  if(kind==='event'&&['open','submit'].includes(action)&&!(BigInt(i.member?.permissions||'0')&(2048n|8n)))return callback(i,4,{content:'Event submissions are limited to authorized moderators.'});
   try{
    if(action==='open'){
     if(i.message?.author?.id!==appId||i.message.id!==panels[kind])return callback(i,6);
