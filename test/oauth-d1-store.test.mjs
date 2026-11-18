@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { OAuthD1Store, OAuthStoreError } from "../src/oauth-d1-store.mjs";
 
@@ -90,6 +91,16 @@ test("rejects an existing OAuth table with an incomplete schema", async () => {
   assert.equal(health.tables.mcp_oauth_clients, true);
   assert.deepEqual(health.missingColumns.mcp_oauth_clients, ["client_name", "redirect_uris", "created_at"]);
   assert.equal(health.ready, false);
+  db.close();
+});
+
+test("checked-in D1 migration satisfies the readiness schema", async () => {
+  const { db, store } = makeStore();
+  const migration = readFileSync(new URL("../migrations/0001_oauth_schema.sql", import.meta.url), "utf8");
+  db.raw.exec(migration);
+  const health = await store.health();
+  assert.equal(health.ready, true);
+  assert.ok(Object.values(health.missingColumns).every((missing) => missing.length === 0));
   db.close();
 });
 
