@@ -38,7 +38,7 @@ npm run test:gateway
 npm run test:worker
 ```
 
-Latest hosted candidate CI: **247 tests passed, 0 failed** (run `44275787774`). Syntax checks also passed. Tests use local SQLite/D1-compatible wrappers, fake Durable Object storage, fake WebSockets and mocked Discord REST/OAuth endpoints. They do not prove a real Cloudflare deployment, real D1/DO service behavior, live Discord OAuth, live interactions, a 24-hour socket lifecycle or production cutover.
+Latest hosted candidate CI: **254 tests passed, 0 failed** (run `44276729123`). Syntax checks also passed. Tests use local SQLite/D1-compatible wrappers, fake Durable Object storage, fake WebSockets and mocked Discord REST/OAuth endpoints. They do not prove a real Cloudflare deployment, real D1/DO service behavior, live Discord OAuth, live interactions, a 24-hour socket lifecycle or production cutover.
 
 ## No-card and production safety gates
 
