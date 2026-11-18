@@ -24,7 +24,7 @@ This branch contains recovered Railway sources and a no-card Cloudflare Free mig
 - `wrangler.toml.example` — SQLite Durable Object binding and migration; placeholder D1 database ID; OAuth and Gateway flags false; no Cron Trigger.
 - `recovered/railway/` — source snapshots and existing backup scripts.
 
-**Important implementation boundary:** the coordinator and durable dispatcher are wired for one Engagement Engine `MESSAGE_CREATE` adapter, plus isolated Bot 005 adapters for `/ping`, `/bot-status`, `/botstatus`, `/rules`, and profile/birthday/anniversary modal submissions. Four of the 36 recovered slash-command names are implemented (11.1%); the profile forms are separate modal interactions. These narrow capabilities have separate default-off flags and mocked integration coverage. The other 32 command names, remaining components, and other Gateway clients are not fully ported. This does not establish feature parity or live Discord behavior. Keep the Gateway disabled until all required handlers, restore gates, and runtime/quota checks pass.
+**Important implementation boundary:** the coordinator and durable dispatcher are wired for one Engagement Engine `MESSAGE_CREATE` adapter, plus isolated Bot 005 adapters for `/ping`, `/bot-status`, `/botstatus`, `/rules`, `/statsstatus`, and profile/birthday/anniversary modal submissions. Five of the 36 recovered slash-command names are implemented (13.9%); the profile forms are separate modal interactions. These narrow capabilities have separate default-off flags and mocked integration coverage. `/statsstatus` reads the source-pinned display channel and withholds numerical creator totals. The other 31 command names, remaining components, and other Gateway clients are not fully ported. This does not establish feature parity or live Discord behavior. Keep the Gateway disabled until all required handlers, restore gates, and runtime/quota checks pass.
 
 ## Tests and development
 
@@ -38,7 +38,7 @@ npm run test:gateway
 npm run test:worker
 ```
 
-Latest hosted candidate CI: **226 tests passed, 0 failed** on the migration branch (run `44271463890`). Syntax checks also passed. Tests use local SQLite/D1-compatible wrappers, fake Durable Object storage, fake WebSockets and mocked Discord REST/OAuth endpoints. They do not prove a real Cloudflare deployment, real D1/DO service behavior, live Discord OAuth, live interactions, a 24-hour socket lifecycle or production cutover.
+Latest hosted candidate CI: **233 tests passed, 0 failed** (run `44272626531`). Syntax checks also passed. Tests use local SQLite/D1-compatible wrappers, fake Durable Object storage, fake WebSockets and mocked Discord REST/OAuth endpoints. They do not prove a real Cloudflare deployment, real D1/DO service behavior, live Discord OAuth, live interactions, a 24-hour socket lifecycle or production cutover.
 
 ## No-card and production safety gates
 
