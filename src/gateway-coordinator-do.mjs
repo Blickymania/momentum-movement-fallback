@@ -19,6 +19,7 @@ import { createBot005ForumThreadHandler } from "./bot005-forum-thread-handler.mj
 import { DurableBot005ConfirmationStore } from "./durable-bot005-confirmations.mjs";
 import { createBot005ForumConfirmHandler } from "./bot005-forum-confirm-handler.mjs";
 import { createBot005ForumRenameHandler } from "./bot005-forum-rename-handler.mjs";
+import { createBot005ForumRenameExecutor } from "./bot005-forum-rename-executor.mjs";
 import { DurableBot005ProfileStore, createBot005ProfileCipher } from "./durable-bot005-profile-store.mjs";
 import { createDiscordDeferredReplyEditor } from "./discord-deferred-reply.mjs";
 import { GatewayEventDispatcher, DurableGatewayDeliveryLedger } from "./durable-gateway-dispatcher.mjs";
@@ -114,6 +115,7 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
   const forumConfirmFlagEnabled = env.BOT005_FORUM_CONFIRM_ENABLED === "true";
   const declaresForumRename = enabled.includes("bot005-forum-rename");
   const forumRenameFlagEnabled = env.BOT005_FORUM_RENAME_ENABLED === "true";
+  const forumRenameExecutorFlagEnabled = env.BOT005_FORUM_RENAME_EXECUTOR_ENABLED === "true";
   if (declaresProfileModal !== profileFlagEnabled || declaresPing !== pingFlagEnabled ||
       declaresStatus !== statusFlagEnabled || declaresRules !== rulesFlagEnabled ||
       declaresStatsStatus !== statsStatusFlagEnabled || declaresEvents !== eventsFlagEnabled ||
@@ -123,7 +125,8 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
       declaresForumThread !== forumThreadFlagEnabled ||
       declaresForumConfirm !== forumConfirmFlagEnabled ||
       declaresForumRename !== forumRenameFlagEnabled ||
-      (declaresForumRename && !declaresForumConfirm)) {
+      (declaresForumRename && !declaresForumConfirm) ||
+      (forumRenameExecutorFlagEnabled && (!declaresForumRename || !declaresForumConfirm))) {
     throw new TypeError("Bot 005 isolated capability manifest and runtime flags must explicitly agree");
   }
   if (enabled.some((id) => !["discord-engagement-engine", "bot005-profile-modal", "bot005-ping", "bot005-status", "bot005-rules", "bot005-statsstatus", "bot005-events", "bot005-member", "bot005-server", "bot005-help", "bot005-tiktok", "bot005-forum-diagnose", "bot005-forum-inspect", "bot005-forum-thread", "bot005-forum-confirm", "bot005-forum-rename"].includes(id))) {
@@ -145,6 +148,7 @@ export function validateGatewayFeatureCapabilities(handlerRegistry, env = {}) {
     forumThreadEnabled: declaresForumThread,
     forumConfirmEnabled: declaresForumConfirm,
     forumRenameEnabled: declaresForumRename,
+    forumRenameExecutorEnabled: forumRenameExecutorFlagEnabled,
   });
 }
 
@@ -486,6 +490,43 @@ export class GatewayCoordinatorDurableObject {
             key: "bot005:forum-confirmations:" + definition.id,
           })
         : null;
+      const forumRenameExecutor = capabilities.forumRenameExecutorEnabled
+        ? createBot005ForumRenameExecutor({
+            guildId: handlerRegistry.manifest.guildId,
+            applicationId: handlerRegistry.manifest.applicationId,
+            getChannel: async (channelId) => {
+              const response = await fetch("https://discord.com/api/v10/channels/" + channelId, {
+                method: "GET", headers: { authorization: "Bot " + token, "user-agent": "DiscordManager/1.0" },
+                signal: AbortSignal.timeout(12_000),
+              });
+              if (response.status === 403 || response.status === 404) return null;
+              if (!response.ok) throw new Error("discord_forum_rename_preflight_read_failed");
+              return response.json();
+            },
+            getMemberPermissions: async (channelId, userId) => {
+              const response = await fetch("https://discord.com/api/v10/channels/" + channelId + "/permissions/" + userId, {
+                method: "GET", headers: { authorization: "Bot " + token, "user-agent": "DiscordManager/1.0" },
+                signal: AbortSignal.timeout(12_000),
+              });
+              if (!response.ok) throw new Error("discord_forum_rename_permissions_read_failed");
+              return response.json();
+            },
+            patchChannel: async (channelId, body) => {
+              const response = await fetch("https://discord.com/api/v10/channels/" + channelId, {
+                method: "PATCH",
+                headers: {
+                  authorization: "Bot " + token,
+                  "user-agent": "DiscordManager/1.0",
+                  "content-type": "application/json",
+                  "X-Audit-Log-Reason": "Owner-confirmed forum title rename",
+                },
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(12_000),
+              });
+              return { ok: response.ok, status: response.status };
+            },
+          })
+        : null;
       if (capabilities.forumConfirmEnabled) {
         handlers["bot005-forum-confirm"] = createBot005ForumConfirmHandler({
           confirmationStore,
@@ -500,7 +541,9 @@ export class GatewayCoordinatorDurableObject {
             const guild = await response.json();
             return guild?.id === guildId ? guild.owner_id : null;
           },
-          executeConfirmed: async () => ({ state: "failed", code: "executor_unavailable" }),
+          executeConfirmed: async (plan) => forumRenameExecutor
+            ? forumRenameExecutor(plan)
+            : ({ state: "failed", code: "executor_unavailable" }),
           guildId: handlerRegistry.manifest.guildId,
           applicationId: handlerRegistry.manifest.applicationId,
         });
