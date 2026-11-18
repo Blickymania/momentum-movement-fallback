@@ -128,6 +128,6 @@ test("enforces capacity instead of evicting live pending confirmations", async (
 test("fails closed on corrupted persisted state", async () => {
   const key = "bot005:confirmation-plans:v1";
   const storage = new MemoryStorage({ key, value: { plans: [{ id: "bad" }] } });
-  const store = new DurableBot005ConfirmationStore(storage);
+  const store = new DurableBot005ConfirmationStore(storage, { now: () => 1_000_000 });
   await assert.rejects(store.create(plan()), /corrupt/);
 });

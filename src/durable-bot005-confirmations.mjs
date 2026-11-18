@@ -138,9 +138,11 @@ export class DurableBot005ConfirmationStore {
     return this.mutate((state, now) => {
       const plan = state.plans.find((item) => item.id === id);
       if (!plan) return { status: "not_found" };
-      if (!sameActor(plan, actor)) return { status: "binding_mismatch" };
+      if (plan.actorId !== actor.actorId || plan.guildId !== actor.guildId ||
+          plan.channelId !== actor.channelId) return { status: "binding_mismatch" };
       if (plan.state !== "pending") return { status: plan.state };
       if (plan.messageId === null) return { status: "not_bound" };
+      if (plan.messageId !== actor.messageId) return { status: "binding_mismatch" };
       if (plan.expiresAt <= now) {
         plan.state = "expired";
         plan.updatedAt = now;
