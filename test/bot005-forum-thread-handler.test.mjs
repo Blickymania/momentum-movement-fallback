@@ -50,7 +50,7 @@ test("only the server owner can read thread metadata", async () => {
   assert.match(calls.replies[0].content, /restricted to the server owner/);
 });
 test("returns a bounded unavailable response for inaccessible thread or parent", async () => {
-  const missingThread = mocks(OWNER, { thread: null });
+  const missingThread = mocks(OWNER, { thread: false });
   await missingThread.handler(event());
   assert.deepEqual(missingThread.calls.reads, [THREAD]);
   assert.match(missingThread.calls.replies[0].content, /not available to this bot/);
