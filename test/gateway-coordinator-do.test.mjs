@@ -308,7 +308,9 @@ test("profile modal capability reaches the durable store and deferred reply thro
       routeKey: "memberdata",
     });
     const dispatchResult = await object.dispatchers.get("bot-alpha").drain({ limit: 1 });
-    assert.equal(dispatchResult.status, "ok", JSON.stringify(dispatchResult));
+    const deliveryLedger = new DurableGatewayDeliveryLedger(storage, { namespace: "gateway-dispatch-bot-alpha" });
+    const failedDelivery = await deliveryLedger.get(queued.eventKey, "bot005-profile-modal");
+    assert.equal(dispatchResult.status, "ok", JSON.stringify({ dispatchResult, failedDelivery }));
     assert.equal(dispatchResult.acknowledged, 1);
     assert.equal((await inbox.listPending()).length, 0);
 
@@ -321,8 +323,7 @@ test("profile modal capability reaches the durable store and deferred reply thro
     assert.deepEqual(saved.birthday, { date: "02-29", year: "", visibility: "private", post: null });
     const outbox = await profileStore.getMilestoneOutbox(memberId, "birthday");
     assert.equal(outbox.status, "pending");
-    const delivery = new DurableGatewayDeliveryLedger(storage, { namespace: "gateway-dispatch-bot-alpha" });
-    assert.equal((await delivery.get(queued.eventKey, "bot005-profile-modal")).status, "completed");
+    assert.equal((await deliveryLedger.get(queued.eventKey, "bot005-profile-modal")).status, "completed");
     assert.equal(calls.filter((call) => call.path === "/api/v10/interactions/:id/:token/callback" && call.method === "POST").length, 1);
     assert.equal(calls.filter((call) => call.path === "/api/v10/webhooks/:application/:token/messages/@original" && call.method === "PATCH").length, 1);
     assert.equal(JSON.stringify(calls).includes("non-production-test-interaction-token"), false);
