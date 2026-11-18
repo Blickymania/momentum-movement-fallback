@@ -1,5 +1,5 @@
 function validSnowflake(value) {
-  return typeof value === "string" && /^\\d{15,22}$/.test(value);
+  return typeof value === "string" && /^\d{15,22}$/.test(value);
 }
 
 export function createBot005PingHandler({
