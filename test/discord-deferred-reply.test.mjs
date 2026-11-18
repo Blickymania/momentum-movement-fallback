@@ -15,7 +15,7 @@ test("PATCHes the deferred original reply with mention parsing disabled", async 
     timeoutSignal: (ms) => ({ timeoutMs: ms }),
   });
   const result = await edit({ applicationId: APP, token: TOKEN, content: "Saved." });
-  assert.deepEqual(result, { updated: true, status: 200 });
+  assert.deepEqual(result, { updated: true, status: 200, messageId: null });
   assert.equal(request.url, "https://discord.com/api/v10/webhooks/" + APP +
     "/" + encodeURIComponent(TOKEN) + "/messages/@original");
   assert.equal(request.options.method, "PATCH");
