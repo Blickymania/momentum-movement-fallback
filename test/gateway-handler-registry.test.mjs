@@ -91,6 +91,14 @@ test("resolves the mompass collision using exact birthday and anniversary book m
 
 test("routes the exact 36-command Bot 005 registry and ignores arbitrary commands", () => {
   const registry = createGatewayHandlerRegistry(manifest());
+  // Compared with the recovered Momentum Movement Bot 005 snapshot on codex/dawn-failover-repairs.
+  assert.deepEqual(CORE_COMMANDS, [
+    "addtocase","announce","audit","automod","ban","bot-status","botconfig","botstatus",
+    "channelorder","channelposition","chatfirst","closecase","eventcreate","events","help",
+    "kick","lock","member","ping","poll","purge","report","role","rules","server","slowmode",
+    "statsset","statsstatus","support","tiktok","timeout","unban","warn","dashboard",
+    "bot-test","forum-admin",
+  ]);
   assert.equal(CORE_COMMANDS.length, 36);
   for (const name of CORE_COMMANDS) {
     const result = registry.route(event("INTERACTION_CREATE", {
