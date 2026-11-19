@@ -816,6 +816,44 @@ async function handleGiftAssistInteraction(i){
    const dashboard=String(i.customId||"").match(/^gift:staff:dashboard:(overview|refresh|payments|guide)$/);
    if(dashboard){if(!staff(i))throw Error("Moderator or Administrator access to the Gift Assist queue is required");await i.deferUpdate();const view=dashboard[1]==="refresh"?"overview":dashboard[1];await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload(view));return}
   }
+  const cashContext=i.guildId===C.guild&&i.channelId===C.queue&&i.message?.author?.id===C.app&&i.message?.id===minimumBudgetMessageId;
+  const cashPage=String(i.customId||"").match(/^gift:staff:cashapp:page:(\d{1,3})$/);
+  if(i.isButton()&&cashContext&&cashPage){
+   if(!staff(i))throw Error("Moderator or higher is required to choose a Cash App recipient");
+   await i.deferUpdate();
+   await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("payments",Number(cashPage[1])));
+   return;
+  }
+  if(i.componentType===3&&cashContext&&i.customId==="gift:staff:cashapp:select"){
+   if(!staff(i))throw Error("Moderator or higher is required to select a Cash App recipient");
+   const id=String(i.values?.[0]||"");
+   if(!/^[0-9a-f-]{36}$/i.test(id))throw Error("Invalid Cash App recipient selection");
+   await i.deferUpdate();
+   const result=await syncApi("/internal/gift-assist/cashapp-select",{actorId:i.user.id,destinationId:id});
+   if(!result.ok)throw Error("Recipient selection could not be saved");
+   const list=await syncApi("/internal/gift-assist/cashapp-recipients");
+   const index=Array.isArray(list.recipients)?list.recipients.findIndex(r=>r.id===id):-1;
+   await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("payments",Math.max(0,Math.floor(index/25))));
+   log("cashapp-recipient-selected",{actor:i.user.id,destinationId:id,collectionEnabled:false});
+   return;
+  }
+  if(i.isButton()&&cashContext&&i.customId==="gift:staff:cashapp:add"){
+   if(!admin(i))throw Error("Only an Administrator or the server owner can enter a Cash App name");
+   await i.showModal(cashAppAddModal(minimumBudgetMessageId));
+   return;
+  }
+  const cashAdd=String(i.customId||"").match(/^gift:staff:cashapp:add-submit:(\d{17,22})$/);
+  if(i.isModalSubmit()&&cashAdd&&i.guildId===C.guild&&i.channelId===C.queue){
+   if(!admin(i)||cashAdd[1]!==minimumBudgetMessageId)throw Error("Only an Administrator or the server owner can register Cash App recipients");
+   const tag=normalizeCashtag(i.fields.getTextInputValue("cashapp-tag"));
+   await i.deferReply();
+   const result=await syncApi("/internal/gift-assist/cashapp-add",{actorId:i.user.id,cashtag:tag});
+   if(!result.ok)throw Error("Cash App name could not be saved");
+   await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("payments"));
+   log("cashapp-recipient-added",{actor:i.user.id,duplicate:Boolean(result.duplicate),collectionEnabled:false});
+   await i.editReply({content:result.duplicate?tag+" is already registered. Existing recipients were preserved.":tag+" registered for moderator selection. Account ownership is not yet verified. Payments remain OFF."});
+   return;
+  }
   if(i.isButton()&&i.guildId===C.guild&&i.channelId===C.queue&&i.customId==="gift:staff:budget-setting"){
    if(i.message?.author?.id!==C.app||i.message.id!==minimumBudgetMessageId||!staff(i))throw Error("Moderator or Administrator access to the Gift Assist queue is required");
    await i.showModal(budgetSettingsModal(minimumBudgetMessageId));return;
