@@ -86,6 +86,37 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
   if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
   try{const rows=await sql.unsafe("SELECT (SELECT count(*)::int FROM gift_assist.cases) AS cases,(SELECT count(*)::int FROM gift_assist.manual_destinations) AS destinations,(SELECT count(*)::int FROM gift_assist.ledger) AS entries");return json({ok:true,schema:3,apiAuth:"internal-hmac",...rows[0]});}catch{return json({ok:false},503);}
  }
+
+ if(req.method==="GET"&&path==="/internal/gift-assist/cashapp-recipients"){
+  if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
+  return json(await cashAppRecipients());
+ }
+ if(req.method==="POST"&&path==="/internal/gift-assist/cashapp-add"){
+  if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
+  let body;try{body=await bodyOf(req)}catch{return json({error:"invalid_json"},400)}
+  let tag;try{tag=normalizeCashTag(body.cashtag)}catch{return json({error:"invalid_cashtag"},400)}
+  const actor=giftClean(body.actorId,30);
+  if(!/^\d{17,22}$/.test(actor))return json({error:"invalid_actor"},400);
+  const found=await sql.unsafe("SELECT id,recipient_name FROM gift_assist.manual_destinations WHERE lower(method)='cash app' AND lower(ltrim(recipient_name,'$'))=lower($1) LIMIT 1",[tag.slice(1)]);
+  if(found.length)return json({ok:true,duplicate:true,id:found[0].id,cashtag:found[0].recipient_name.startsWith("$")?found[0].recipient_name:"$"+found[0].recipient_name});
+  const id=randomUUID();
+  await sql.unsafe("INSERT INTO gift_assist.manual_destinations(id,label,method,recipient_name,instructions,created_by,is_verified,is_enabled) VALUES($1,$2,'Cash App',$3,$4,$5,false,false)",[id,tag,tag,"Pending verification; planning only. No payment collection.",actor]);
+  await giftAudit(actor,"cashapp_recipient_added","manual_destination",id,{cashtag:tag,verified:false,collectionEnabled:false});
+  return json({ok:true,duplicate:false,id,cashtag:tag});
+ }
+ if(req.method==="POST"&&path==="/internal/gift-assist/cashapp-select"){
+  if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
+  let body;try{body=await bodyOf(req)}catch{return json({error:"invalid_json"},400)}
+  const actor=giftClean(body.actorId,30),id=giftClean(body.destinationId,60);
+  if(!/^\d{17,22}$/.test(actor)||!/^[0-9a-f-]{36}$/i.test(id))return json({error:"invalid_selection"},400);
+  const rows=await sql.unsafe("SELECT id,recipient_name FROM gift_assist.manual_destinations WHERE id=$1 AND lower(method)='cash app'",[id]);
+  if(!rows.length)return json({error:"cashapp_recipient_not_found"},404);
+  await sql.begin(async db=>{
+   await db.unsafe("INSERT INTO gift_assist.settings(key,value,updated_by,updated_at) VALUES('cashapp_selected_destination_id',$1::jsonb,$2,now()) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_by=EXCLUDED.updated_by,updated_at=now()",[JSON.stringify(id),actor]);
+   await giftAudit(actor,"cashapp_recipient_selected","manual_destination",id,{cashtag:rows[0].recipient_name,collectionEnabled:false},db);
+  });
+  return json({ok:true,selectedId:id,cashtag:rows[0].recipient_name.startsWith("$")?rows[0].recipient_name:"$"+rows[0].recipient_name,collectionEnabled:false});
+ }
  if(req.method==="POST"&&path==="/internal/gift-assist/checkout-claim"){
   if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
   let body;try{body=await bodyOf(req)}catch{return json({error:"invalid_json"},400)}
@@ -205,9 +236,10 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
  return json({error:"not_found"},404);
 }});
 try{
+ const seedResult=await seedOwnerCashApp();
  const [db]=await sql.unsafe("SELECT current_database() AS database,inet_server_addr()::text AS host,inet_server_port() AS port");
  if(db.database!=="giftassist")throw new Error("Gift Assist API must use its dedicated giftassist database");
  ready=true;
- console.log(JSON.stringify({event:"gift-assist-api-ready",service:"Momentum Movement Gift Assist API",database:db.database,host:db.host,port:db.port,paymentsEnabled:false}));
+ console.log(JSON.stringify({event:"gift-assist-api-ready",service:"Momentum Movement Gift Assist API",database:db.database,host:db.host,port:db.port,cashAppSeeded:seedResult.seeded,paymentsEnabled:false}));
 }catch(error){lastError=giftClean(error?.message||error,180);console.error(JSON.stringify({event:"gift-assist-api-startup-failed",reason:lastError}));}
 console.log(JSON.stringify({event:"gift-assist-api-listener-started",port:Number(env.PORT||3000)}));
