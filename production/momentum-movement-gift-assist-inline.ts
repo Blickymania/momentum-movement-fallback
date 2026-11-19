@@ -737,11 +737,25 @@ async function giftInteractionCallback(payload,type,data){
 }
 function makeGiftInteraction(payload){
  const fieldValues=new Map();
- for(const row of payload.data?.components||[])for(const field of row.components||[])if(field?.custom_id)fieldValues.set(field.custom_id,field.value??"");
+ const collectFields=nodes=>{
+  for(const node of nodes||[]){
+   if(!node||typeof node!=="object")continue;
+   if(node.custom_id){
+    if(Array.isArray(node.values))fieldValues.set(node.custom_id,node.values.map(value=>String(value)));
+    else if(node.value!==undefined)fieldValues.set(node.custom_id,String(node.value));
+   }
+   if(node.component)collectFields([node.component]);
+   if(Array.isArray(node.components))collectFields(node.components);
+  }
+ };
+ collectFields(payload.data?.components);
  const i={id:payload.id,token:payload.token,applicationId:payload.application_id,guildId:payload.guild_id||null,channelId:payload.channel_id||null,customId:payload.data?.custom_id||"",componentType:payload.data?.component_type,values:Array.isArray(payload.data?.values)?payload.data.values:[],user:payload.user||payload.member?.user||{id:""},member:payload.member||null,message:payload.message||null,deferred:Boolean(payload.__acknowledged),replied:false};
  i.isButton=()=>Number(payload.type)===3&&Number(payload.data?.component_type)===2;
  i.isModalSubmit=()=>Number(payload.type)===5;
- i.fields={getTextInputValue(id){if(!fieldValues.has(id))throw Error("Missing modal field: "+id);return String(fieldValues.get(id)||"")}};
+ i.fields={
+  getTextInputValue(id){if(!fieldValues.has(id))throw Error("Missing modal field: "+id);const value=fieldValues.get(id);return Array.isArray(value)?String(value[0]??""):String(value??"")},
+  getStringSelectValues(id){if(!fieldValues.has(id))throw Error("Missing modal select: "+id);const value=fieldValues.get(id);return Array.isArray(value)?value.map(String):value==null?[]:[String(value)]}
+ };
  i.deferUpdate=async()=>{if(i.deferred||i.replied)return;await giftInteractionCallback(payload,6);i.deferred=true};
  i.deferReply=async()=>{if(i.deferred||i.replied)return;await giftInteractionCallback(payload,5);i.deferred=true};
  i.reply=async body=>{if(i.deferred||i.replied)return i.followUp(body);await giftInteractionCallback(payload,4,body);i.replied=true;return body};
