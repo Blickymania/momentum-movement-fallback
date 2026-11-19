@@ -891,6 +891,31 @@ async function handleGiftAssistInteraction(i){
    minimumBudgetCents=next;await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("overview"));
    log("minimum-budget-updated",{actor:i.user.id,minimumBudget:money(minimumBudgetCents)});await i.editReply({content:"Gift Assist minimum optional budget updated to "+moneyLabel(minimumBudgetCents)+". New request forms will use this minimum."});return;
   }
+  const caseCashOpen=String(i.customId||"").match(/^gift:staff:cashapp:case-open:(GA-[A-Z0-9-]{8,40})$/);
+  const caseCashPage=String(i.customId||"").match(/^gift:staff:cashapp:case-page:(GA-[A-Z0-9-]{8,40}):(\d{1,3})$/);
+  const caseCashSelect=String(i.customId||"").match(/^gift:staff:cashapp:case-select:(GA-[A-Z0-9-]{8,40})$/);
+  if((caseCashOpen||caseCashPage||caseCashSelect)&&i.guildId===C.guild&&i.channelId===C.queue){
+   if(!staff(i))throw Error("Moderator or Administrator role required for Cash App case assignment");
+   if(caseCashSelect?i.componentType!==3:!i.isButton())throw Error("Invalid Cash App case control");
+   const ref=(caseCashOpen||caseCashPage||caseCashSelect)[1];
+   const {message,data}=await findCase(ref);
+   if(i.message?.id!==message.id||i.message?.author?.id!==C.app||!cashCaseAssignable(data))throw Error("Cash App selection is unavailable for this case");
+   await i.deferUpdate();
+   if(caseCashSelect){
+    const id=String(i.values?.[0]||"");
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))throw Error("Invalid Cash App recipient choice");
+    const selected=await syncApi("/internal/gift-assist/cashapp-case-assign",{actorId:i.user.id,caseRef:ref,destinationId:id});
+    if(!selected.ok||!selected.cashtag)throw Error("Cash App case assignment did not save");
+    data.cashAppRecipient=selected.cashtag;
+    await rest("PATCH","/channels/"+C.queue+"/messages/"+message.id,casePayload(data,null,"Selected "+selected.cashtag+" for this case only; no payment sent."));
+    log("cashapp-case-assigned",{actor:i.user.id,caseRef:ref,destinationId:id,collectionEnabled:false});
+    return;
+   }
+   const picker=await caseCashAppPicker(ref,caseCashPage?Number(caseCashPage[2]):0);
+   if(picker.assigned?.cashtag)data.cashAppRecipient=picker.assigned.cashtag;
+   await rest("PATCH","/channels/"+C.queue+"/messages/"+message.id,casePayload(data,picker,picker.options.length?"Choose receiving $Cashtag for this case only. No payment is collected.":"No Cash App recipients configured; an Administrator can add one in Payment Operations."));
+   return;
+  }
   if(i.isButton()&&i.guildId===C.guild&&i.channelId===C.queue){
    const m=i.customId.match(/^gift:staff:(review|need-info|propose|decline|withdraw|resend|resend-payment|complete|closed|member-approved|member-declined):(GA-[A-Z0-9-]{8,40})$/);
    if(m){await staffAction(i,m[1],m[2]);return}
@@ -900,6 +925,16 @@ async function handleGiftAssistInteraction(i){
   }
  }catch(e){
   lastError=clean(e?.message||"unknown error",140);log("interaction-failed",{error:lastError,interaction:i.id});
+  if(i.deferred&&i.guildId===C.guild&&i.channelId===C.queue&&/^gift:staff:cashapp:case-/.test(String(i.customId||""))){
+   try{
+    const matched=String(i.customId).match(/(GA-[A-Z0-9-]{8,40})/);
+    if(matched){const record=await findCase(matched[1]);if(record.message.id===i.message?.id){
+     await rest("PATCH","/channels/"+C.queue+"/messages/"+record.message.id,casePayload(record.data,null,"Case recipient assignment was not completed. Retry; payment collection remains OFF."));
+     return;
+    }}
+   }catch(error){log("cashapp-case-error-display-failed",{reason:clean(error?.message||error,140)});}
+  }
+
   if(i.deferred&&i.guildId===C.guild&&i.channelId===C.queue&&String(i.customId||"").startsWith("gift:staff:cashapp:")){
    try{
     await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("payments",0,"Cash App action was not completed. Please retry. Payment collection remains OFF."));
