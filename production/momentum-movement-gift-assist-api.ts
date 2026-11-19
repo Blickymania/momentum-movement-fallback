@@ -185,6 +185,7 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
 }});
 try{
  const [db]=await sql.unsafe("SELECT current_database() AS database,inet_server_addr()::text AS host,inet_server_port() AS port");
+ if(db.database!=="giftassist")throw new Error("Gift Assist API must use its dedicated giftassist database");
  ready=true;
  console.log(JSON.stringify({event:"gift-assist-api-ready",service:"Momentum Movement Gift Assist API",database:db.database,host:db.host,port:db.port,paymentsEnabled:false}));
 }catch(error){lastError=giftClean(error?.message||error,180);console.error(JSON.stringify({event:"gift-assist-api-startup-failed",reason:lastError}));}
