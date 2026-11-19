@@ -122,7 +122,7 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
   const verifierRolesConfigured=Array.isArray(verifierRoles)&&verifierRoles.length>0,manualReady=enabled&&ownerApproved&&profileReady&&isEncryptionReady&&approved>0;
   return json({ok:true,collectionEnabled:manualReady,manualPaymentsEnabled:enabled,readyToCollect:manualReady,notificationDeliveryConfigured:!!CHECKOUT_BASE,
    gates:{ownershipVerified:approved>0,financialProfileComplete:profileReady,encryptionKeyConfigured:isEncryptionReady,manualSettingEnabled:enabled,ownerActivationApproved:ownerApproved,financialVerifierRolesConfigured:verifierRolesConfigured},
-   verificationAuthority:verifierRolesConfigured?"Configured financial verifier roles and server owner":"Server owner only; no financial verifier role configured",
+   verificationAuthority:"Server owner only; moderators and administrators cannot verify manual payments",
    recipients:{registered:Number(destinations[0]?.registered||0),approved,unverified:Number(destinations[0]?.unverified||0)},
    submissions:{pending,total:counts.reduce((sum,x)=>sum+Number(x.count||0),0),byStatus:counts.map(x=>({status:x.status,count:Number(x.count)}))},
    refunds:{total:refundCounts.reduce((sum,x)=>sum+Number(x.count||0),0),byStatus:refundCounts.map(x=>({status:x.status,count:Number(x.count)}))},
@@ -210,11 +210,11 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)||actor!==OWNER_ID||b.independentlyVerified!==true||!Number.isSafeInteger(amount)||amount<50||reference.length<4||note.length<20)return json({error:"owner_verification_required"},403);
   if(!await giftManualReady())return json({error:"manual_payment_not_ready",collectionEnabled:false},409);
   const result=await sql.begin(async db=>{
-   const [record]=await db.unsafe("SELECT m.id,m.case_ref,m.requester_id,m.destination_id,m.amount_cents,m.transaction_reference,m.paid_at,m.status,c.amount_cents AS case_amount_cents,c.payment_status,d.method,d.recipient_name,d.is_verified,d.is_enabled FROM gift_assist.manual_submissions m JOIN gift_assist.cases c ON c.case_ref=m.case_ref JOIN gift_assist.manual_destinations d ON d.id=m.destination_id WHERE m.id=$1 FOR UPDATE OF m,c",[id]);
+   const [record]=await db.unsafe("SELECT m.id,m.case_ref,m.requester_id,m.destination_id,m.amount_cents,m.transaction_reference,m.paid_at,m.status,c.amount_cents AS case_amount_cents,c.payment_status,d.method,d.recipient_name,d.is_verified,d.is_enabled,a.destination_id AS assigned_destination_id FROM gift_assist.manual_submissions m JOIN gift_assist.cases c ON c.case_ref=m.case_ref JOIN gift_assist.manual_destinations d ON d.id=m.destination_id LEFT JOIN gift_assist.case_cashapp_assignments a ON a.case_ref=c.case_ref WHERE m.id=$1 FOR UPDATE OF m,c",[id]);
    if(!record)return {error:"submission_not_found",status:404};
    if(!["Submitted — Awaiting Verification","Under Review"].includes(record.status)||record.payment_status!=="Manual Verification Pending")return {error:"submission_not_reviewable",status:409};
    if(record.transaction_reference!==reference||Number(record.amount_cents)!==amount||Number(record.case_amount_cents)!==amount)return {error:"verification_mismatch",status:409};
-   if(record.is_verified!==true||record.is_enabled!==true)return {error:"recipient_not_verified",status:409};
+   if(record.is_verified!==true||record.is_enabled!==true||record.destination_id!==record.assigned_destination_id)return {error:"recipient_not_verified_or_assignment_changed",status:409};
    const [duplicate]=await db.unsafe("SELECT id FROM gift_assist.ledger WHERE provider_event_id=$1 OR (case_ref=$2 AND direction='inflow') LIMIT 1",["manual:"+id,record.case_ref]);
    if(duplicate)return {error:"payment_already_recorded",status:409};
    await db.unsafe("INSERT INTO gift_assist.ledger(id,case_ref,requester_id,direction,method,provider,amount_cents,fee_cents,net_cents,currency,status,transaction_reference,provider_event_id,recorded_by,details) VALUES($1,$2,$3,'inflow','Manual','Cash App',$4,NULL,$4,'USD','Paid',$5,$6,$7,$8::jsonb)",[randomUUID(),record.case_ref,record.requester_id,amount,reference,"manual:"+id,actor,JSON.stringify({submissionId:id,destinationId:record.destination_id,paidAt:record.paid_at,independentlyVerified:true,verificationNote:note})]);
