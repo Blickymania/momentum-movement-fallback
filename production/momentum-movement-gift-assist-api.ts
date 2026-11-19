@@ -1,10 +1,11 @@
 // Independent internal-only Gift Assist API.
 import postgres from "postgres";
-import {randomUUID,timingSafeEqual} from "node:crypto";
+import {randomUUID,timingSafeEqual,createCipheriv,createDecipheriv,randomBytes} from "node:crypto";
 const env=Bun.env;
 const INTERNAL_SECRET=String(env.GIFT_ASSIST_INTERNAL_SECRET||"");
 const CHECKOUT_BASE=String(env.GIFT_ASSIST_CHECKOUT_BASE_URL||"").replace(/[/]+$/,"");
 const DATA_KEY=String(env.GIFT_ASSIST_DATA_ENCRYPTION_KEY||"");
+const OWNER_ID=String(env.GIFT_ASSIST_OWNER_ID||"1276370255152812045");
 if(!env.DATABASE_URL)throw new Error("Gift Assist database is not configured");
 if(!INTERNAL_SECRET)throw new Error("Gift Assist internal authentication is not configured");
 const sql=postgres(env.DATABASE_URL,{max:5,idle_timeout:20,connect_timeout:15});
@@ -20,12 +21,27 @@ const bodyOf=async req=>{const body=JSON.parse(new TextDecoder().decode(await re
 function giftInternalAuthorized(req){const supplied=Buffer.from(req.headers.get("x-gift-assist-sync")||"");const expected=Buffer.from(INTERNAL_SECRET);return expected.length>0&&supplied.length===expected.length&&timingSafeEqual(supplied,expected);}
 const giftClean=(v,n=300)=>String(v??"").replace(/[\u0000-\u001f\u007f]/g," ").trim().slice(0,n);
 const giftCents=(v,minimum=50)=>{const raw=String(v??"").replace(/[$,\s]/g,"");if(!/^\d{1,5}(?:\.\d{1,2})?$/.test(raw))return null;const n=Math.round(Number(raw)*100);return Number.isSafeInteger(n)&&n>=minimum&&n<=1000000?n:null;};
+function giftEncrypt(value){
+ if(!/^[0-9a-f]{64}$/i.test(DATA_KEY))throw Error("receipt_encryption_unavailable");
+ const iv=randomBytes(12),cipher=createCipheriv("aes-256-gcm",Buffer.from(DATA_KEY,"hex"),iv);
+ const plain=Buffer.isBuffer(value)?value:Buffer.from(String(value),"utf8");
+ const encrypted=Buffer.concat([cipher.update(plain),cipher.final()]);
+ return ["v1",iv.toString("base64url"),cipher.getAuthTag().toString("base64url"),encrypted.toString("base64url")].join(".");
+}
+function giftDecrypt(value){
+ if(!/^[0-9a-f]{64}$/i.test(DATA_KEY))throw Error("receipt_encryption_unavailable");
+ const [version,iv,tag,ciphertext]=String(value||"").split(".");
+ if(version!=="v1"||!iv||!tag||!ciphertext)throw Error("invalid_encrypted_receipt");
+ const decipher=createDecipheriv("aes-256-gcm",Buffer.from(DATA_KEY,"hex"),Buffer.from(iv,"base64url"));
+ decipher.setAuthTag(Buffer.from(tag,"base64url"));
+ return Buffer.concat([decipher.update(Buffer.from(ciphertext,"base64url")),decipher.final()]);
+}
 const giftHttps=v=>{try{return new URL(String(v)).protocol==="https:";}catch{return false;}};
 const giftAudit=async(actor,action,type,id,details={},connection=sql)=>connection.unsafe("INSERT INTO gift_assist.audit_events(id,actor_id,action,entity_type,entity_id,details) VALUES ($1,$2,$3,$4,$5,$6::jsonb)",[randomUUID(),String(actor||"system"),action,type,id||"",JSON.stringify(details)]);
 const giftGetSetting=async key=>{const r=await sql.unsafe("SELECT value FROM gift_assist.settings WHERE key=$1",[key]);return r.length?r[0].value:null;};
 const giftSetSetting=async(key,value,actor)=>sql.unsafe("INSERT INTO gift_assist.settings(key,value,updated_by,updated_at) VALUES ($1,$2::jsonb,$3,now()) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_by=EXCLUDED.updated_by,updated_at=now()",[key,JSON.stringify(value),actor]);
 const giftProfileReady=p=>!!(p&&giftClean(p.recipientLabel,100)&&giftClean(p.legalEntity,160)&&giftClean(p.businessType,100)&&giftHttps(p.termsUrl)&&giftHttps(p.refundPolicyUrl)&&giftHttps(p.unusedFundsPolicyUrl)&&p.policyAcknowledged===true);
-const giftManualReady=async()=>{if(!/^[0-9a-f]{64}$/i.test(DATA_KEY))return false;const [enabled,profile,dests]=await Promise.all([giftGetSetting("manual_payments_enabled"),giftGetSetting("financial_profile"),sql.unsafe("SELECT COUNT(*)::int AS count FROM gift_assist.manual_destinations WHERE is_verified=true AND is_enabled=true")]);return enabled===true&&giftProfileReady(profile)&&Number(dests[0]?.count||0)>0;};
+const giftManualReady=async()=>{if(!/^[0-9a-f]{64}$/i.test(DATA_KEY))return false;const [enabled,profile,dests,ownerApproval]=await Promise.all([giftGetSetting("manual_payments_enabled"),giftGetSetting("financial_profile"),sql.unsafe("SELECT COUNT(*)::int AS count FROM gift_assist.manual_destinations WHERE is_verified=true AND is_enabled=true"),giftGetSetting("owner_activation_approved")]);return enabled===true&&ownerApproval===true&&giftProfileReady(profile)&&Number(dests[0]?.count||0)>0;};
 const giftCase=async ref=>{const r=await sql.unsafe("SELECT * FROM gift_assist.cases WHERE case_ref=$1 LIMIT 1",[ref]);return r[0]||null;};
 const giftQueueNotification=(body,connection=sql)=>connection.unsafe("INSERT INTO gift_assist.notification_outbox(id,case_ref,payload) VALUES ($1,$2,$3::jsonb) ON CONFLICT(id) DO NOTHING",[body.notificationId,body.caseRef,JSON.stringify(body)]);
 async function giftNotifyBot(body){
@@ -52,7 +68,9 @@ const giftAssistDdl = [
 "CREATE INDEX IF NOT EXISTS gift_assist_manual_status_idx ON gift_assist.manual_submissions(status,created_at DESC)",
 "CREATE INDEX IF NOT EXISTS gift_assist_refunds_status_idx ON gift_assist.refund_requests(status,created_at DESC)",
 "INSERT INTO gift_assist.settings(key,value) VALUES ('manual_payments_enabled','false'::jsonb) ON CONFLICT DO NOTHING",
-"INSERT INTO gift_assist.settings(key,value) VALUES ('financial_profile','{}'::jsonb) ON CONFLICT DO NOTHING"
+"INSERT INTO gift_assist.settings(key,value) VALUES ('financial_profile','{}'::jsonb) ON CONFLICT DO NOTHING",
+ "INSERT INTO gift_assist.settings(key,value) VALUES ('owner_activation_approved','false'::jsonb) ON CONFLICT DO NOTHING",
+ "INSERT INTO gift_assist.settings(key,value) VALUES ('financial_verifier_role_ids','[]'::jsonb) ON CONFLICT DO NOTHING"
 ];
 await sql.begin(async tx=>{for(const statement of giftAssistDdl)await tx.unsafe(statement);});
 
