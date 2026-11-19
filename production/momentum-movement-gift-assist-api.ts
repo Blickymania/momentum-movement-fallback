@@ -88,6 +88,48 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
   try{const rows=await sql.unsafe("SELECT (SELECT count(*)::int FROM gift_assist.cases) AS cases,(SELECT count(*)::int FROM gift_assist.manual_destinations) AS destinations,(SELECT count(*)::int FROM gift_assist.ledger) AS entries");return json({ok:true,schema:3,apiAuth:"internal-hmac",...rows[0]});}catch{return json({ok:false},503);}
  }
 
+
+ if(req.method==="GET"&&path==="/internal/gift-assist/manual-review-overview"){
+  if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
+  const [counts,refundCounts,destinations,latest,manualEnabled,profile]=await Promise.all([
+   sql.unsafe("SELECT status,COUNT(*)::int AS count FROM gift_assist.manual_submissions GROUP BY status ORDER BY status"),
+   sql.unsafe("SELECT status,COUNT(*)::int AS count FROM gift_assist.refund_requests GROUP BY status ORDER BY status"),
+   sql.unsafe("SELECT COUNT(*)::int AS registered,COUNT(*) FILTER(WHERE is_verified=true AND is_enabled=true)::int AS approved,COUNT(*) FILTER(WHERE is_verified=false)::int AS unverified FROM gift_assist.manual_destinations"),
+   sql.unsafe("SELECT m.id,m.case_ref,m.status,m.amount_cents,m.created_at,d.method,d.label FROM gift_assist.manual_submissions m JOIN gift_assist.manual_destinations d ON d.id=m.destination_id ORDER BY m.created_at DESC,m.id DESC LIMIT 15"),
+   giftGetSetting("manual_payments_enabled"),
+   giftGetSetting("financial_profile")
+  ]);
+  const pendingStatus=["Submitted — Awaiting Verification","Needs Information","Under Review"];
+  const countFor=status=>Number(counts.find(x=>x.status===status)?.count||0);
+  const pending=pendingStatus.reduce((sum,status)=>sum+countFor(status),0);
+  const isEncryptionReady=/^[0-9a-f]{64}$/i.test(DATA_KEY);
+  const profileReady=giftProfileReady(profile);
+  const approved=Number(destinations[0]?.approved||0);
+  const enabled=manualEnabled===true;
+  return json({
+   ok:true,collectionEnabled:false,manualPaymentsEnabled:enabled,readyToCollect:false,
+   gates:{ownershipVerified:approved>0,financialProfileComplete:profileReady,encryptionKeyConfigured:isEncryptionReady,manualSettingEnabled:enabled,ownerActivationApproved:false},
+   recipients:{registered:Number(destinations[0]?.registered||0),approved,unverified:Number(destinations[0]?.unverified||0)},
+   submissions:{pending,total:counts.reduce((sum,x)=>sum+Number(x.count||0),0),byStatus:counts.map(x=>({status:x.status,count:Number(x.count)}))},
+   refunds:{total:refundCounts.reduce((sum,x)=>sum+Number(x.count||0),0),byStatus:refundCounts.map(x=>({status:x.status,count:Number(x.count)}))},
+   latest:latest.map(x=>({id:x.id,caseRef:x.case_ref,status:x.status,amountCents:Number(x.amount_cents),method:x.method,methodLabel:x.label,createdAt:x.created_at}))
+  });
+ }
+ if(req.method==="POST"&&path==="/internal/gift-assist/manual-review-decide"){
+  if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
+  let b;try{b=await bodyOf(req)}catch{return json({error:"invalid_json"},400)}
+  const id=giftClean(b.submissionId,60),actor=giftClean(b.actorId,30),decision=giftClean(b.decision,40),note=giftClean(b.note,500);
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)||!/^\d{17,22}$/.test(actor)||!["Needs Information","Rejected"].includes(decision)||note.length<10)return json({error:"invalid_review_decision"},400);
+  return sql.begin(async db=>{
+   const [record]=await db.unsafe("SELECT m.id,m.case_ref,m.status,c.payment_status FROM gift_assist.manual_submissions m JOIN gift_assist.cases c ON c.case_ref=m.case_ref WHERE m.id=$1 FOR UPDATE OF m",[id]);
+   if(!record)return json({error:"submission_not_found"},404);
+   if(!["Submitted — Awaiting Verification","Under Review","Needs Information"].includes(record.status))return json({error:"submission_not_reviewable"},409);
+   if(record.payment_status==="Paid"||record.payment_status==="Refunded")return json({error:"case_payment_finalized"},409);
+   await db.unsafe("UPDATE gift_assist.manual_submissions SET status=$1,reviewed_by=$2,reviewed_at=now(),review_note=$3,updated_at=now() WHERE id=$4",[decision,actor,note,id]);
+   await giftAudit(actor,"manual_submission_reviewed","manual_submission",id,{caseRef:record.case_ref,decision,note,financialTransfer:false},db);
+   return json({ok:true,submissionId:id,caseRef:record.case_ref,status:decision,collectionEnabled:false,ledgerChanged:false});
+  });
+ }
  if(req.method==="GET"&&path==="/internal/gift-assist/cashapp-recipients"){
   if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
   return json(await cashAppRecipients());
