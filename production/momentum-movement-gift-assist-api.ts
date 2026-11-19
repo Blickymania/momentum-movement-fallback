@@ -63,8 +63,8 @@ async function migrateFromSource(){
   if(from.name===to.name&&from.host===to.host&&from.port===to.port)throw new Error("Gift Assist source and destination databases are identical; isolation check failed");
   const tables=["cases","manual_destinations","manual_submissions","ledger","refund_requests","provider_payments","notification_outbox","checkout_attempts","settings","audit_events"];
   const result={};for(const table of tables){
-   const rows=await source.unsafe("SELECT to_jsonb(t) AS row FROM gift_assist."+table+" t");
-   for(const item of rows)await sql.unsafe("INSERT INTO gift_assist."+table+" SELECT * FROM jsonb_populate_record(NULL::gift_assist."+table+",$1::jsonb) ON CONFLICT DO NOTHING",[JSON.stringify(item.row)]);
+   const rows=await source.unsafe("SELECT row_to_json(t)::text AS row_json FROM gift_assist."+table+" t");
+   for(const item of rows)await sql.unsafe("INSERT INTO gift_assist."+table+" SELECT * FROM jsonb_populate_record(NULL::gift_assist."+table+",$1::jsonb) ON CONFLICT DO NOTHING",[item.row_json]);
    const [count]=await sql.unsafe("SELECT COUNT(*)::int AS count FROM gift_assist."+table);
    if(Number(count.count)<rows.length)throw new Error("Gift Assist data migration count mismatch for "+table);
    result[table]={source:rows.length,destination:Number(count.count)};
