@@ -275,6 +275,12 @@ function normalizeCashtag(value){
  if(!/^[A-Za-z0-9]{1,20}$/.test(raw)||!/[A-Za-z]/.test(raw))throw Error("Cash App $Cashtag must contain letters/numbers and start with $");
  return "$"+raw;
 }
+function manualReviewModal(submissionId,decision){
+ const isReject=decision==="reject";
+ return new ModalBuilder().setCustomId("gift:staff:manual:submit:"+decision+":"+submissionId)
+ .setTitle(isReject?"Reject Manual Payment Claim":"Request More Information")
+ .addLabelComponents(textLabel("review-note",isReject?"Rejection reason (required)":"What payment evidence is missing?",TextInputStyle.Paragraph,true,500));
+}
 function cashAppAddModal(messageId){
  return new ModalBuilder().setCustomId("gift:staff:cashapp:add-submit:"+messageId).setTitle("Add Cash App Recipient")
   .addLabelComponents(textLabel("cashapp-tag","Cash App $Cashtag (Admin only)",TextInputStyle.Short,true,24,"$ShamekaDDowell"));
@@ -313,10 +319,24 @@ async function ensurePublicDashboard(){
  if(message.author?.id!==C.app||message.id!==C.dash)throw Error("Gift Assist public dashboard ownership could not be verified");
  await rest("PATCH","/channels/"+C.pub+"/messages/"+C.dash,publicDashboardPayload("overview"));
 }
-async function managerCardPayload(view="overview",cashPage=0,cashNotice=""){
+async function managerCardPayload(view="overview",cashPage=0,cashNotice="",manualSelected=""){
  const [messages,health,caseSummary]=await Promise.all([queueMessages(),syncApi("/gift-assist/health").catch(()=>null),syncApi("/internal/gift-assist/case-summary").catch(()=>null)]);
  const cases=messages.map(parseCase).filter(Boolean);
  const cashApp=view==="payments"?await syncApi("/internal/gift-assist/cashapp-recipients").catch(()=>null):null;
+ const manualReview=view==="manual"?await syncApi("/internal/gift-assist/manual-review-overview").catch(()=>null):null;
+ const manualItems=Array.isArray(manualReview?.latest)?manualReview.latest:[];
+ const selectedManual=manualItems.find(x=>x.id===manualSelected);
+ const gates=manualReview?.gates||{};
+ const manualSummary=manualReview?
+  "### Manual Payment Review · Readiness\n**Payment collection: OFF**\n**Pending claims:** "+String(manualReview.submissions?.pending??0)+"\n**Historical claims:** "+String(manualReview.submissions?.total??0)+"\n**Refund requests:** "+String(manualReview.refunds?.total??0)+"\n**Saved destinations:** "+String(manualReview.recipients?.registered??0)+" · Unverified: "+String(manualReview.recipients?.unverified??0)+" · Verified and active: "+String(manualReview.recipients?.approved??0)+"\n\n### Activation checks\n- Verified recipient: "+(gates.ownershipVerified?"Yes":"No")+"\n- Financial profile and policies: "+(gates.financialProfileComplete?"Complete":"Incomplete")+"\n- Secure receipt encryption configuration: "+(gates.encryptionKeyConfigured?"Configured":"Missing")+"\n- Manual payment setting: "+(gates.manualSettingEnabled?"Configured, still OFF":"Not enabled")+"\n- Owner activation: NOT APPROVED\n\nClaims are not payment confirmations. Only Request Info or Reject actions are available; neither records received funds."
+  :"### Manual Payment Review\nBackend temporarily unavailable. Payments remain OFF.";
+ const manualOptions=manualItems.slice(0,25).map(x=>({label:(x.caseRef+" · "+x.status).slice(0,100),value:x.id,description:(x.method+" · $"+(Number(x.amountCents||0)/100).toFixed(2)).slice(0,100),default:x.id===manualSelected}));
+ const manualControls=[];
+ if(manualOptions.length)manualControls.push({type:1,components:[{type:3,custom_id:"gift:staff:manual:pick",placeholder:"Select a prior manual payment claim",min_values:1,max_values:1,options:manualOptions}]});
+ if(selectedManual&&["Submitted — Awaiting Verification","Under Review","Needs Information"].includes(selectedManual.status))manualControls.push({type:1,components:[btn("Request Info","gift:staff:manual:info:"+selectedManual.id,2),btn("Reject Claim","gift:staff:manual:reject:"+selectedManual.id,4)]});
+ const manualDetail=selectedManual?"\n\n### Selected claim\n**Case:** "+selectedManual.caseRef+"\n**Method:** "+selectedManual.method+"\n**Reported amount:** $"+(Number(selectedManual.amountCents||0)/100).toFixed(2)+"\n**Review status:** "+selectedManual.status+"\n-# No payment has been independently verified.":"";
+ const manualNotice=cashNotice?"\n\n**Last action:** "+clean(cashNotice,160):"";
+
  const recipients=Array.isArray(cashApp?.recipients)?cashApp.recipients:[];
  const selectedRecipient=recipients.find(r=>r.id===cashApp?.selectedId);
  const pageCount=Math.max(1,Math.ceil(recipients.length/25));
@@ -348,13 +368,15 @@ async function managerCardPayload(view="overview",cashPage=0,cashNotice=""){
  const overview="### Live queue snapshot\n**Visible case cards:** "+cases.length+"\n- New: "+newCount+"\n- Reviewing / Need Info: "+reviewCount+"\n- Awaiting member decision: "+awaitingCount+"\n- Approved / fulfillment stages: "+activeCount+"\n- Closed: "+closedCount+"\n\n### Backend health\n"+dbSummary+mismatch;
  const payments="### Payment readiness\n**Collection status: "+(PAYMENTS_ENABLED?"ENABLED":"OFF")+"**\n- PayPal Checkout: "+(PAYPAL_READY?"Provider credentials detected — still subject to global approval":"Not connected")+"\n- Stripe Checkout: "+(STRIPE_READY?"Provider credentials detected — still subject to global approval":"Not connected")+"\n- Manual destinations: "+String(health?.destinations??"Unavailable")+"\n- Ledger entries: "+String(health?.entries??"Unavailable")+"\n- Recipient and policy profile: "+(POLICY_READY?"Complete":"Incomplete")+"\n\n**Activation gate:** verify the legal recipient, payout ownership, provider terms, signed webhooks, test transactions, refund/unused-fund handling and reconciliation. Keep collection OFF until the owner explicitly approves activation.";
  const guide="### Moderator workflow\n1. Review new requests in this private queue.\n2. Use Request Info when details are missing; the member replies in the Gift Assist channel.\n3. Propose a specific plan and amount.\n4. When the member responds in the Gift Assist channel, use **Record Approved** or **Record Declined** on the private case card.\n5. Mark a case complete only after fulfillment is verified.\n\n### Staff safeguards\n- No direct-message workflow; use the public dashboard and private queue.\n- Never use a moderator's personal payment account.\n- Never store card/bank details, passwords or provider secrets in Discord.\n- Do not promise a gift or pressure members to increase a budget.\n- Payment collection remains OFF until all activation gates pass.";
- const detail=view==="payments"?payments:view==="guide"?guide:overview;
+ const detail=view==="payments"?payments:view==="guide"?guide:view==="manual"?manualSummary+manualDetail+manualNotice:overview;
  const nav={type:1,components:[btn("Overview","gift:staff:dashboard:overview",1),btn("Refresh","gift:staff:dashboard:refresh",2),btn("Minimum Budget","gift:staff:budget-setting",3),btn("Payments","gift:staff:dashboard:payments",2),btn("Staff Guide","gift:staff:dashboard:guide",2)]};
+ const manualNav={type:1,components:[btn("Manual Review","gift:staff:dashboard:manual",view==="manual"?1:2)]};
  const footer="**Minimum member budget:** "+moneyLabel(minimumBudgetCents)+"\n**Payment collection:** "+(PAYMENTS_ENABLED?"Enabled":"OFF")+"\n-# Provider secrets remain in the secret manager. No payment method is activated by this dashboard.";
  return {content:"",embeds:[],flags:36864,components:[
-  {type:17,accent_color:0x9B7AFF,components:[{type:10,content:"## 🧭 Gift Assist Command Center\n**PRIVATE MODERATOR WORKSPACE · NATIVE DISCORD COMPONENTS V2**\nAll staff controls stay in this private Discord queue; no external command-center website is used."},nav,{type:14,divider:true,spacing:1}]},
+  {type:17,accent_color:0x9B7AFF,components:[{type:10,content:"## 🧭 Gift Assist Command Center\n**PRIVATE MODERATOR WORKSPACE · NATIVE DISCORD COMPONENTS V2**\nAll staff controls stay in this private Discord queue; no external command-center website is used."},nav,manualNav,{type:14,divider:true,spacing:1}]},
   {type:17,accent_color:view==="payments"?0xF2B84B:view==="guide"?0x18C7A5:0x9B7AFF,components:[{type:10,content:detail}]},
   ...(view==="payments"?[{type:17,accent_color:0x18C7A5,components:[{type:10,content:cashApp?cashMessage:"### Cash App recipients\nRecipient list temporarily unavailable. Collections remain OFF."},...(cashApp?cashControls:[])]}]:[]),
+  ...(view==="manual"&&manualControls.length?[{type:17,accent_color:0x18C7A5,components:[{type:10,content:"### Review existing claims · Moderator and above"},...manualControls]}]:[]),
   {type:17,accent_color:0xF2B84B,components:[{type:10,content:footer}]}
  ],allowed_mentions:SAFE};
 }
@@ -835,7 +857,7 @@ async function handleGiftAssistInteraction(i){
   const details=String(i.customId||"").match(/^gift:details-submit:([a-f0-9]{12})$/i);
   if(details&&i.isModalSubmit()&&i.guildId===C.guild&&i.channelId===C.pub){await submitRequestDetails(i,details[1]);return}
   if(i.isButton()&&i.guildId===C.guild&&i.channelId===C.queue&&i.message?.author?.id===C.app&&i.message?.id===minimumBudgetMessageId){
-   const dashboard=String(i.customId||"").match(/^gift:staff:dashboard:(overview|refresh|payments|guide)$/);
+   const dashboard=String(i.customId||"").match(/^gift:staff:dashboard:(overview|refresh|payments|guide|manual)$/);
    if(dashboard){if(!staff(i))throw Error("Moderator or Administrator access to the Gift Assist queue is required");await i.deferUpdate();const view=dashboard[1]==="refresh"?"overview":dashboard[1];await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload(view));return}
   }
   const cashContext=i.guildId===C.guild&&i.channelId===C.queue&&i.message?.author?.id===C.app&&i.message?.id===minimumBudgetMessageId;
