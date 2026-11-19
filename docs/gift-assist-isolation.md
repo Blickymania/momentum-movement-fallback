@@ -24,3 +24,16 @@ Gift Assist is an independent, inline Discord workflow. It must not use or depen
 8. Keep the private Moderator Queue and public Gift Assist dashboard in their existing Discord channels.
 
 Do not restore the legacy shared API/database configuration or add Coaching as a fallback. Any future changes must preserve this service and database boundary.
+
+## Cash App recipient assignment
+
+- Gift Assist uses the native private Discord **Gift Assist Queue** for all recipient management; there is no external command-center website or DM workflow.
+- The global Payment Operations dropdown sets a default/planning recipient for the dashboard. It must **not** automatically reassign any case.
+- Each eligible case has its own **Assign Cash App** button and dropdown. A case assignment is stored separately in `gift_assist.case_cashapp_assignments`, linked to the case and selected destination. Changes are audited with the acting staff user ID.
+- **Moderator or higher** may select an existing registered Cash App recipient for a case; **Administrator or owner** alone may enter new recipients into the registry.
+- Every Cashtag must be normalized to a leading `$` and validated as a Cashtag, including `$ShamekaDDowell`. Existing recipients and other payment methods must be preserved.
+- Case-specific assignment is **planning only**, never proof of Cash App ownership, payment authorization, funds received, or a payout. It creates no payment link and no ledger entry.
+- The API refuses case recipient changes for closed/fulfilled cases or cases with a non-`Not Started` payment status. The Discord handler checks the same rules plus guild, private channel, staff role and case message identity.
+- Both the global dropdown and case picker paginate lists beyond Discord's 25-option select limit.
+- The `manual_payments_enabled` gate remains false, the new Cashtag remains unverified until ownership is established, and actual collection requires separate authorization and payment-safety verification.
+- **Regression tests:** role-based mod/admin/owner selection; unauthorized-role rejection; wrong-channel/wrong-message rejection; closed/paid-case rejection; dropdown pagination; inline success/failure feedback; global selection not affecting other cases.
