@@ -62,7 +62,7 @@ function normalizeCashTag(raw){
 }
 async function seedOwnerCashApp(){
  const tag="$ShamekaDDowell";
- const found=await sql.unsafe("SELECT id FROM gift_assist.manual_destinations WHERE lower(method)='cash app' AND lower(ltrim(recipient_name,'$'))=lower($1) LIMIT 1",[tag.slice(1)]);
+ const found=await sql.unsafe("SELECT id FROM gift_assist.manual_destinations WHERE lower(method) IN ('cash app','cashapp','cash_app','cash-app') AND lower(ltrim(recipient_name,'$'))=lower($1) LIMIT 1",[tag.slice(1)]);
  if(found.length)return {seeded:false};
  const id=randomUUID();
  await sql.unsafe("INSERT INTO gift_assist.manual_destinations(id,label,method,recipient_name,instructions,created_by,is_verified,is_enabled) VALUES($1,$2,'Cash App',$3,$4,$5,false,false)",[id,tag,tag,"Configuration only; ownership not verified, collection OFF.","owner-authorized-2026-11-19"]);
@@ -70,7 +70,7 @@ async function seedOwnerCashApp(){
  return {seeded:true};
 }
 async function cashAppRecipients(){
- const rows=await sql.unsafe("SELECT id,label,recipient_name,is_verified,is_enabled FROM gift_assist.manual_destinations WHERE lower(method)='cash app' ORDER BY created_at ASC,id ASC");
+ const rows=await sql.unsafe("SELECT id,label,recipient_name,is_verified,is_enabled FROM gift_assist.manual_destinations WHERE lower(method) IN ('cash app','cashapp','cash_app','cash-app') ORDER BY created_at ASC,id ASC");
  const selected=await giftGetSetting("cashapp_selected_destination_id");
  return {recipients:rows.map(r=>({id:r.id,label:r.label,cashtag:r.recipient_name.startsWith("$")?r.recipient_name:"$"+r.recipient_name,verified:r.is_verified,enabled:r.is_enabled})),selectedId:typeof selected==="string"?selected:"",collectionEnabled:false};
 }
@@ -97,19 +97,22 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
   let tag;try{tag=normalizeCashTag(body.cashtag)}catch{return json({error:"invalid_cashtag"},400)}
   const actor=giftClean(body.actorId,30);
   if(!/^\d{17,22}$/.test(actor))return json({error:"invalid_actor"},400);
-  const found=await sql.unsafe("SELECT id,recipient_name FROM gift_assist.manual_destinations WHERE lower(method)='cash app' AND lower(ltrim(recipient_name,'$'))=lower($1) LIMIT 1",[tag.slice(1)]);
-  if(found.length)return json({ok:true,duplicate:true,id:found[0].id,cashtag:found[0].recipient_name.startsWith("$")?found[0].recipient_name:"$"+found[0].recipient_name});
-  const id=randomUUID();
-  await sql.unsafe("INSERT INTO gift_assist.manual_destinations(id,label,method,recipient_name,instructions,created_by,is_verified,is_enabled) VALUES($1,$2,'Cash App',$3,$4,$5,false,false)",[id,tag,tag,"Pending verification; planning only. No payment collection.",actor]);
-  await giftAudit(actor,"cashapp_recipient_added","manual_destination",id,{cashtag:tag,verified:false,collectionEnabled:false});
-  return json({ok:true,duplicate:false,id,cashtag:tag});
+  return sql.begin(async tx=>{
+   await tx.unsafe("SELECT pg_advisory_xact_lock(hashtext($1))",["giftassist-cashtag:"+tag.toLowerCase()]);
+   const found=await tx.unsafe("SELECT id,recipient_name FROM gift_assist.manual_destinations WHERE lower(method) IN ('cash app','cashapp','cash_app','cash-app') AND lower(ltrim(recipient_name,'$'))=lower($1) ORDER BY created_at ASC LIMIT 1",[tag.slice(1)]);
+   if(found.length)return json({ok:true,duplicate:true,id:found[0].id,cashtag:found[0].recipient_name.startsWith("$")?found[0].recipient_name:"$"+found[0].recipient_name});
+   const id=randomUUID();
+   await tx.unsafe("INSERT INTO gift_assist.manual_destinations(id,label,method,recipient_name,instructions,created_by,is_verified,is_enabled) VALUES($1,$2,'Cash App',$3,$4,$5,false,false)",[id,tag,tag,"Pending verification; planning only. No payment collection.",actor]);
+   await giftAudit(actor,"cashapp_recipient_added","manual_destination",id,{cashtag:tag,verified:false,collectionEnabled:false},tx);
+   return json({ok:true,duplicate:false,id,cashtag:tag});
+  });
  }
  if(req.method==="POST"&&path==="/internal/gift-assist/cashapp-select"){
   if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
   let body;try{body=await bodyOf(req)}catch{return json({error:"invalid_json"},400)}
   const actor=giftClean(body.actorId,30),id=giftClean(body.destinationId,60);
-  if(!/^\d{17,22}$/.test(actor)||!/^[0-9a-f-]{36}$/i.test(id))return json({error:"invalid_selection"},400);
-  const rows=await sql.unsafe("SELECT id,recipient_name FROM gift_assist.manual_destinations WHERE id=$1 AND lower(method)='cash app'",[id]);
+  if(!/^\d{17,22}$/.test(actor)||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))return json({error:"invalid_selection"},400);
+  const rows=await sql.unsafe("SELECT id,recipient_name FROM gift_assist.manual_destinations WHERE id=$1 AND lower(method) IN ('cash app','cashapp','cash_app','cash-app')",[id]);
   if(!rows.length)return json({error:"cashapp_recipient_not_found"},404);
   await sql.begin(async db=>{
    await db.unsafe("INSERT INTO gift_assist.settings(key,value,updated_by,updated_at) VALUES('cashapp_selected_destination_id',$1::jsonb,$2,now()) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_by=EXCLUDED.updated_by,updated_at=now()",[JSON.stringify(id),actor]);
