@@ -292,7 +292,7 @@ async function ensurePublicDashboard(){
  if(message.author?.id!==C.app||message.id!==C.dash)throw Error("Gift Assist public dashboard ownership could not be verified");
  await rest("PATCH","/channels/"+C.pub+"/messages/"+C.dash,publicDashboardPayload("overview"));
 }
-async function managerCardPayload(view="overview",cashPage=0){
+async function managerCardPayload(view="overview",cashPage=0,cashNotice=""){
  const [messages,health,caseSummary]=await Promise.all([queueMessages(),syncApi("/gift-assist/health").catch(()=>null),syncApi("/internal/gift-assist/case-summary").catch(()=>null)]);
  const cases=messages.map(parseCase).filter(Boolean);
  const cashApp=view==="payments"?await syncApi("/internal/gift-assist/cashapp-recipients").catch(()=>null):null;
@@ -306,6 +306,7 @@ async function managerCardPayload(view="overview",cashPage=0){
  if(pageCount>1)cashControls.push({type:1,components:[btn("Previous","gift:staff:cashapp:page:"+Math.max(0,page-1),2,page===0),btn("Next","gift:staff:cashapp:page:"+Math.min(pageCount-1,page+1),2,page>=pageCount-1)]});
  cashControls.push({type:1,components:[btn("Add Cash App (Admin)","gift:staff:cashapp:add",3)]});
  const cashSummary="### Cash App recipients · configuration only\n**Selected recipient:** "+(selectedRecipient?selectedRecipient.cashtag:"None selected")+"\n**Saved Cash App names:** "+recipients.length+(pageCount>1?" · page "+(page+1)+"/"+pageCount:"")+"\n**Verification:** "+(selectedRecipient?(selectedRecipient.verified?"Verified":"Pending ownership verification"):"No recipient selected")+"\n\nModerators and Administrators can choose an existing recipient below. Only Administrators or the server owner can enter a new $Cashtag. This setting does not send money or activate payment collection. Other payment methods remain available.";
+ const cashMessage=cashSummary+(cashNotice?"\n\n**Last action:** "+clean(cashNotice,160):"");
  const rows=Array.isArray(caseSummary)?caseSummary:[];
  const terminal=new Set(["Declined","Withdrawn","Expired","Member Declined","Completed","Refunded","Partially Refunded"]);
  const activeRows=rows.filter(x=>!terminal.has(String(x.status||"")));
@@ -332,7 +333,7 @@ async function managerCardPayload(view="overview",cashPage=0){
  return {content:"",embeds:[],flags:36864,components:[
   {type:17,accent_color:0x9B7AFF,components:[{type:10,content:"## 🧭 Gift Assist Command Center\n**PRIVATE MODERATOR WORKSPACE · NATIVE DISCORD COMPONENTS V2**\nAll staff controls stay in this private Discord queue; no external command-center website is used."},nav,{type:14,divider:true,spacing:1}]},
   {type:17,accent_color:view==="payments"?0xF2B84B:view==="guide"?0x18C7A5:0x9B7AFF,components:[{type:10,content:detail}]},
-  ...(view==="payments"?[{type:17,accent_color:0x18C7A5,components:[{type:10,content:cashApp?cashSummary:"### Cash App recipients\nRecipient list temporarily unavailable. Collections remain OFF."},...(cashApp?cashControls:[])]}]:[]),
+  ...(view==="payments"?[{type:17,accent_color:0x18C7A5,components:[{type:10,content:cashApp?cashMessage:"### Cash App recipients\nRecipient list temporarily unavailable. Collections remain OFF."},...(cashApp?cashControls:[])]}]:[]),
   {type:17,accent_color:0xF2B84B,components:[{type:10,content:footer}]}
  ],allowed_mentions:SAFE};
 }
@@ -833,7 +834,7 @@ async function handleGiftAssistInteraction(i){
    if(!result.ok)throw Error("Recipient selection could not be saved");
    const list=await syncApi("/internal/gift-assist/cashapp-recipients");
    const index=Array.isArray(list.recipients)?list.recipients.findIndex(r=>r.id===id):-1;
-   await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("payments",Math.max(0,Math.floor(index/25))));
+   await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("payments",Math.max(0,Math.floor(index/25)),"Selected "+result.cashtag+" · setup only, no payments processed."));
    log("cashapp-recipient-selected",{actor:i.user.id,destinationId:id,collectionEnabled:false});
    return;
   }
@@ -846,12 +847,15 @@ async function handleGiftAssistInteraction(i){
   if(i.isModalSubmit()&&cashAdd&&i.guildId===C.guild&&i.channelId===C.queue){
    if(!admin(i)||cashAdd[1]!==minimumBudgetMessageId)throw Error("Only an Administrator or the server owner can register Cash App recipients");
    const tag=normalizeCashtag(i.fields.getTextInputValue("cashapp-tag"));
-   await i.deferReply();
+   await i.deferUpdate();
    const result=await syncApi("/internal/gift-assist/cashapp-add",{actorId:i.user.id,cashtag:tag});
    if(!result.ok)throw Error("Cash App name could not be saved");
-   await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("payments"));
+   const registry=await syncApi("/internal/gift-assist/cashapp-recipients");
+   const recipients=Array.isArray(registry.recipients)?registry.recipients:[];
+   const index=recipients.findIndex(r=>r.id===result.id);
+   const notice=result.duplicate?tag+" is already registered; other recipients were preserved.":tag+" added · ownership verification pending; payments OFF.";
+   await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("payments",Math.max(0,Math.floor(index/25)),notice));
    log("cashapp-recipient-added",{actor:i.user.id,duplicate:Boolean(result.duplicate),collectionEnabled:false});
-   await i.editReply({content:result.duplicate?tag+" is already registered. Existing recipients were preserved.":tag+" registered for moderator selection. Account ownership is not yet verified. Payments remain OFF."});
    return;
   }
   if(i.isButton()&&i.guildId===C.guild&&i.channelId===C.queue&&i.customId==="gift:staff:budget-setting"){
@@ -875,6 +879,12 @@ async function handleGiftAssistInteraction(i){
   }
  }catch(e){
   lastError=clean(e?.message||"unknown error",140);log("interaction-failed",{error:lastError,interaction:i.id});
+  if(i.deferred&&i.guildId===C.guild&&i.channelId===C.queue&&String(i.customId||"").startsWith("gift:staff:cashapp:")){
+   try{
+    await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("payments",0,"Cash App action was not completed. Please retry. Payment collection remains OFF."));
+    return;
+   }catch(error){log("cashapp-error-display-failed",{reason:clean(error?.message||error,140)});}
+  }
   try{
    const message="Gift Assist could not complete that action. Use the inline dashboard in this channel or contact a moderator in the private Gift Assist Queue.";
    if(i.isModalSubmit()){if(i.deferred)await i.editReply({content:message});else if(!i.replied)await i.reply({content:message})}
