@@ -1,4 +1,4 @@
-// Independent internal-only Gift Assist API. No Coaching, Activity frontend, or website routes.
+// Independent internal-only Gift Assist API.
 import postgres from "postgres";
 import {randomUUID,timingSafeEqual} from "node:crypto";
 const env=Bun.env;
