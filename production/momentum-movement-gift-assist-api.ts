@@ -63,7 +63,7 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
  if(!ready)return json({error:"not_ready"},503);
  if(req.method==="GET"&&path==="/gift-assist/health"){
   if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
-  try{const rows=await sql.unsafe("SELECT (SELECT count(*)::int FROM gift_assist.cases) AS cases,(SELECT count(*)::int FROM gift_assist.manual_destinations) AS destinations,(SELECT count(*)::int FROM gift_assist.ledger) AS entries");return json({ok:true,schema:3,oauthConfigured:!!env.GIFT_ASSIST_DISCORD_OAUTH_CLIENT_SECRET,...rows[0]});}catch{return json({ok:false},503);}
+  try{const rows=await sql.unsafe("SELECT (SELECT count(*)::int FROM gift_assist.cases) AS cases,(SELECT count(*)::int FROM gift_assist.manual_destinations) AS destinations,(SELECT count(*)::int FROM gift_assist.ledger) AS entries");return json({ok:true,schema:3,apiAuth:"internal-hmac",...rows[0]});}catch{return json({ok:false},503);}
  }
  if(req.method==="POST"&&path==="/internal/gift-assist/checkout-claim"){
   if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
