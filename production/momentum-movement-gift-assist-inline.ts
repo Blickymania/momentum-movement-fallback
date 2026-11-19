@@ -860,6 +860,34 @@ async function handleGiftAssistInteraction(i){
    const dashboard=String(i.customId||"").match(/^gift:staff:dashboard:(overview|refresh|payments|guide|manual)$/);
    if(dashboard){if(!staff(i))throw Error("Moderator or Administrator access to the Gift Assist queue is required");await i.deferUpdate();const view=dashboard[1]==="refresh"?"overview":dashboard[1];await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload(view));return}
   }
+  const manualContext=i.guildId===C.guild&&i.channelId===C.queue&&i.message?.author?.id===C.app&&i.message?.id===minimumBudgetMessageId;
+  if(i.componentType===3&&manualContext&&i.customId==="gift:staff:manual:pick"){
+   if(!staff(i))throw Error("Moderator or Administrator role required for manual payment review");
+   const id=String(i.values?.[0]||"");
+   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))throw Error("Invalid manual review selection");
+   await i.deferUpdate();
+   await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("manual",0,"",id));
+   return;
+  }
+  const manualDecision=String(i.customId||"").match(/^gift:staff:manual:(info|reject):([0-9a-f-]{36})$/i);
+  if(i.isButton()&&manualContext&&manualDecision){
+   if(!staff(i))throw Error("Moderator or Administrator role required for manual payment review");
+   await i.showModal(manualReviewModal(manualDecision[2],manualDecision[1]));
+   return;
+  }
+  const manualSubmit=String(i.customId||"").match(/^gift:staff:manual:submit:(info|reject):([0-9a-f-]{36})$/i);
+  if(i.isModalSubmit()&&i.guildId===C.guild&&i.channelId===C.queue&&manualSubmit){
+   if(!staff(i))throw Error("Moderator or Administrator role required for manual payment review");
+   const note=clean(i.fields.getTextInputValue("review-note"),500);
+   if(note.length<10)throw Error("Enter a review note with at least 10 characters");
+   await i.deferUpdate();
+   const decision=manualSubmit[1]==="info"?"Needs Information":"Rejected";
+   const result=await syncApi("/internal/gift-assist/manual-review-decide",{actorId:i.user.id,submissionId:manualSubmit[2],decision,note});
+   if(!result.ok||result.ledgerChanged!==false)throw Error("Manual review decision did not save");
+   await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("manual",0,"Recorded "+decision+" for "+result.caseRef+". No payment recorded.",manualSubmit[2]));
+   log("manual-review-decision",{actor:i.user.id,caseRef:result.caseRef,decision,ledgerChanged:false});
+   return;
+  }
   const cashContext=i.guildId===C.guild&&i.channelId===C.queue&&i.message?.author?.id===C.app&&i.message?.id===minimumBudgetMessageId;
   const cashPage=String(i.customId||"").match(/^gift:staff:cashapp:page:(\d{1,3})$/);
   if(i.isButton()&&cashContext&&cashPage){
@@ -947,6 +975,13 @@ async function handleGiftAssistInteraction(i){
   }
  }catch(e){
   lastError=clean(e?.message||"unknown error",140);log("interaction-failed",{error:lastError,interaction:i.id});
+  if(i.deferred&&i.guildId===C.guild&&i.channelId===C.queue&&String(i.customId||"").startsWith("gift:staff:manual:")){
+   try{
+    await rest("PATCH","/channels/"+C.queue+"/messages/"+minimumBudgetMessageId,await managerCardPayload("manual",0,"Review action failed. Retry or contact an Administrator; no payment was recorded."));
+    return;
+   }catch(error){log("manual-review-error-display-failed",{reason:clean(error?.message||error,140)});}
+  }
+
   if(i.deferred&&i.guildId===C.guild&&i.channelId===C.queue&&/^gift:staff:cashapp:case-/.test(String(i.customId||""))){
    try{
     const matched=String(i.customId).match(/(GA-[A-Z0-9-]{8,40})/);
