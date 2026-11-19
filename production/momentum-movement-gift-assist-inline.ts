@@ -243,6 +243,21 @@ function staff(i){
  if(roles.includes(C.mod)||roles.includes(C.admin))return true;
  try{return Boolean(i.member?.permissions&&(BigInt(i.member.permissions)&8n)===8n)}catch{return false}
 }
+function admin(i){
+ if(i.user?.id===C.owner)return true;
+ const roles=i.member?.roles?.cache?[...i.member.roles.cache.keys()]:Array.isArray(i.member?.roles)?i.member.roles:[];
+ if(roles.includes(C.admin))return true;
+ try{return Boolean(i.member?.permissions&&(BigInt(i.member.permissions)&8n)===8n)}catch{return false}
+}
+function normalizeCashtag(value){
+ const raw=String(value??"").normalize("NFKC").trim().replace(/^\$/,"");
+ if(!/^[A-Za-z0-9]{1,20}$/.test(raw)||!/[A-Za-z]/.test(raw))throw Error("Cash App $Cashtag must contain letters/numbers and start with $");
+ return "$"+raw;
+}
+function cashAppAddModal(messageId){
+ return new ModalBuilder().setCustomId("gift:staff:cashapp:add-submit:"+messageId).setTitle("Add Cash App Recipient")
+  .addLabelComponents(textLabel("cashapp-tag","Cash App $Cashtag (Admin only)",TextInputStyle.Short,true,24,"$ShamekaDDowell"));
+}
 function cents(v){const raw=String(v||"").replace(/[$,\s]/g,"");if(!/^\d{1,5}(?:\.\d{1,2})?$/.test(raw))return null;const n=Math.round(Number(raw)*100);return Number.isSafeInteger(n)&&n>=50&&n<=1000000?n:null}
 function money(n){return "$"+(n/100).toFixed(2)}
 async function verify(){
