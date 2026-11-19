@@ -19,7 +19,7 @@ const STRIPE_CASHAPP_ON=STRIPE_ON&&Bun.env.GIFT_ASSIST_STRIPE_CASHPAY_ENABLED===
 const CHECKOUT_BASE=String(Bun.env.GIFT_ASSIST_CHECKOUT_BASE_URL||"https://momentum-movement-gift-assist-production.up.railway.app").replace(/\/$/,"");
 const CURRENCY="USD";
 const SYNC_SECRET=String(Bun.env.GIFT_ASSIST_INTERNAL_SECRET||"");
-const GIFT_API=String(Bun.env.GIFT_ASSIST_API_BASE_URL||"").replace(/[/]+$/,"");if(!GIFT_API)throw new Error("Gift Assist API base URL is not configured");
+const GIFT_API=String(Bun.env.GIFT_ASSIST_API_BASE_URL||"").replace(/[/]+$/,"");if(!GIFT_API.startsWith("http://gift-assist-api.railway.internal:"))throw new Error("Gift Assist API must use its dedicated private endpoint");
 async function syncApi(path,body){
  if(!SYNC_SECRET)throw Error("Gift Assist sync is not configured");
  for(let attempt=0;attempt<3;attempt++){
