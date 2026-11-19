@@ -77,7 +77,7 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
  const url=new URL(req.url),path=url.pathname;
  if(req.method==="OPTIONS")return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-headers":"content-type,x-gift-assist-sync","access-control-allow-methods":"GET,POST,OPTIONS"}});
  if(req.method==="GET"&&path==="/health")return json({service:"Momentum Movement Gift Assist API",status:ready?"ok":"starting",database:"gift-assist-dedicated",ready,paymentsEnabled:false});
- if(req.method==="GET"&&path==="/ready")return json({service:"Momentum Movement Gift Assist API",ready,database:"gift-assist-dedicated",lastError:ready?"":lastError},{status:ready?200:503});
+ if(req.method==="GET"&&path==="/ready")return json({service:"Momentum Movement Gift Assist API",ready,database:"gift-assist-dedicated",lastError:ready?"":lastError},ready?200:503);
  if(!ready)return json({error:"not_ready"},503);
  if(req.method==="GET"&&path==="/gift-assist/health"){
   if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
