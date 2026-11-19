@@ -109,44 +109,134 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
 
  if(req.method==="GET"&&path==="/internal/gift-assist/manual-review-overview"){
   if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
-  const [counts,refundCounts,destinations,latest,manualEnabled,profile]=await Promise.all([
+  const [counts,refundCounts,destinations,latest,manualEnabled,profile,ownerApproval,verifierRoles]=await Promise.all([
    sql.unsafe("SELECT status,COUNT(*)::int AS count FROM gift_assist.manual_submissions GROUP BY status ORDER BY status"),
    sql.unsafe("SELECT status,COUNT(*)::int AS count FROM gift_assist.refund_requests GROUP BY status ORDER BY status"),
    sql.unsafe("SELECT COUNT(*)::int AS registered,COUNT(*) FILTER(WHERE is_verified=true AND is_enabled=true)::int AS approved,COUNT(*) FILTER(WHERE is_verified=false)::int AS unverified FROM gift_assist.manual_destinations"),
-   sql.unsafe("SELECT m.id,m.case_ref,m.status,m.amount_cents,m.created_at,d.method,d.label FROM gift_assist.manual_submissions m JOIN gift_assist.manual_destinations d ON d.id=m.destination_id ORDER BY m.created_at DESC,m.id DESC LIMIT 15"),
-   giftGetSetting("manual_payments_enabled"),
-   giftGetSetting("financial_profile")
+   sql.unsafe("SELECT m.id,m.case_ref,m.status,m.amount_cents,m.created_at,m.transaction_reference,m.paid_at,m.receipt_enc IS NOT NULL AS has_receipt,m.receipt_name,m.receipt_type,m.review_note,m.reviewed_by,m.reviewed_at,d.method,d.label FROM gift_assist.manual_submissions m JOIN gift_assist.manual_destinations d ON d.id=m.destination_id ORDER BY m.created_at DESC,m.id DESC LIMIT 15"),
+   giftGetSetting("manual_payments_enabled"),giftGetSetting("financial_profile"),giftGetSetting("owner_activation_approved"),giftGetSetting("financial_verifier_role_ids")
   ]);
   const pendingStatus=["Submitted — Awaiting Verification","Needs Information","Under Review"];
-  const countFor=status=>Number(counts.find(x=>x.status===status)?.count||0);
-  const pending=pendingStatus.reduce((sum,status)=>sum+countFor(status),0);
-  const isEncryptionReady=/^[0-9a-f]{64}$/i.test(DATA_KEY);
-  const profileReady=giftProfileReady(profile);
-  const approved=Number(destinations[0]?.approved||0);
-  const enabled=manualEnabled===true;
-  return json({
-   ok:true,collectionEnabled:false,manualPaymentsEnabled:enabled,readyToCollect:false,
-   gates:{ownershipVerified:approved>0,financialProfileComplete:profileReady,encryptionKeyConfigured:isEncryptionReady,manualSettingEnabled:enabled,ownerActivationApproved:false},
+  const countFor=status=>Number(counts.find(x=>x.status===status)?.count||0),pending=pendingStatus.reduce((sum,status)=>sum+countFor(status),0);
+  const isEncryptionReady=/^[0-9a-f]{64}$/i.test(DATA_KEY),profileReady=giftProfileReady(profile),approved=Number(destinations[0]?.approved||0),enabled=manualEnabled===true,ownerApproved=ownerApproval===true;
+  const verifierRolesConfigured=Array.isArray(verifierRoles)&&verifierRoles.length>0,manualReady=enabled&&ownerApproved&&profileReady&&isEncryptionReady&&approved>0;
+  return json({ok:true,collectionEnabled:manualReady,manualPaymentsEnabled:enabled,readyToCollect:manualReady,notificationDeliveryConfigured:!!CHECKOUT_BASE,
+   gates:{ownershipVerified:approved>0,financialProfileComplete:profileReady,encryptionKeyConfigured:isEncryptionReady,manualSettingEnabled:enabled,ownerActivationApproved:ownerApproved,financialVerifierRolesConfigured:verifierRolesConfigured},
+   verificationAuthority:verifierRolesConfigured?"Configured financial verifier roles and server owner":"Server owner only; no financial verifier role configured",
    recipients:{registered:Number(destinations[0]?.registered||0),approved,unverified:Number(destinations[0]?.unverified||0)},
    submissions:{pending,total:counts.reduce((sum,x)=>sum+Number(x.count||0),0),byStatus:counts.map(x=>({status:x.status,count:Number(x.count)}))},
    refunds:{total:refundCounts.reduce((sum,x)=>sum+Number(x.count||0),0),byStatus:refundCounts.map(x=>({status:x.status,count:Number(x.count)}))},
-   latest:latest.map(x=>({id:x.id,caseRef:x.case_ref,status:x.status,amountCents:Number(x.amount_cents),method:x.method,methodLabel:x.label,createdAt:x.created_at}))
+   latest:latest.map(x=>({id:x.id,caseRef:x.case_ref,status:x.status,amountCents:Number(x.amount_cents),method:x.method,methodLabel:x.label,transactionReference:x.transaction_reference,paidAt:x.paid_at,hasReceipt:x.has_receipt===true,receiptName:x.receipt_name||"",receiptType:x.receipt_type||"",reviewNote:x.review_note||"",reviewedBy:x.reviewed_by||"",reviewedAt:x.reviewed_at,createdAt:x.created_at}))
   });
+ }
+ if(req.method==="POST"&&path==="/internal/gift-assist/manual-payment-details"){
+  if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
+  let b;try{b=await bodyOf(req)}catch{return json({error:"invalid_json"},400)}
+  const ref=giftClean(b.caseRef,60),uid=String(b.requesterId||"");
+  if(!/^GA-[A-Z0-9-]{8,40}$/.test(ref)||!/^\d{17,22}$/.test(uid))return json({error:"invalid_case"},400);
+  if(!await giftManualReady())return json({error:"manual_payment_not_ready",manualReady:false,collectionEnabled:false},409);
+  const [row]=await sql.unsafe("SELECT c.case_ref,c.requester_id,c.status,c.payment_status,c.amount_cents,a.destination_id,d.method,d.label,d.recipient_name,d.instructions,d.account_details_enc,d.payment_url,d.qr_url,d.is_verified,d.is_enabled FROM gift_assist.cases c LEFT JOIN gift_assist.case_cashapp_assignments a ON a.case_ref=c.case_ref LEFT JOIN gift_assist.manual_destinations d ON d.id=a.destination_id WHERE c.case_ref=$1",[ref]);
+  if(!row||row.requester_id!==uid)return json({error:"case_not_found"},404);
+  if(!["Awaiting Payment","Payment Failed","Payment Cancelled"].includes(row.status)||!["Awaiting Payment","Payment Failed","Payment Cancelled"].includes(row.payment_status))return json({error:"case_not_payable"},409);
+  if(!row.destination_id||row.is_verified!==true||row.is_enabled!==true)return json({error:"assigned_recipient_not_verified"},409);
+  if(!Number.isSafeInteger(Number(row.amount_cents))||Number(row.amount_cents)<50)return json({error:"approved_amount_missing"},409);
+  let accountDetails="";try{if(row.account_details_enc)accountDetails=giftDecrypt(row.account_details_enc).toString("utf8")}catch{return json({error:"recipient_details_unavailable"},503)}
+  return json({ok:true,manualReady:true,collectionEnabled:true,caseRef:ref,amountCents:Number(row.amount_cents),method:row.method,recipient:row.recipient_name,label:row.label,instructions:row.instructions,paymentUrl:row.payment_url||"",qrUrl:row.qr_url||"",accountDetails});
+ }
+ if(req.method==="POST"&&path==="/internal/gift-assist/manual-payment-submit"){
+  if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
+  let b;try{b=await bodyOf(req)}catch{return json({error:"invalid_json"},400)}
+  const ref=giftClean(b.caseRef,60),uid=String(b.requesterId||""),amount=Number(b.amountCents),transactionReference=giftClean(b.transactionReference,180),paidAt=Date.parse(String(b.paidAt||""));
+  if(!/^GA-[A-Z0-9-]{8,40}$/.test(ref)||!/^\d{17,22}$/.test(uid)||!Number.isSafeInteger(amount)||amount<50||transactionReference.length<4||!Number.isFinite(paidAt)||paidAt>Date.now()+300000)return json({error:"invalid_manual_payment_submission"},400);
+  if(!await giftManualReady())return json({error:"manual_payment_not_ready",manualReady:false,collectionEnabled:false},409);
+  let receiptEnc=null,receiptName="",receiptType="";
+  if(b.receiptBase64){
+   receiptType=giftClean(b.receiptType,80);receiptName=giftClean(b.receiptName,120).replace(/[\\\\/]/g,"_");
+   if(!["image/png","image/jpeg","image/webp","application/pdf"].includes(receiptType)||typeof b.receiptBase64!=="string"||b.receiptBase64.length>4300000||!/^[A-Za-z0-9+/]+={0,2}$/.test(b.receiptBase64))return json({error:"invalid_receipt"},400);
+   const receiptBytes=Buffer.from(b.receiptBase64,"base64");if(!receiptBytes.length||receiptBytes.length>3200000)return json({error:"receipt_too_large"},413);
+   try{receiptEnc=giftEncrypt(receiptBytes)}catch{return json({error:"receipt_encryption_unavailable"},503)}
+  }
+  let result;
+  try{
+   result=await sql.begin(async db=>{
+    const [row]=await db.unsafe("SELECT c.case_ref,c.requester_id,c.status,c.payment_status,c.amount_cents,a.destination_id,d.method,d.recipient_name,d.is_verified,d.is_enabled FROM gift_assist.cases c LEFT JOIN gift_assist.case_cashapp_assignments a ON a.case_ref=c.case_ref LEFT JOIN gift_assist.manual_destinations d ON d.id=a.destination_id WHERE c.case_ref=$1 FOR UPDATE OF c",[ref]);
+    if(!row||row.requester_id!==uid)return {error:"case_not_found",status:404};
+    if(!["Awaiting Payment","Payment Failed","Payment Cancelled"].includes(row.status)||!["Awaiting Payment","Payment Failed","Payment Cancelled"].includes(row.payment_status))return {error:"case_not_payable",status:409};
+    if(Number(row.amount_cents)!==amount)return {error:"amount_mismatch",status:409};
+    if(!row.destination_id||row.is_verified!==true||row.is_enabled!==true)return {error:"assigned_recipient_not_verified",status:409};
+    const [existing]=await db.unsafe("SELECT id,status FROM gift_assist.manual_submissions WHERE case_ref=$1 AND status IN ('Submitted — Awaiting Verification','Under Review','Needs Information') ORDER BY created_at DESC LIMIT 1 FOR UPDATE",[ref]);
+    if(existing&&existing.status!=="Needs Information")return {error:"submission_already_pending",status:409};
+    const submissionId=existing?.id||randomUUID();
+    if(existing)await db.unsafe("UPDATE gift_assist.manual_submissions SET amount_cents=$1,transaction_reference=$2,paid_at=$3,status='Submitted — Awaiting Verification',receipt_enc=$4,receipt_name=$5,receipt_type=$6,reviewed_by=NULL,reviewed_at=NULL,review_note='',updated_at=now() WHERE id=$7",[amount,transactionReference,new Date(paidAt).toISOString(),receiptEnc,receiptName,receiptType,submissionId]);
+    else await db.unsafe("INSERT INTO gift_assist.manual_submissions(id,case_ref,requester_id,destination_id,amount_cents,transaction_reference,paid_at,status,receipt_enc,receipt_name,receipt_type) VALUES($1,$2,$3,$4,$5,$6,$7,'Submitted — Awaiting Verification',$8,$9,$10)",[submissionId,ref,uid,row.destination_id,amount,transactionReference,new Date(paidAt).toISOString(),receiptEnc,receiptName,receiptType]);
+    const note="Manual payment claim submitted; awaiting independent receipt verification. Paid at "+new Date(paidAt).toISOString()+(receiptEnc?"; receipt attached.":".");
+    await db.unsafe("UPDATE gift_assist.cases SET status='Manual Verification Pending',payment_status='Manual Verification Pending',payment_provider='Manual Cash App',provider_reference=$1,staff_note=$2,updated_at=now() WHERE case_ref=$3",[transactionReference,note,ref]);
+    const notification={notificationId:randomUUID(),caseRef:ref,requesterId:uid,status:"Manual Verification Pending",paymentStatus:"Manual Verification Pending",paymentProvider:"Manual Cash App",providerReference:transactionReference,note};
+    await giftQueueNotification(notification,db);
+    await giftAudit(uid,"manual_payment_claim_submitted","manual_submission",submissionId,{caseRef:ref,amountCents:amount,transactionReference,receiptAttached:!!receiptEnc,financialTransfer:false},db);
+    return {ok:true,submissionId,caseRef:ref,status:"Submitted — Awaiting Verification",collectionEnabled:false,ledgerChanged:false,notification};
+   });
+  }catch(error){if(error?.code==="23505")return json({error:"transaction_reference_already_used"},409);throw error}
+  if(result.error)return json({error:result.error},result.status);
+  const notificationDelivered=await giftNotifyBot(result.notification);
+  return json({ok:true,submissionId:result.submissionId,caseRef:result.caseRef,status:result.status,collectionEnabled:false,ledgerChanged:false,notificationDelivered});
  }
  if(req.method==="POST"&&path==="/internal/gift-assist/manual-review-decide"){
   if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
   let b;try{b=await bodyOf(req)}catch{return json({error:"invalid_json"},400)}
   const id=giftClean(b.submissionId,60),actor=giftClean(b.actorId,30),decision=giftClean(b.decision,40),note=giftClean(b.note,500);
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)||!/^\d{17,22}$/.test(actor)||!["Needs Information","Rejected"].includes(decision)||note.length<10)return json({error:"invalid_review_decision"},400);
-  return sql.begin(async db=>{
-   const [record]=await db.unsafe("SELECT m.id,m.case_ref,m.status,c.payment_status FROM gift_assist.manual_submissions m JOIN gift_assist.cases c ON c.case_ref=m.case_ref WHERE m.id=$1 FOR UPDATE OF m",[id]);
-   if(!record)return json({error:"submission_not_found"},404);
-   if(!["Submitted — Awaiting Verification","Under Review","Needs Information"].includes(record.status))return json({error:"submission_not_reviewable"},409);
-   if(record.payment_status==="Paid"||record.payment_status==="Refunded")return json({error:"case_payment_finalized"},409);
+  const result=await sql.begin(async db=>{
+   const [record]=await db.unsafe("SELECT m.id,m.case_ref,m.status,m.transaction_reference,m.requester_id,c.payment_status FROM gift_assist.manual_submissions m JOIN gift_assist.cases c ON c.case_ref=m.case_ref WHERE m.id=$1 FOR UPDATE OF m,c",[id]);
+   if(!record)return {error:"submission_not_found",status:404};
+   if(!["Submitted — Awaiting Verification","Under Review","Needs Information"].includes(record.status))return {error:"submission_not_reviewable",status:409};
+   if(record.payment_status==="Paid"||record.payment_status==="Refunded")return {error:"case_payment_finalized",status:409};
    await db.unsafe("UPDATE gift_assist.manual_submissions SET status=$1,reviewed_by=$2,reviewed_at=now(),review_note=$3,updated_at=now() WHERE id=$4",[decision,actor,note,id]);
+   const nextStatus=decision==="Rejected"?"Payment Failed":"Manual Verification Pending",nextPaymentStatus=decision==="Rejected"?"Payment Failed":"Manual Verification Pending";
+   await db.unsafe("UPDATE gift_assist.cases SET status=$1,payment_status=$2,staff_note=$3,updated_at=now() WHERE case_ref=$4",[nextStatus,nextPaymentStatus,note,record.case_ref]);
+   const notification={notificationId:randomUUID(),caseRef:record.case_ref,requesterId:record.requester_id,status:nextStatus,paymentStatus:nextPaymentStatus,paymentProvider:"Manual Cash App",providerReference:record.transaction_reference,note};
+   await giftQueueNotification(notification,db);
    await giftAudit(actor,"manual_submission_reviewed","manual_submission",id,{caseRef:record.case_ref,decision,note,financialTransfer:false},db);
-   return json({ok:true,submissionId:id,caseRef:record.case_ref,status:decision,collectionEnabled:false,ledgerChanged:false});
+   return {ok:true,submissionId:id,caseRef:record.case_ref,status:decision,collectionEnabled:false,ledgerChanged:false,notification};
   });
+  if(result.error)return json({error:result.error},result.status);
+  const notificationDelivered=await giftNotifyBot(result.notification);
+  return json({ok:true,submissionId:result.submissionId,caseRef:result.caseRef,status:result.status,collectionEnabled:false,ledgerChanged:false,notificationDelivered});
+ }
+ if(req.method==="POST"&&path==="/internal/gift-assist/manual-review-verify"){
+  if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
+  let b;try{b=await bodyOf(req)}catch{return json({error:"invalid_json"},400)}
+  const id=giftClean(b.submissionId,60),actor=giftClean(b.actorId,30),reference=giftClean(b.transactionReference,180),note=giftClean(b.verificationNote,500),amount=Number(b.confirmedAmountCents);
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)||actor!==OWNER_ID||b.independentlyVerified!==true||!Number.isSafeInteger(amount)||amount<50||reference.length<4||note.length<20)return json({error:"owner_verification_required"},403);
+  if(!await giftManualReady())return json({error:"manual_payment_not_ready",collectionEnabled:false},409);
+  const result=await sql.begin(async db=>{
+   const [record]=await db.unsafe("SELECT m.id,m.case_ref,m.requester_id,m.destination_id,m.amount_cents,m.transaction_reference,m.paid_at,m.status,c.amount_cents AS case_amount_cents,c.payment_status,d.method,d.recipient_name,d.is_verified,d.is_enabled FROM gift_assist.manual_submissions m JOIN gift_assist.cases c ON c.case_ref=m.case_ref JOIN gift_assist.manual_destinations d ON d.id=m.destination_id WHERE m.id=$1 FOR UPDATE OF m,c",[id]);
+   if(!record)return {error:"submission_not_found",status:404};
+   if(!["Submitted — Awaiting Verification","Under Review"].includes(record.status)||record.payment_status!=="Manual Verification Pending")return {error:"submission_not_reviewable",status:409};
+   if(record.transaction_reference!==reference||Number(record.amount_cents)!==amount||Number(record.case_amount_cents)!==amount)return {error:"verification_mismatch",status:409};
+   if(record.is_verified!==true||record.is_enabled!==true)return {error:"recipient_not_verified",status:409};
+   const [duplicate]=await db.unsafe("SELECT id FROM gift_assist.ledger WHERE provider_event_id=$1 OR (case_ref=$2 AND direction='inflow') LIMIT 1",["manual:"+id,record.case_ref]);
+   if(duplicate)return {error:"payment_already_recorded",status:409};
+   await db.unsafe("INSERT INTO gift_assist.ledger(id,case_ref,requester_id,direction,method,provider,amount_cents,fee_cents,net_cents,currency,status,transaction_reference,provider_event_id,recorded_by,details) VALUES($1,$2,$3,'inflow','Manual','Cash App',$4,NULL,$4,'USD','Paid',$5,$6,$7,$8::jsonb)",[randomUUID(),record.case_ref,record.requester_id,amount,reference,"manual:"+id,actor,JSON.stringify({submissionId:id,destinationId:record.destination_id,paidAt:record.paid_at,independentlyVerified:true,verificationNote:note})]);
+   await db.unsafe("UPDATE gift_assist.manual_submissions SET status='Verified',reviewed_by=$1,reviewed_at=now(),review_note=$2,updated_at=now() WHERE id=$3",[actor,note,id]);
+   const caseNote="Manual Cash App payment independently verified by the server owner. "+note;
+   await db.unsafe("UPDATE gift_assist.cases SET status='Payment Received — Awaiting Fulfillment',payment_status='Paid',payment_provider='Manual Cash App',provider_reference=$1,staff_note=$2,updated_at=now() WHERE case_ref=$3",[reference,caseNote,record.case_ref]);
+   const notification={notificationId:randomUUID(),caseRef:record.case_ref,requesterId:record.requester_id,status:"Payment Received — Awaiting Fulfillment",paymentStatus:"Paid",paymentProvider:"Manual Cash App",providerReference:reference,note:caseNote};
+   await giftQueueNotification(notification,db);
+   await giftAudit(actor,"manual_payment_verified","manual_submission",id,{caseRef:record.case_ref,amountCents:amount,transactionReference:reference,independentlyVerified:true,financialTransfer:false},db);
+   return {ok:true,submissionId:id,caseRef:record.case_ref,status:"Paid",ledgerChanged:true,notification};
+  });
+  if(result.error)return json({error:result.error},result.status);
+  const notificationDelivered=await giftNotifyBot(result.notification);
+  return json({ok:true,submissionId:result.submissionId,caseRef:result.caseRef,status:result.status,ledgerChanged:true,notificationDelivered});
+ }
+ if(req.method==="GET"&&path==="/internal/gift-assist/manual-review-receipt"){
+  if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
+  const url=new URL(req.url),id=giftClean(url.searchParams.get("submissionId"),60),actor=giftClean(url.searchParams.get("actorId"),30);
+  if(actor!==OWNER_ID)return json({error:"owner_only"},403);
+  const [row]=await sql.unsafe("SELECT receipt_enc,receipt_name,receipt_type FROM gift_assist.manual_submissions WHERE id=$1",[id]);
+  if(!row?.receipt_enc)return json({error:"receipt_not_found"},404);
+  try{return json({ok:true,receiptName:row.receipt_name,receiptType:row.receipt_type,receiptBase64:giftDecrypt(row.receipt_enc).toString("base64")})}catch{return json({error:"receipt_decryption_failed"},503)}
  }
  if(req.method==="GET"&&path==="/internal/gift-assist/cashapp-recipients"){
   if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
