@@ -48,7 +48,7 @@ async function importCases(){
   before=messages.at(-1).id;
  }
  const health=await syncApi("/gift-assist/health");
- log("case-import-verified",{scannedCases:count,schema:health.schema,databaseCases:health.cases,ledgerEntries:health.entries,manualDestinations:health.destinations,oauthConfigured:health.oauthConfigured});
+ log("case-import-verified",{scannedCases:count,schema:health.schema,databaseCases:health.cases,ledgerEntries:health.entries,manualDestinations:health.destinations,apiAuth:health.apiAuth});
 }
 async function resumePendingNotifications(){
  const rows=await syncApi("/internal/gift-assist/notifications");
@@ -292,7 +292,7 @@ async function managerCardPayload(view="overview"){
  const activeCount=count(["Member Approved — Payments Off","Awaiting Payment","Payment Failed","Payment Cancelled","Payment Received — Awaiting Fulfillment","Manual Verification Pending","Partially Paid"]);
  const closedCount=count(["Declined","Withdrawn","Expired","Member Declined","Completed","Refunded","Partially Refunded"]);
  const dbSummary=health
-  ?"**Database:** Connected · schema v"+String(health.schema||"?")+"\n**Stored case records:** "+String(health.cases??"?")+"\n**Active database cases:** "+(Array.isArray(caseSummary)?String(activeRows.length):"Not checked")+"\n**Visible queue cards:** "+cases.length+"\n**Ledger entries:** "+String(health.entries??"?")+"\n**Manual destinations:** "+String(health.destinations??"?")+"\n**OAuth2:** "+(health.oauthConfigured?"Configured":"Not confirmed")
+  ?"**Database:** Connected · schema v"+String(health.schema||"?")+"\n**Stored case records:** "+String(health.cases??"?")+"\n**Active database cases:** "+(Array.isArray(caseSummary)?String(activeRows.length):"Not checked")+"\n**Visible queue cards:** "+cases.length+"\n**Ledger entries:** "+String(health.entries??"?")+"\n**Manual destinations:** "+String(health.destinations??"?")+"\n**Discord authorization:** Native Discord interactions · Owner/Moderator/Administrator role checks"
   :"**Backend health:** Unavailable — refresh to retry.";
  const mismatch=Array.isArray(caseSummary)&&(activeRows.length!==activeCards.length||locationMismatch>0)
   ?"\n\n⚠️ **Reconciliation check:** "+activeRows.length+" active database case(s), "+activeCards.length+" active queue card(s), "+locationMismatch+" case-location mismatch(es). Review the affected record before closing or deleting it."
