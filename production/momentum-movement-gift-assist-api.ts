@@ -36,6 +36,7 @@ async function giftNotifyBot(body){
 const giftAssistDdl = [
 "CREATE SCHEMA IF NOT EXISTS gift_assist",
 "CREATE TABLE IF NOT EXISTS gift_assist.cases (case_ref text PRIMARY KEY,requester_id text NOT NULL,creator text NOT NULL DEFAULT '',target text NOT NULL DEFAULT '',goal text NOT NULL DEFAULT '',budget_cents integer,amount_cents integer,plan text NOT NULL DEFAULT '',status text NOT NULL,payment_status text NOT NULL DEFAULT 'Not Started',payment_provider text NOT NULL DEFAULT 'Not selected',provider_reference text NOT NULL DEFAULT '',payment_events jsonb NOT NULL DEFAULT '[]'::jsonb,staff_note text NOT NULL DEFAULT '',discord_message_id text NOT NULL DEFAULT '',created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())",
+"CREATE TABLE IF NOT EXISTS gift_assist.case_cashapp_assignments (case_ref text PRIMARY KEY REFERENCES gift_assist.cases(case_ref),destination_id text NOT NULL REFERENCES gift_assist.manual_destinations(id),assigned_by text NOT NULL,assigned_at timestamptz NOT NULL DEFAULT now())",
 "CREATE TABLE IF NOT EXISTS gift_assist.manual_destinations (id text PRIMARY KEY,label text NOT NULL,method text NOT NULL,recipient_name text NOT NULL,instructions text NOT NULL,account_details_enc text NOT NULL DEFAULT '',payment_url text NOT NULL DEFAULT '',qr_url text NOT NULL DEFAULT '',is_verified boolean NOT NULL DEFAULT false,is_enabled boolean NOT NULL DEFAULT false,created_by text NOT NULL,verified_by text,verified_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())",
 "CREATE TABLE IF NOT EXISTS gift_assist.manual_submissions (id text PRIMARY KEY,case_ref text NOT NULL REFERENCES gift_assist.cases(case_ref),requester_id text NOT NULL,destination_id text NOT NULL REFERENCES gift_assist.manual_destinations(id),amount_cents integer NOT NULL,transaction_reference text NOT NULL,paid_at timestamptz NOT NULL,status text NOT NULL DEFAULT 'Submitted — Awaiting Verification',receipt_enc text,receipt_name text,receipt_type text,reviewed_by text,reviewed_at timestamptz,review_note text,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())",
 "CREATE UNIQUE INDEX IF NOT EXISTS gift_assist_manual_tx_unique ON gift_assist.manual_submissions(destination_id,LOWER(transaction_reference))",
@@ -119,6 +120,31 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
    await giftAudit(actor,"cashapp_recipient_selected","manual_destination",id,{cashtag:rows[0].recipient_name,collectionEnabled:false},db);
   });
   return json({ok:true,selectedId:id,cashtag:rows[0].recipient_name.startsWith("$")?rows[0].recipient_name:"$"+rows[0].recipient_name,collectionEnabled:false});
+ }
+ if(req.method==="POST"&&path==="/internal/gift-assist/cashapp-case-get"){
+  if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
+  let body;try{body=await bodyOf(req)}catch{return json({error:"invalid_json"},400)}
+  const ref=giftClean(body.caseRef,60);
+  if(!/^GA-[A-Z0-9-]{8,40}$/.test(ref))return json({error:"invalid_case_ref"},400);
+  const [record]=await sql.unsafe("SELECT c.case_ref,c.status,c.payment_status,a.destination_id,d.recipient_name,d.is_verified FROM gift_assist.cases c LEFT JOIN gift_assist.case_cashapp_assignments a ON a.case_ref=c.case_ref LEFT JOIN gift_assist.manual_destinations d ON d.id=a.destination_id WHERE c.case_ref=$1",[ref]);
+  if(!record)return json({error:"case_not_found"},404);
+  return json({caseRef:ref,assignedId:record.destination_id||"",cashtag:record.recipient_name?normalizeCashTag(record.recipient_name):"",verified:record.is_verified===true,collectionEnabled:false});
+ }
+ if(req.method==="POST"&&path==="/internal/gift-assist/cashapp-case-assign"){
+  if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
+  let body;try{body=await bodyOf(req)}catch{return json({error:"invalid_json"},400)}
+  const ref=giftClean(body.caseRef,60),actor=giftClean(body.actorId,30),id=giftClean(body.destinationId,60);
+  if(!/^GA-[A-Z0-9-]{8,40}$/.test(ref)||!/^\d{17,22}$/.test(actor)||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))return json({error:"invalid_case_assignment"},400);
+  return sql.begin(async db=>{
+   const [record]=await db.unsafe("SELECT case_ref,status,payment_status FROM gift_assist.cases WHERE case_ref=$1 FOR UPDATE",[ref]);
+   if(!record)return json({error:"case_not_found"},404);
+   if(!["New","Reviewing","Need Info","Awaiting Member Approval","Member Approved — Payments Off"].includes(record.status)||record.payment_status!=="Not Started")return json({error:"case_not_eligible_for_recipient_assignment"},409);
+   const [recipient]=await db.unsafe("SELECT id,recipient_name,is_verified FROM gift_assist.manual_destinations WHERE id=$1 AND lower(method) IN ('cash app','cashapp','cash_app','cash-app')",[id]);
+   if(!recipient)return json({error:"cashapp_recipient_not_found"},404);
+   await db.unsafe("INSERT INTO gift_assist.case_cashapp_assignments(case_ref,destination_id,assigned_by,assigned_at) VALUES($1,$2,$3,now()) ON CONFLICT(case_ref) DO UPDATE SET destination_id=EXCLUDED.destination_id,assigned_by=EXCLUDED.assigned_by,assigned_at=now()",[ref,id,actor]);
+   await giftAudit(actor,"cashapp_case_recipient_assigned","case",ref,{destinationId:id,cashtag:normalizeCashTag(recipient.recipient_name),verified:recipient.is_verified===true,collectionEnabled:false},db);
+   return json({ok:true,caseRef:ref,selectedId:id,cashtag:normalizeCashTag(recipient.recipient_name),verified:recipient.is_verified===true,collectionEnabled:false});
+  });
  }
  if(req.method==="POST"&&path==="/internal/gift-assist/checkout-claim"){
   if(!giftInternalAuthorized(req))return json({error:"forbidden"},403);
