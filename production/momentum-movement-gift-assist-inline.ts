@@ -166,6 +166,7 @@ function caseButtons(ref,status){
  if(["Manual Verification Pending","Partially Paid"].includes(status))return [{type:1,components:[btn("Finance Review Pending","gift:staff:closed:"+ref,2,true)]}];
  return [{type:1,components:[btn("Case Closed","gift:staff:closed:"+ref,2,true)]}];
 }
+function cashCaseAssignable(d){return ["New","Reviewing","Need Info","Awaiting Member Approval","Member Approved — Payments Off"].includes(d.status)&&(!d.paymentStatus||d.paymentStatus==="Not Started")}
 function renderCase(d){return [
  "🎁 **MOMENTUM MOVEMENT GIFT ASSIST — STAFF CASE**",
  "**Case Ref:** "+d.ref,"**Requester ID:** "+d.requesterId,"**Requester:** <@"+d.requesterId+">",
@@ -175,13 +176,14 @@ function renderCase(d){return [
  "**Payment Status:** "+(d.paymentStatus||"Not Started"),"**Payment Provider:** "+(d.paymentProvider||"Not selected"),
  "**Payment Reference:** "+(d.providerReference||"Not assigned"),"**Payment Events:** "+(d.paymentEvents||"None"),
  "**Staff Note:** "+(d.note||"None"),
+ "**Planned Cash App recipient:** "+(d.cashAppRecipient||"Not assigned")+(d.cashAppRecipient?" (planning only; payments OFF)":""),
  "**Payments:** "+(PAYMENTS_ENABLED?"Enabled — provider checks and owner gates passed":"OFF — no checkout links or payments; do not collect money"),
  "-# Private staff record. Never store card details, bank details, passwords, or provider credentials here."
 ].join("\n")}
 function parseCase(m){
  const s=String(m?.content||(m?.embeds||[]).map(e=>e.description||"").join("\n"));if(!s.startsWith("🎁 **MOMENTUM MOVEMENT GIFT ASSIST — STAFF CASE**"))return null;
  function get(label){const p="**"+label+":** ";const line=s.split("\n").find(x=>x.startsWith(p));return line?line.slice(p.length):""}
- const d={ref:get("Case Ref"),requesterId:get("Requester ID"),creator:get("Creator"),target:get("Target LIVE / Date"),goal:get("Gift Idea / Goal"),budget:get("Maximum Budget (member supplied)"),deadline:get("Deadline"),status:get("Status"),amount:get("Proposed Amount"),plan:get("Proposed Plan"),paymentStatus:get("Payment Status"),paymentProvider:get("Payment Provider"),providerReference:get("Payment Reference"),paymentEvents:get("Payment Events"),note:get("Staff Note"),messageId:m.id};
+ const d={ref:get("Case Ref"),requesterId:get("Requester ID"),creator:get("Creator"),target:get("Target LIVE / Date"),goal:get("Gift Idea / Goal"),budget:get("Maximum Budget (member supplied)"),deadline:get("Deadline"),status:get("Status"),amount:get("Proposed Amount"),plan:get("Proposed Plan"),paymentStatus:get("Payment Status"),paymentProvider:get("Payment Provider"),providerReference:get("Payment Reference"),paymentEvents:get("Payment Events"),note:get("Staff Note"),cashAppRecipient:(get("Planned Cash App recipient").split(" (planning only")[0]==="Not assigned"?"":get("Planned Cash App recipient").split(" (planning only")[0]),messageId:m.id};
  if(!/^GA-[A-Z0-9-]{8,40}$/.test(d.ref)||!/^\d{17,22}$/.test(d.requesterId))return null;return d;
 }
 async function queueMessages(){
@@ -194,8 +196,8 @@ async function queueMessages(){
   before=page.at(-1).id;
  }
 }
-function casePayload(data){
- const text=renderCase(data);
+function casePayload(data,picker=null,notice=""){
+ const text=renderCase(data)+(notice?"\n**Last action:** "+clean(notice,160):"");
  if(text.length>6000)throw Error("Case exceeds Discord embed limits");
  const lines=text.split("\n"),descriptions=[];
  let description="";
@@ -207,7 +209,26 @@ function casePayload(data){
   description+=(description?"\n":"")+line;
  }
  if(description)descriptions.push(description);
- return {content:"",embeds:descriptions.map(description=>({description,color:3636720})),components:caseButtons(data.ref,data.status),allowed_mentions:SAFE};
+ const components=caseButtons(data.ref,data.status);
+ if(cashCaseAssignable(data)){
+  components.push({type:1,components:[btn("Assign Cash App","gift:staff:cashapp:case-open:"+data.ref,2)]});
+  if(picker?.options?.length){
+   components.push({type:1,components:[{type:3,custom_id:"gift:staff:cashapp:case-select:"+data.ref,placeholder:"Select Cash App recipient for this case · planning only",min_values:1,max_values:1,options:picker.options}]});
+   if(picker.pages>1)components.push({type:1,components:[btn("Previous","gift:staff:cashapp:case-page:"+data.ref+":"+Math.max(0,picker.page-1),2,picker.page===0),btn("Next","gift:staff:cashapp:case-page:"+data.ref+":"+Math.min(picker.pages-1,picker.page+1),2,picker.page>=picker.pages-1)]});
+  }
+ }
+ return {content:"",embeds:descriptions.map(description=>({description,color:3636720})),components,allowed_mentions:SAFE};
+}
+async function caseCashAppPicker(ref,page=0){
+ const [registry,assigned]=await Promise.all([
+  syncApi("/internal/gift-assist/cashapp-recipients"),
+  syncApi("/internal/gift-assist/cashapp-case-get",{caseRef:ref})
+ ]);
+ const recipients=Array.isArray(registry?.recipients)?registry.recipients:[];
+ const pages=Math.max(1,Math.ceil(recipients.length/25));
+ const current=Math.min(Math.max(0,Number(page)||0),pages-1);
+ const options=recipients.slice(current*25,(current+1)*25).map(r=>({label:String(r.cashtag||r.label).slice(0,100),value:r.id,description:r.verified?"Verified · planning only":"Unverified · planning only",default:r.id===assigned.assignedId}));
+ return {options,pages,page:current,assigned};
 }
 async function findCase(ref){
  try{
