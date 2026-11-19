@@ -63,8 +63,11 @@ async function migrateFromSource(){
   if(from.name===to.name&&from.host===to.host&&from.port===to.port)throw new Error("Gift Assist source and destination databases are identical; isolation check failed");
   const tables=["cases","manual_destinations","manual_submissions","ledger","refund_requests","provider_payments","notification_outbox","checkout_attempts","settings","audit_events"];
   const result={};for(const table of tables){
-   const rows=await source.unsafe("SELECT row_to_json(t)::text AS row_json FROM gift_assist."+table+" t");
-   for(const item of rows)await sql.unsafe("INSERT INTO gift_assist."+table+" SELECT * FROM jsonb_populate_record(NULL::gift_assist."+table+",$1::jsonb) ON CONFLICT DO NOTHING",[item.row_json]);
+   const columns=await source.unsafe("SELECT column_name,data_type FROM information_schema.columns WHERE table_schema='gift_assist' AND table_name=$1 ORDER BY ordinal_position",[table]);
+   const rows=await source.unsafe("SELECT * FROM gift_assist."+table);
+   const names=columns.map(c=>c.column_name),placeholders=columns.map((c,i)=>"$"+(i+1)+(c.data_type==="jsonb"?"::jsonb":""));
+   const insert="INSERT INTO gift_assist."+table+" ("+names.join(",")+") VALUES ("+placeholders.join(",")+") ON CONFLICT DO NOTHING";
+   for(const row of rows){const values=columns.map(c=>c.data_type==="jsonb"?JSON.stringify(row[c.column_name]):row[c.column_name]);await sql.unsafe(insert,values);}
    const [count]=await sql.unsafe("SELECT COUNT(*)::int AS count FROM gift_assist."+table);
    if(Number(count.count)<rows.length)throw new Error("Gift Assist data migration count mismatch for "+table);
    result[table]={source:rows.length,destination:Number(count.count)};
