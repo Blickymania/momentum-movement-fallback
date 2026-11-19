@@ -54,28 +54,7 @@ const giftAssistDdl = [
 "INSERT INTO gift_assist.settings(key,value) VALUES ('financial_profile','{}'::jsonb) ON CONFLICT DO NOTHING"
 ];
 await sql.begin(async tx=>{for(const statement of giftAssistDdl)await tx.unsafe(statement);});
-async function migrateFromSource(){
- const sourceUrl=String(env.MIGRATION_SOURCE_DATABASE_URL||"").trim();if(!sourceUrl)return {migrated:false,reason:"no-source-configured"};
- const source=postgres(sourceUrl,{max:2,idle_timeout:10,connect_timeout:15});
- try{
-  const [from]=await source.unsafe("SELECT current_database() AS name,inet_server_addr()::text AS host,inet_server_port() AS port");
-  const [to]=await sql.unsafe("SELECT current_database() AS name,inet_server_addr()::text AS host,inet_server_port() AS port");
-  if(from.name===to.name&&from.host===to.host&&from.port===to.port)throw new Error("Gift Assist source and destination databases are identical; isolation check failed");
-  const tables=["cases","manual_destinations","manual_submissions","ledger","refund_requests","provider_payments","notification_outbox","checkout_attempts","settings","audit_events"];
-  const result={};for(const table of tables){
-   const columns=await source.unsafe("SELECT column_name,data_type FROM information_schema.columns WHERE table_schema='gift_assist' AND table_name=$1 ORDER BY ordinal_position",[table]);
-   const rows=await source.unsafe("SELECT * FROM gift_assist."+table);
-   const names=columns.map(c=>c.column_name),placeholders=columns.map((c,i)=>"$"+(i+1)+(c.data_type==="jsonb"?"::jsonb":""));
-   const insert="INSERT INTO gift_assist."+table+" ("+names.join(",")+") VALUES ("+placeholders.join(",")+") ON CONFLICT DO NOTHING";
-   for(const row of rows){const values=columns.map(c=>c.data_type==="jsonb"?JSON.stringify(row[c.column_name]):row[c.column_name]);await sql.unsafe(insert,values);}
-   const [count]=await sql.unsafe("SELECT COUNT(*)::int AS count FROM gift_assist."+table);
-   if(Number(count.count)<rows.length)throw new Error("Gift Assist data migration count mismatch for "+table);
-   result[table]={source:rows.length,destination:Number(count.count)};
-  }
-  return {migrated:true,source:{database:from.name,host:from.host,port:from.port},destination:{database:to.name,host:to.host,port:to.port},tables:result};
- }finally{await source.end({timeout:5});}
-}
-let ready=false,lastError="",migrationResult=null;
+let ready=false,lastError="";
 const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
  const url=new URL(req.url),path=url.pathname;
  if(req.method==="OPTIONS")return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-headers":"content-type,x-gift-assist-sync","access-control-allow-methods":"GET,POST,OPTIONS"}});
@@ -205,9 +184,8 @@ const server=Bun.serve({port:Number(env.PORT||3000),async fetch(req){
  return json({error:"not_found"},404);
 }});
 try{
- migrationResult=await migrateFromSource();
  const [db]=await sql.unsafe("SELECT current_database() AS database,inet_server_addr()::text AS host,inet_server_port() AS port");
  ready=true;
- console.log(JSON.stringify({event:"gift-assist-api-ready",service:"Momentum Movement Gift Assist API",database:db.database,host:db.host,port:db.port,migration:migrationResult,paymentsEnabled:false}));
+ console.log(JSON.stringify({event:"gift-assist-api-ready",service:"Momentum Movement Gift Assist API",database:db.database,host:db.host,port:db.port,paymentsEnabled:false}));
 }catch(error){lastError=giftClean(error?.message||error,180);console.error(JSON.stringify({event:"gift-assist-api-startup-failed",reason:lastError}));}
 console.log(JSON.stringify({event:"gift-assist-api-listener-started",port:Number(env.PORT||3000)}));
