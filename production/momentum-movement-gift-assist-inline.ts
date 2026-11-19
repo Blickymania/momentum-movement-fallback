@@ -344,10 +344,10 @@ async function ensureBudgetManagerCard(){
   const raw=String(found.content||"")+" "+JSON.stringify(found.embeds||[])+" "+JSON.stringify(found.components||[]);
   const match=raw.match(/Minimum(?: optional)? member budget:[^\$]*\$([\d,]+(?:\.\d{2})?)/i);
   if(match){const n=cents(match[1]);if(n!==null)minimumBudgetCents=n}
-  await rest("PATCH","/channels/"+C.queue+"/messages/"+found.id,await managerCardPayload("overview"));
+  await rest("PATCH","/channels/"+C.queue+"/messages/"+found.id,await managerCardPayload("payments"));
   return;
  }
- const message=await rest("POST","/channels/"+C.queue+"/messages",await managerCardPayload("overview"));
+ const message=await rest("POST","/channels/"+C.queue+"/messages",await managerCardPayload("payments"));
  if(!message.id)throw Error("Gift Assist moderator command center could not be created");
  minimumBudgetMessageId=message.id;
 }
