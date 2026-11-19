@@ -389,11 +389,13 @@ async function ensureBudgetManagerCard(){
   const match=raw.match(/Minimum(?: optional)? member budget:[^\$]*\$([\d,]+(?:\.\d{2})?)/i);
   if(match){const n=cents(match[1]);if(n!==null)minimumBudgetCents=n}
   await rest("PATCH","/channels/"+C.queue+"/messages/"+found.id,await managerCardPayload("payments"));
+  log("command-center-rendered",{revision:"manual-review-v1",messageId:found.id,view:"payments"});
   return;
  }
  const message=await rest("POST","/channels/"+C.queue+"/messages",await managerCardPayload("payments"));
  if(!message.id)throw Error("Gift Assist moderator command center could not be created");
  minimumBudgetMessageId=message.id;
+ log("command-center-rendered",{revision:"manual-review-v1",messageId:message.id,view:"payments",created:true});
 }
 function getDraft(token,userId){const d=requestDrafts.get(token);if(!d||d.userId!==userId||d.expiresAt<Date.now()){if(d&&d.expiresAt<Date.now())requestDrafts.delete(token);throw Error("This Gift Assist form expired. Start a new request in the Gift Assist channel.")}return d}
 async function refreshRequestPanel(draft){await rest("PATCH","/channels/"+C.pub+"/messages/"+draft.panelMessageId,requestPanel(draft,draft.token))}
