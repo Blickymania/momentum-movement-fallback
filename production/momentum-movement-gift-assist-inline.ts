@@ -292,9 +292,20 @@ async function ensurePublicDashboard(){
  if(message.author?.id!==C.app||message.id!==C.dash)throw Error("Gift Assist public dashboard ownership could not be verified");
  await rest("PATCH","/channels/"+C.pub+"/messages/"+C.dash,publicDashboardPayload("overview"));
 }
-async function managerCardPayload(view="overview"){
+async function managerCardPayload(view="overview",cashPage=0){
  const [messages,health,caseSummary]=await Promise.all([queueMessages(),syncApi("/gift-assist/health").catch(()=>null),syncApi("/internal/gift-assist/case-summary").catch(()=>null)]);
  const cases=messages.map(parseCase).filter(Boolean);
+ const cashApp=view==="payments"?await syncApi("/internal/gift-assist/cashapp-recipients").catch(()=>null):null;
+ const recipients=Array.isArray(cashApp?.recipients)?cashApp.recipients:[];
+ const selectedRecipient=recipients.find(r=>r.id===cashApp?.selectedId);
+ const pageCount=Math.max(1,Math.ceil(recipients.length/25));
+ const page=Math.min(Math.max(0,Number(cashPage)||0),pageCount-1);
+ const recipientOptions=recipients.slice(page*25,(page+1)*25).map(r=>({label:String(r.cashtag||r.label).slice(0,100),value:r.id,description:r.verified?"Ownership verified":"Unverified · setup only",default:r.id===cashApp?.selectedId}));
+ const cashControls=[];
+ if(recipientOptions.length)cashControls.push({type:1,components:[{type:3,custom_id:"gift:staff:cashapp:select",placeholder:"Select Cash App recipient · planning only",min_values:1,max_values:1,options:recipientOptions}]});
+ if(pageCount>1)cashControls.push({type:1,components:[btn("Previous","gift:staff:cashapp:page:"+Math.max(0,page-1),2,page===0),btn("Next","gift:staff:cashapp:page:"+Math.min(pageCount-1,page+1),2,page>=pageCount-1)]});
+ cashControls.push({type:1,components:[btn("Add Cash App (Admin)","gift:staff:cashapp:add",3)]});
+ const cashSummary="### Cash App recipients · configuration only\n**Selected recipient:** "+(selectedRecipient?selectedRecipient.cashtag:"None selected")+"\n**Saved Cash App names:** "+recipients.length+(pageCount>1?" · page "+(page+1)+"/"+pageCount:"")+"\n**Verification:** "+(selectedRecipient?(selectedRecipient.verified?"Verified":"Pending ownership verification"):"No recipient selected")+"\n\nModerators and Administrators can choose an existing recipient below. Only Administrators or the server owner can enter a new $Cashtag. This setting does not send money or activate payment collection. Other payment methods remain available.";
  const rows=Array.isArray(caseSummary)?caseSummary:[];
  const terminal=new Set(["Declined","Withdrawn","Expired","Member Declined","Completed","Refunded","Partially Refunded"]);
  const activeRows=rows.filter(x=>!terminal.has(String(x.status||"")));
@@ -321,6 +332,7 @@ async function managerCardPayload(view="overview"){
  return {content:"",embeds:[],flags:36864,components:[
   {type:17,accent_color:0x9B7AFF,components:[{type:10,content:"## 🧭 Gift Assist Command Center\n**PRIVATE MODERATOR WORKSPACE · NATIVE DISCORD COMPONENTS V2**\nAll staff controls stay in this private Discord queue; no external command-center website is used."},nav,{type:14,divider:true,spacing:1}]},
   {type:17,accent_color:view==="payments"?0xF2B84B:view==="guide"?0x18C7A5:0x9B7AFF,components:[{type:10,content:detail}]},
+  ...(view==="payments"?[{type:17,accent_color:0x18C7A5,components:[{type:10,content:cashApp?cashSummary:"### Cash App recipients\nRecipient list temporarily unavailable. Collections remain OFF."},...(cashApp?cashControls:[])]}]:[]),
   {type:17,accent_color:0xF2B84B,components:[{type:10,content:footer}]}
  ],allowed_mentions:SAFE};
 }
